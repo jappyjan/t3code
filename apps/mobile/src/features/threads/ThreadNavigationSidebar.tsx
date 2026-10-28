@@ -553,6 +553,9 @@ function ThreadNavigationSidebarPane(
             onNewThreadOnBranch={props.onNewThreadOnBranch}
             thread={thread}
             variant={item.item.variant}
+            nested={item.item.nested}
+            isLastStep={item.item.isLastStep}
+            stepStatus={item.item.stepStatus}
             hasQueuedMessages={item.hasQueuedMessages}
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}

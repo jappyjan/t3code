@@ -35,6 +35,12 @@ import {
 } from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
+  isPipelineGroupActive,
+  nestPipelineSteps,
+  pipelineParentsOfSteps,
+  pipelineStepsOfParents,
+} from "@t3tools/client-runtime/state/pipeline-nesting";
+import {
   nextShownOrder,
   threadSearchMatchKey,
   threadSearchSubject,
@@ -193,6 +199,7 @@ import {
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
+  resolveSidebarPipelineStepStatus,
   resolveSidebarThreadSection,
   resolveSidebarReorderableThreadKeys,
   searchSidebarThreads,
@@ -254,6 +261,8 @@ import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import {
   SidebarSearchResultRow,
+  PipelineStepRow,
+  SidebarPipelineSteps,
   SortableThreadRow,
   type SidebarProviderEntry,
   type SidebarSweepAction,
@@ -393,12 +402,20 @@ function resolveDraggedOrders(input: {
   };
 }
 
+// A pipeline's steps show with their parent, so an open step keeps the parent's row in view.
 function routeThreadOnly(
   threads: readonly EnvironmentThreadShell[],
   routeThreadKey: string | null,
+  stepsByParentKey: ReadonlyMap<string, readonly EnvironmentThreadShell[]>,
 ): readonly EnvironmentThreadShell[] {
   if (routeThreadKey === null) return EMPTY_THREADS;
-  const routeThread = threads.find((thread) => threadShellKey(thread) === routeThreadKey);
+  const routeThread = threads.find(
+    (thread) =>
+      threadShellKey(thread) === routeThreadKey ||
+      stepsByParentKey
+        .get(threadShellKey(thread))
+        ?.some((step) => threadShellKey(step) === routeThreadKey),
+  );
   return routeThread === undefined ? EMPTY_THREADS : [routeThread];
 }
 
@@ -479,8 +496,14 @@ function useSidebarThreads(input: {
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
-  const { pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads } =
-    partition;
+  const {
+    pinnedThreads,
+    activeThreads,
+    workingThreads,
+    snoozedThreads,
+    settledThreads,
+    pipelineStepsByParentKey,
+  } = partition;
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const olderSettledShelf = useOlderSettledShelf({
     scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
@@ -497,22 +520,24 @@ function useSidebarThreads(input: {
       routeRowThreadKey !== null &&
       !visible.some((thread) => threadShellKey(thread) === routeRowThreadKey)
     ) {
-      const routeThread = settledThreads.find(
-        (thread) => threadShellKey(thread) === routeRowThreadKey,
+      const [routeThread] = routeThreadOnly(
+        settledThreads,
+        routeRowThreadKey,
+        pipelineStepsByParentKey,
       );
-      if (routeThread !== undefined) visible.push(routeThread);
+      if (routeThread !== undefined && !visible.includes(routeThread)) visible.push(routeThread);
     }
     return visible.length === settledThreads.length ? settledThreads : visible;
   })();
   const renderedSettledThreads = settledShelfExpanded
     ? visibleSettledThreads
-    : routeThreadOnly(visibleSettledThreads, routeRowThreadKey);
+    : routeThreadOnly(visibleSettledThreads, routeRowThreadKey, pipelineStepsByParentKey);
   const visibleSnoozedThreads = snoozedShelfExpanded
     ? snoozedThreads
-    : routeThreadOnly(snoozedThreads, routeRowThreadKey);
+    : routeThreadOnly(snoozedThreads, routeRowThreadKey, pipelineStepsByParentKey);
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
-    : routeThreadOnly(workingThreads, routeRowThreadKey);
+    : routeThreadOnly(workingThreads, routeRowThreadKey, pipelineStepsByParentKey);
   const projectFolders =
     folderGroups === null
       ? null
@@ -526,21 +551,35 @@ function useSidebarThreads(input: {
             collapsed,
             // A closed folder still shows the open thread, and hints at the rest.
             threads: collapsed
-              ? routeThreadOnly(folder.threads, routeRowThreadKey)
+              ? routeThreadOnly(folder.threads, routeRowThreadKey, pipelineStepsByParentKey)
               : folder.threads,
+            // Steps count with their parent, so a closed folder still shows a running step.
             hiddenThreads: collapsed
-              ? folder.threads.filter((thread) => threadShellKey(thread) !== routeRowThreadKey)
+              ? folder.threads
+                  .flatMap((thread) => [
+                    thread,
+                    ...(pipelineStepsByParentKey.get(threadShellKey(thread)) ?? EMPTY_THREADS),
+                  ])
+                  .filter((thread) => threadShellKey(thread) !== routeRowThreadKey)
               : EMPTY_THREADS,
           };
         });
+  // Keyboard order, jump numbers and range selection follow the rows as drawn: steps right after their parent.
+  const withSteps = (list: readonly EnvironmentThreadShell[]) =>
+    pipelineStepsByParentKey.size === 0
+      ? list
+      : list.flatMap((thread) => [
+          thread,
+          ...(pipelineStepsByParentKey.get(threadShellKey(thread)) ?? EMPTY_THREADS),
+        ]);
   const orderedThreads = [
-    ...pinnedThreads,
-    ...(projectFolders === null
-      ? activeThreads
-      : projectFolders.flatMap((folder) => folder.threads)),
-    ...visibleWorkingThreads,
-    ...visibleSnoozedThreads,
-    ...renderedSettledThreads,
+    ...withSteps(pinnedThreads),
+    ...withSteps(
+      projectFolders === null ? activeThreads : projectFolders.flatMap((folder) => folder.threads),
+    ),
+    ...withSteps(visibleWorkingThreads),
+    ...withSteps(visibleSnoozedThreads),
+    ...withSteps(renderedSettledThreads),
   ];
   const sectionByThreadKey = new Map<string, SidebarSection>();
   for (const [list, section] of [
@@ -550,18 +589,18 @@ function useSidebarThreads(input: {
     [snoozedThreads, "snoozed"],
     [settledThreads, "settled"],
   ] as const) {
-    for (const thread of list) sectionByThreadKey.set(threadShellKey(thread), section);
+    for (const thread of withSteps(list)) sectionByThreadKey.set(threadShellKey(thread), section);
   }
   return {
     ...partition,
     threads,
     workingShelfEnabled,
     searchableThreads: [
-      ...pinnedThreads,
-      ...activeThreads,
-      ...workingThreads,
-      ...snoozedThreads,
-      ...settledThreads,
+      ...withSteps(pinnedThreads),
+      ...withSteps(activeThreads),
+      ...withSteps(workingThreads),
+      ...withSteps(snoozedThreads),
+      ...withSteps(settledThreads),
     ],
     settledVisibleCount,
     settledCount,
@@ -588,8 +627,8 @@ function useSidebarThreads(input: {
     visibleWorkingThreads,
     orderedThreadKeys: orderedThreads.map(threadShellKey),
     threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
-    settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
-    snoozedThreadKeys: new Set(snoozedThreads.map(threadShellKey)),
+    settledThreadKeys: new Set(withSteps(settledThreads).map(threadShellKey)),
+    snoozedThreadKeys: new Set(withSteps(snoozedThreads).map(threadShellKey)),
     sectionByThreadKey,
     pinnedKeys: pinnedThreads.map(threadShellKey),
     activeKeys: activeThreads.map(threadShellKey),
@@ -618,21 +657,47 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
+  const pipelineParentOf = pipelineParentsOfSteps(visible);
+  const pipelineStepsOf = pipelineStepsOfParents(visible, pipelineParentOf);
+  // A pipeline counts as working while any of its steps does, so it stays on the shelf.
   const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) =>
     workingShelfEnabled &&
-    (manuallyMoved ? isThreadWorking(thread) : inboxObservation.isWorking(thread))
+    isPipelineGroupActive(thread, pipelineStepsOf, (candidate) =>
+      manuallyMoved ? isThreadWorking(candidate) : inboxObservation.isWorking(candidate),
+    )
       ? working
       : active;
   const snoozed: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   const { draggableThreadKeys, activeReorderableThreadKeys } = resolveSidebarReorderableThreadKeys({
-    threads: visible,
+    // A pipeline's steps move with their parent, never on their own.
+    threads: visible.filter((thread) => !pipelineParentOf.has(threadShellKey(thread))),
     serverConfigs,
     connectedEnvironmentIds: input.connectedEnvironmentIds,
   });
-  for (const thread of visible) {
+  for (const step of visible) {
+    // A pipeline's steps go where their parent goes, so the run stays together.
+    const parent = pipelineParentOf.get(threadShellKey(step));
+    const thread = parent ?? step;
     const configLoaded = serverConfigs.has(thread.environmentId);
-    const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+    const threadKey = threadShellKey(thread);
+    if (parent !== undefined) {
+      const section = resolveSidebarThreadSection({
+        snoozed: configLoaded && effectiveSnoozed(parent, { now: preciseNow }),
+        settled: configLoaded && parent.settledOverride === "settled",
+        pinned: parent.pinnedAt != null,
+      });
+      const dropSection = optimisticDrop?.key === threadKey ? optimisticDrop.section : section;
+      (dropSection === "snoozed"
+        ? snoozed
+        : dropSection === "settled"
+          ? settled
+          : dropSection === "pinned"
+            ? pinned
+            : inbox(parent, optimisticDrop?.key === threadKey)
+      ).push(step);
+      continue;
+    }
     if (optimisticDrop?.key === threadKey) {
       const projected = applySidebarThreadDrop(
         thread,
@@ -667,13 +732,41 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     }
   }
   // Availability gates dragging only; sorting must stay consistent across clients.
-  const sortedPinned = sortPinnedThreadsForSidebar(pinned);
-  const sortedActive = sortActiveBySend
-    ? sortWorkingThreadsBySend(active)
-    : workingShelfEnabled
-      ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
-      : sortThreadsForSidebar(active);
+  // Steps sort with everything else, then fold under their parent where the first of the run sits.
+  const nestedPinned = nestPipelineSteps(sortPinnedThreadsForSidebar(pinned), {
+    anchored: (parent) => parent.pinOrderKey != null,
+  });
+  const nestedActive = nestPipelineSteps(
+    sortActiveBySend
+      ? sortWorkingThreadsBySend(active)
+      : workingShelfEnabled
+        ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
+        : sortThreadsForSidebar(active),
+    {
+      anchored: (parent) =>
+        !workingShelfEnabled && !sortActiveBySend && parent.activeOrderKey != null,
+    },
+  );
+  const nestedWorking = nestPipelineSteps(sortWorkingThreadsBySend(working));
+  const nestedSnoozed = nestPipelineSteps(
+    snoozed.toSorted(
+      (left, right) =>
+        firstValidTimestampMs(left.snoozedUntil ?? null) -
+        firstValidTimestampMs(right.snoozedUntil ?? null),
+    ),
+  );
+  const nestedSettled = nestPipelineSteps(sortSettledThreads(settled));
+  const sortedPinned = nestedPinned.rows;
+  const sortedActive = nestedActive.rows;
+  const pipelineStepsByParentKey = new Map([
+    ...nestedPinned.stepsByParentKey,
+    ...nestedActive.stepsByParentKey,
+    ...nestedWorking.stepsByParentKey,
+    ...nestedSnoozed.stepsByParentKey,
+    ...nestedSettled.stepsByParentKey,
+  ]);
   return {
+    pipelineStepsByParentKey,
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
         ? sortedPinned
@@ -692,13 +785,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
             preferredIds: optimisticDrop.order,
             getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
           }),
-    workingThreads: sortWorkingThreadsBySend(working),
-    snoozedThreads: snoozed.toSorted(
-      (left, right) =>
-        firstValidTimestampMs(left.snoozedUntil ?? null) -
-        firstValidTimestampMs(right.snoozedUntil ?? null),
-    ),
-    settledThreads: sortSettledThreads(settled),
+    workingThreads: nestedWorking.rows,
+    snoozedThreads: nestedSnoozed.rows,
+    settledThreads: nestedSettled.rows,
     visibleThreads: visible,
     snoozeNow: preciseNow,
   };
@@ -1288,6 +1377,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledThreads,
     snoozeNow,
     searchableThreads,
+    pipelineStepsByParentKey,
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -3280,6 +3370,78 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           : isCard
                             ? "card"
                             : "slim";
+                        const rowProps = (row: EnvironmentThreadShell, isStep: boolean) => {
+                          const key = scopedThreadKey(scopeThreadRef(row.environmentId, row.id));
+                          return {
+                            thread: row,
+                            // Steps follow their parent's section, so they offer no settle, snooze or pin of their own.
+                            settlementSupported: !isStep && serverConfigs.has(row.environmentId),
+                            snoozeSupported: !isStep && serverConfigs.has(row.environmentId),
+                            pinningSupported: !isStep && serverConfigs.has(row.environmentId),
+                            isPinned: !isStep && row.pinnedAt != null,
+                            variantAction:
+                              section === "snoozed"
+                                ? ("unsnooze" as const)
+                                : section === "settled"
+                                  ? ("unsettle" as const)
+                                  : ("settle" as const),
+                            navigationParent: isStep ? threadKey : undefined,
+                            dropVerb:
+                              !isStep && dragState?.activeKey === key
+                                ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection)
+                                : null,
+                            dragOverPinned:
+                              !isStep &&
+                              dragState?.activeKey === key &&
+                              dragTargetSection === "pinned",
+                            sweepAction: actionSweep?.keys.has(key) ? actionSweep.action : null,
+                            snoozeWakeLabelText:
+                              !isStep && section === "snoozed" && row.snoozedUntil != null
+                                ? snoozeWakeLabel(row.snoozedUntil, {
+                                    now: new Date().toISOString(),
+                                  })
+                                : null,
+                            wokeAt: threadWokeAt(row, { now: snoozeNow }),
+                            isActive: routeRowThreadKey === key,
+                            revealRef: routeRowThreadKey === key ? revealActiveRow : undefined,
+                            isRouteThread: routeThreadKey === key,
+                            openPullRequestsInRightPanel: routeThreadRef !== null,
+                            jumpLabel: showJumpHints ? (jumpLabelByKey.get(key) ?? null) : null,
+                            currentEnvironmentId: primaryEnvironmentId,
+                            environmentLabel: environmentLabelById.get(row.environmentId) ?? null,
+                            environmentMachine:
+                              environmentMachineById.get(row.environmentId) ?? ("server" as const),
+                            scratchMachineLabel: scratchMachineLabelFor(row),
+                            project:
+                              projectByKey.get(`${row.environmentId}:${row.projectId}`) ?? null,
+                            projectDisplayName:
+                              projectDisplayNameByKey.get(
+                                `${row.environmentId}:${row.projectId}`,
+                              ) ?? null,
+                            providerEntryByInstanceId:
+                              providerEntriesByEnvironment.get(row.environmentId) ??
+                              EMPTY_PROVIDER_ENTRIES,
+                            timestampFormat,
+                            onThreadClick: handleThreadClick,
+                            onThreadActivate: navigateToThread,
+                            onStartRename: startThreadRename,
+                            onRenameTitleChange: setRenamingTitle,
+                            onCommitRename: commitThreadRename,
+                            onCancelRename: cancelThreadRename,
+                            isRenaming: renamingThreadKey === key,
+                            renamingTitle: renamingThreadKey === key ? renamingTitle : "",
+                            onContextMenu: handleThreadContextMenu,
+                            onSettle: attemptSettle,
+                            onActionSweepStart: startActionSweep,
+                            onUnsettle: attemptUnsettle,
+                            onSnooze: attemptSnooze,
+                            onUnsnooze: attemptUnsnooze,
+                            onUnpin: attemptUnpin,
+                            onAcknowledgeWoke: acknowledgeWoke,
+                            onFileDropThreads: handleThreadFileDrop,
+                          };
+                        };
+                        const steps = pipelineStepsByParentKey.get(threadKey);
                         return (
                           <SortableThreadRow
                             key={threadKey}
@@ -3291,8 +3453,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               !draggableThreadKeys.has(threadKey) ||
                               optimisticDrop !== null
                             }
-                            thread={thread}
                             variant={rowVariant}
+                            {...rowProps(thread, false)}
                             navigationParent={
                               folderRow ??
                               (section === "working" ||
@@ -3301,84 +3463,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 ? `shelf:${section}`
                                 : undefined)
                             }
-                            variantAction={
-                              section === "snoozed"
-                                ? "unsnooze"
-                                : section === "settled"
-                                  ? "unsettle"
-                                  : "settle"
+                            stepStatus={
+                              steps === undefined ? null : resolveSidebarPipelineStepStatus(steps)
                             }
-                            settlementSupported={serverConfigs.has(thread.environmentId)}
-                            snoozeSupported={serverConfigs.has(thread.environmentId)}
-                            pinningSupported={serverConfigs.has(thread.environmentId)}
-                            isPinned={thread.pinnedAt != null}
-                            dropVerb={
-                              dragState?.activeKey === threadKey
-                                ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection)
-                                : null
+                            pipelineSteps={
+                              steps === undefined ? undefined : (
+                                <SidebarPipelineSteps>
+                                  {steps.map((step, index) => (
+                                    <PipelineStepRow
+                                      key={scopedThreadKey(
+                                        scopeThreadRef(step.environmentId, step.id),
+                                      )}
+                                      {...rowProps(step, true)}
+                                      isLastStep={index === steps.length - 1}
+                                    />
+                                  ))}
+                                </SidebarPipelineSteps>
+                              )
                             }
-                            dragOverPinned={
-                              dragState?.activeKey === threadKey && dragTargetSection === "pinned"
-                            }
-                            sweepAction={
-                              actionSweep?.keys.has(threadKey) ? actionSweep.action : null
-                            }
-                            snoozeWakeLabelText={
-                              section === "snoozed" && thread.snoozedUntil != null
-                                ? snoozeWakeLabel(thread.snoozedUntil, {
-                                    now: new Date().toISOString(),
-                                  })
-                                : null
-                            }
-                            wokeAt={threadWokeAt(thread, { now: snoozeNow })}
-                            isActive={routeRowThreadKey === threadKey}
-                            revealRef={
-                              routeRowThreadKey === threadKey ? revealActiveRow : undefined
-                            }
-                            isRouteThread={routeThreadKey === threadKey}
-                            openPullRequestsInRightPanel={routeThreadRef !== null}
-                            jumpLabel={
-                              showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null
-                            }
-                            currentEnvironmentId={primaryEnvironmentId}
-                            environmentLabel={
-                              environmentLabelById.get(thread.environmentId) ?? null
-                            }
-                            environmentMachine={
-                              environmentMachineById.get(thread.environmentId) ?? "server"
-                            }
-                            scratchMachineLabel={scratchMachineLabelFor(thread)}
-                            project={
-                              projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
-                              null
-                            }
-                            projectDisplayName={
-                              projectDisplayNameByKey.get(
-                                `${thread.environmentId}:${thread.projectId}`,
-                              ) ?? null
-                            }
-                            providerEntryByInstanceId={
-                              providerEntriesByEnvironment.get(thread.environmentId) ??
-                              EMPTY_PROVIDER_ENTRIES
-                            }
-                            timestampFormat={timestampFormat}
-                            onThreadClick={handleThreadClick}
-                            onThreadActivate={navigateToThread}
-                            onStartRename={startThreadRename}
-                            onRenameTitleChange={setRenamingTitle}
-                            onCommitRename={commitThreadRename}
-                            onCancelRename={cancelThreadRename}
-                            isRenaming={renamingThreadKey === threadKey}
-                            renamingTitle={renamingThreadKey === threadKey ? renamingTitle : ""}
-                            onContextMenu={handleThreadContextMenu}
-                            onSettle={attemptSettle}
-                            onActionSweepStart={startActionSweep}
-                            onUnsettle={attemptUnsettle}
-                            onSnooze={attemptSnooze}
-                            onUnsnooze={attemptUnsnooze}
-                            onUnpin={attemptUnpin}
-                            onAcknowledgeWoke={acknowledgeWoke}
-                            onFileDropThreads={handleThreadFileDrop}
                           />
                         );
                       };

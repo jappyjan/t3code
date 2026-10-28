@@ -91,10 +91,21 @@ export function installSidebarTree(root: HTMLElement) {
       const group = siblings.get(parent) ?? [];
       group.push(row);
       siblings.set(parent, group);
-      setAttribute(row, "aria-level", parent ? "2" : "1");
       setTabIndex(row, row === selected ? 0 : -1);
     }
     const byId = new Map(rows.map((row) => [row.dataset.sidebarRow, row]));
+    for (const row of rows) {
+      // Folders and pipelines nest, so a row's level follows its parent chain.
+      let level = row.dataset.sidebarParent ? 2 : 1;
+      for (
+        let parent = byId.get(row.dataset.sidebarParent);
+        parent?.dataset.sidebarParent && level < rows.length;
+        parent = byId.get(parent.dataset.sidebarParent)
+      ) {
+        level += 1;
+      }
+      setAttribute(row, "aria-level", String(level));
+    }
     for (const control of ownTabIndex.keys()) if (!control.isConnected) ownTabIndex.delete(control);
     for (const control of root.querySelectorAll<HTMLElement>(CONTROL)) {
       if (control.matches(ROW) || control.matches(TEXT_ENTRY)) continue;
