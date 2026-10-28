@@ -432,6 +432,7 @@ export function HomeScreen(props: HomeScreenProps) {
     machineByEnvironmentId,
     settlementEnvironmentIds,
     snoozeEnvironmentIds,
+    pipelineEnvironmentIds,
     snoozePresetsByEnvironmentId,
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
@@ -454,6 +455,7 @@ export function HomeScreen(props: HomeScreenProps) {
     searchQuery: props.searchQuery,
     searchMatches: threadSearchMatchByKey,
     settlementEnvironmentIds,
+    pipelineEnvironmentIds,
     snoozeEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
@@ -568,6 +570,7 @@ export function HomeScreen(props: HomeScreenProps) {
         nested={item.item.nested}
         isLastStep={item.item.isLastStep}
         stepStatus={item.item.stepStatus}
+        stepLabel={item.item.stepLabel}
         hasQueuedMessages={item.hasQueuedMessages}
         snoozed={item.item.snoozed}
         pinned={item.item.pinned}

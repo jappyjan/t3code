@@ -18,7 +18,12 @@ import {
   type ThreadSearchShell,
 } from "@t3tools/client-runtime/state/thread-search";
 import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
-import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type {
+  ContextMenuItem,
+  EnvironmentId,
+  PipelineRunSummary,
+  ThreadId,
+} from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
 import {
@@ -876,11 +881,12 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   return "ready";
 }
 
-/** What a pipeline's parent row shows for its steps; see `mergePipelineParentStatus`. */
+/** What a pipeline's parent row shows for its steps and live run; see `mergePipelineParentStatus`. */
 export function resolveSidebarPipelineStepStatus(
   steps: ReadonlyArray<SidebarThreadStatusInput>,
+  run?: Pick<PipelineRunSummary, "status"> | null,
 ): PipelineStepStatus | null {
-  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus));
+  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus), run);
 }
 
 /**

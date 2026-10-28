@@ -23,7 +23,6 @@ import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environ
 import {
   type PipelineStepStatus,
   mergePipelineParentStatus,
-  nestedPipelineStepLabel,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
 import {
   AuthOrchestrationOperateScope,
@@ -591,6 +590,8 @@ type SidebarThreadRowProps = {
   variant: "card" | "slim" | "folder" | "folder-multiline" | "step";
   /** Aggregate of a pipeline parent's steps; replaces a quiet status of the parent's own. */
   stepStatus?: PipelineStepStatus | null | undefined;
+  /** A pipeline step's label under its parent; the thread title when unset. */
+  stepLabel?: string | undefined;
   /** Draws the closing connector on the last step of a pipeline. */
   isLastStep?: boolean | undefined;
   /**
@@ -1151,7 +1152,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       )}
       dir={textDirection(thread.title)}
     >
-      {variant === "step" ? nestedPipelineStepLabel(thread.title) : thread.title}
+      {variant === "step" ? (props.stepLabel ?? thread.title) : thread.title}
     </span>
   );
   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
