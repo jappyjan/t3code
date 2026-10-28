@@ -12,6 +12,7 @@ import {
   wasBootstrapThreadDeleted,
   wasBootstrapThreadNotCreated,
 } from "@t3tools/client-runtime/errors";
+import type { PipelineStartAttempt } from "@t3tools/client-runtime/pipeline-start";
 import { Atom } from "effect/reactivity";
 import {
   squashAtomCommandFailure,
@@ -77,7 +78,7 @@ const draftSendStateByRouteKey = new Map<
   {
     readonly sendInFlight: { current: boolean };
     readonly uncertainSubmissions: { current: Map<string, ThreadId> };
-    readonly pipelineCommands: { current: Map<string, CommandId> };
+    readonly pipelineStart: { current: PipelineStartAttempt | null };
   }
 >();
 export function draftSendState(routeKey: string) {
@@ -86,7 +87,7 @@ export function draftSendState(routeKey: string) {
     state = {
       sendInFlight: { current: false },
       uncertainSubmissions: { current: new Map() },
-      pipelineCommands: { current: new Map() },
+      pipelineStart: { current: null },
     };
     draftSendStateByRouteKey.set(routeKey, state);
   }
