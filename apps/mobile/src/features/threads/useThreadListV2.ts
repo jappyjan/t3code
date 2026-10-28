@@ -1,10 +1,12 @@
 import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useSyncExternalStore } from "react";
 
 import { keepMarked } from "../../i18n/messages";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../../state/olderSettledShelf";
+import { serverEnvironment } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
   buildThreadListV2Items,
@@ -53,6 +55,8 @@ export function useThreadListV2(input: {
   /** Threads that match the search by content, keyed like `threadSearchMatchKey`. */
   readonly searchMatches: ReadonlyMap<string, unknown>;
   readonly settlementEnvironmentIds: ReadonlySet<EnvironmentId>;
+  /** Environments that offer pipelines; one live-run stream each feeds the paused-run status. */
+  readonly pipelineEnvironmentIds: ReadonlySet<EnvironmentId>;
   readonly snoozeEnvironmentIds: ReadonlySet<EnvironmentId>;
   readonly pinReorderEnvironmentIds: ReadonlySet<EnvironmentId>;
   readonly activeReorderEnvironmentIds: ReadonlySet<EnvironmentId>;
@@ -68,6 +72,10 @@ export function useThreadListV2(input: {
   readonly selectedThreadKey: string | null;
 }) {
   const { threads, workingShelfEnabled } = input;
+  // Hermes lacks toSorted.
+  const pipelineRuns = useAtomValue(
+    serverEnvironment.pipelineLiveRunsAtom([...input.pipelineEnvironmentIds].sort().join("\n")),
+  );
   const layoutTime = useMemo(
     () => threadListV2LayoutTime({ threads, now: input.now, searchQuery: input.searchQuery }),
     [threads, input.now, input.searchQuery],
@@ -150,6 +158,7 @@ export function useThreadListV2(input: {
         workingShelfExpanded: input.workingShelfExpanded,
         inboxReturnAt: inbox.returnedAt,
         isWorking: inbox.isWorking,
+        pipelineRuns,
         snoozedShelfExpanded: input.snoozedShelfExpanded,
         settledShelfExpanded: input.settledShelfExpanded,
         selectedThreadKey: input.selectedThreadKey,
@@ -182,6 +191,7 @@ export function useThreadListV2(input: {
       input.workingShelfExpanded,
       inbox.returnedAt,
       inbox.isWorking,
+      pipelineRuns,
       input.snoozedShelfExpanded,
       input.settledShelfExpanded,
       input.selectedThreadKey,
