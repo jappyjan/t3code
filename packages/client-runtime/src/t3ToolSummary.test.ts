@@ -35,6 +35,25 @@ describe("summarizeT3ToolCalls", () => {
     ).toBe("Sent 2 messages to 1 thread");
   });
 
+  it("summarizes pipeline tools by run", () => {
+    const run = { runId: "pipeline-run:one", threadId: "thread-parent" };
+    expect(
+      summarizeT3ToolCalls("pipeline-start", [
+        completed({ pipeline: "Feature delivery" }, run),
+        completed({ pipeline: "Feature delivery" }, run),
+      ]).label,
+    ).toBe("Started 1 pipeline");
+    expect(
+      summarizeT3ToolCalls("pipeline-status", [completed({}, run), completed({}, run)]).label,
+    ).toBe("Checked pipeline status 2 times");
+    expect(summarizeT3ToolCalls("pipeline-cancel", [completed({}, run)]).label).toBe(
+      "Requested cancellation of 1 pipeline run",
+    );
+    expect(summarizeT3ToolCalls("pipeline-list", [completed({}, { pipelines: [] })]).label).toBe(
+      "Listed pipelines 1 time",
+    );
+  });
+
   it("excludes failed and unfinished sends even if the provider reports completed", () => {
     const calls: T3ToolSummaryCall[] = [
       completed({ threadId: "success" }, { messageId: "ok", threadId: "success" }),
