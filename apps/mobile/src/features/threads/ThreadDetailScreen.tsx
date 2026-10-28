@@ -1377,14 +1377,26 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
             }
           />
           {pipelineParentRunId !== null ? (
-            <PipelineRunPanel
-              environmentId={props.environmentId}
-              runId={pipelineParentRunId}
-              topInset={navigationHeaderHeight}
-              automaticInsets={props.usesAutomaticContentInsets === true}
-              bottomInset={estimatedOverlayHeight}
-              contentMaxWidth={contentMaxWidth}
-            />
+            <RenderErrorBoundary
+              key={selectedThreadKey}
+              resetKeys={[pipelineParentRunId]}
+              renderFallback={(fallback) => (
+                <RenderFailureView
+                  {...fallback}
+                  title="The pipeline couldn't be displayed"
+                  bottomInset={estimatedOverlayHeight}
+                />
+              )}
+            >
+              <PipelineRunPanel
+                environmentId={props.environmentId}
+                runId={pipelineParentRunId}
+                topInset={navigationHeaderHeight}
+                automaticInsets={props.usesAutomaticContentInsets === true}
+                bottomInset={estimatedOverlayHeight}
+                contentMaxWidth={contentMaxWidth}
+              />
+            </RenderErrorBoundary>
           ) : (
             <RenderErrorBoundary
               key={selectedThreadKey}
