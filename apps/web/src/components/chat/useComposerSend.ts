@@ -101,7 +101,6 @@ import { environmentPresentations } from "../../state/presentation";
 import {
   approvalRedirectNotice,
   loadBalancingSendWarning,
-  activeDraftPipelineId,
   multipleModelSendBlock,
   pipelineSendBlock,
   referencedThreadContexts,
@@ -127,7 +126,6 @@ import {
   threadContextsOutsideEnvironment,
 } from "@t3tools/shared/composerContextReferences";
 import {
-  draftPipelineSelectionAtom,
   draftSendState,
   type MultipleModelTarget,
   resolveMultipleModelTargets,
@@ -558,14 +556,8 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const multipleModelSelections = sendCtx.multipleModelSelections;
-    // A pipeline starts from a new thread and excludes multiple models.
-    const selectedPipelineId =
-      isLocalDraftThread && multipleModelSelections === null
-        ? activeDraftPipelineId(
-            appAtomRegistry.get(draftPipelineSelectionAtom(routeThreadKey)),
-            environmentId,
-          )
-        : null;
+    // The composer resolves the pipeline (new threads only, no multiple models, server support).
+    const selectedPipelineId = isLocalDraftThread ? sendCtx.selectedPipelineId : null;
     const approvalFeedbackTarget = pendingApprovalsRef.current.find(
       (approval) =>
         approval.supportsFeedback && approval.requestId === sendCtx.shownPendingApprovalIds[0],
