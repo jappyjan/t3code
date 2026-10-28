@@ -31,6 +31,7 @@ export type SettingsPath =
   | "/settings/browser"
   | "/settings/devices"
   | "/settings/scheduled-tasks"
+  | "/settings/pipelines"
   | "/settings/source-control"
   | "/settings/worktrees"
   | "/settings/connections"
@@ -106,6 +107,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/browser": msg("Browser"),
   "/settings/devices": msg("Devices"),
   "/settings/scheduled-tasks": msg("Scheduled tasks"),
+  "/settings/pipelines": msg("Pipelines"),
   "/settings/source-control": msg("Source control"),
   "/settings/worktrees": msg("Worktrees"),
   "/settings/connections": msg("Environments"),
@@ -145,6 +147,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       "/settings/browser",
       "/settings/devices",
       "/settings/scheduled-tasks",
+      "/settings/pipelines",
     ],
   },
   {
@@ -1018,6 +1021,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["allow disable enable open drive preview tools sessions project override"],
   },
   {
+    id: "pipelines",
+    title: "Pipelines",
+    to: "/settings/pipelines",
+    searchTerms: [
+      "workflow chain steps sequence implement review handoff multi model agents prompt template pause",
+    ],
+  },
+  {
     id: "device-sources",
     title: "Device sources",
     to: "/settings/devices",
@@ -1386,6 +1397,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/access": "connections",
   "/settings/secrets": null,
   "/settings/scheduled-tasks": null,
+  "/settings/pipelines": null,
   "/settings/maintenance": null,
   "/settings/labs": null,
   "/settings/about": null,
