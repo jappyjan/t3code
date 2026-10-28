@@ -112,6 +112,12 @@ import {
   SettingsScheduledTaskEditRouteScreen,
 } from "./features/settings/SettingsScheduledTasksRouteScreen";
 import {
+  SettingsPipelinesRouteScreen,
+  SettingsPipelineNewRouteScreen,
+  SettingsPipelineEditRouteScreen,
+} from "./features/settings/SettingsPipelinesRouteScreen";
+import { PipelineStepModelPickerRouteScreen } from "./features/settings/PipelinePickerScreens";
+import {
   ScheduledTaskModelPickerRouteScreen,
   ScheduledTaskBranchPickerRouteScreen,
 } from "./features/settings/ScheduledTaskPickerScreens";
@@ -405,6 +411,35 @@ const SETTINGS_SCREENS = {
   }),
   SettingsScheduledTaskModel: createNativeStackScreen({
     screen: ScheduledTaskModelPickerRouteScreen,
+    options: {
+      ...SETTINGS_PAGE_OPTIONS,
+      headerShown: false,
+      ...(Platform.OS === "android"
+        ? { presentation: "card" as const }
+        : {
+            ...THREAD_SETTINGS_SHEET_OPTIONS,
+          }),
+    },
+  }),
+  SettingsPipelines: createNativeStackScreen({
+    screen: SettingsPipelinesRouteScreen,
+    linking: "settings/pipelines",
+    options: {
+      ...SETTINGS_PAGE_OPTIONS,
+      title: "Pipelines",
+      headerTitleStyle: { fontSize: 16, fontWeight: "800" },
+    },
+  }),
+  SettingsPipelineNew: createNativeStackScreen({
+    screen: SettingsPipelineNewRouteScreen,
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "New pipeline" },
+  }),
+  SettingsPipelineEdit: createNativeStackScreen({
+    screen: SettingsPipelineEditRouteScreen,
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "Edit pipeline" },
+  }),
+  SettingsPipelineStepModel: createNativeStackScreen({
+    screen: PipelineStepModelPickerRouteScreen,
     options: {
       ...SETTINGS_PAGE_OPTIONS,
       headerShown: false,
