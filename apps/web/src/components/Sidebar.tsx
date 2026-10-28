@@ -37,9 +37,12 @@ import {
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   isPipelineGroupActive,
+  livePipelineRunOf,
   nestPipelineSteps,
   pipelineParentsOfSteps,
+  pipelineStepLabel,
   pipelineStepsOfParents,
+  type PipelineLiveRuns,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
 import {
   nextShownOrder,
@@ -158,7 +161,7 @@ import {
   useQuietThreadShells,
 } from "../state/entities";
 import { environmentPresentations } from "../state/presentation";
-import { primaryServerKeybindingsAtom } from "../state/server";
+import { primaryServerKeybindingsAtom, serverEnvironment } from "../state/server";
 import { environmentProjects } from "../state/projects";
 import { threadEnvironment } from "../state/threads";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
@@ -358,6 +361,7 @@ interface SidebarThreadPartitionInput {
   readonly delegatedUnderParent: ReadonlySet<string>;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly connectedEnvironmentIds: readonly EnvironmentId[];
+  readonly pipelineLiveRuns: PipelineLiveRuns;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
   /** Boring mode: folders list active threads by the user's latest message. */
@@ -432,6 +436,7 @@ function useSidebarThreads(input: {
   readonly scopedProjectKeys: ReadonlySet<string> | null;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly connectedEnvironmentIds: readonly EnvironmentId[];
+  readonly pipelineLiveRuns: PipelineLiveRuns;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly threads: readonly EnvironmentThreadShell[];
   readonly delegatedUnderParent: ReadonlySet<string>;
@@ -446,6 +451,7 @@ function useSidebarThreads(input: {
     scopedProjectKeys,
     serverConfigs,
     connectedEnvironmentIds,
+    pipelineLiveRuns,
     optimisticDrop,
     threads,
     delegatedUnderParent,
@@ -509,6 +515,7 @@ function useSidebarThreads(input: {
     delegatedUnderParent,
     serverConfigs,
     connectedEnvironmentIds,
+    pipelineLiveRuns,
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
@@ -667,6 +674,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     scopedProjectKeys,
     delegatedUnderParent,
     serverConfigs,
+    pipelineLiveRuns,
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend,
@@ -690,6 +698,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
           candidate,
           pipelineStepsOf,
           manuallyMoved ? isThreadWorking : inboxObservation.isWorking,
+          pipelineLiveRuns,
         ),
     })
       ? working
@@ -919,6 +928,16 @@ function useSidebarLookups() {
   const projects = useProjects();
   const environments = useEnvironmentIdentities();
   const serverConfigs = useServerConfigs();
+  // One stream per environment that offers pipelines; rows read paused runs and step names from it.
+  const pipelineLiveRuns = useAtomValue(
+    serverEnvironment.pipelineLiveRunsAtom(
+      [...serverConfigs]
+        .filter(([, config]) => config.environment.capabilities.pipelines === true)
+        .map(([environmentId]) => environmentId)
+        .toSorted()
+        .join("\n"),
+    ),
+  );
   const providerEntriesByEnvironment = useAtomValue(sidebarProviderEntriesAtom);
   const projectGroups = useSidebarProjectGroups();
   const environmentLabelById = new Map(
@@ -947,6 +966,7 @@ function useSidebarLookups() {
   return {
     projects,
     serverConfigs,
+    pipelineLiveRuns,
     projectGroups,
     environmentLabelById,
     providerEntriesByEnvironment,
@@ -1011,6 +1031,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const {
     projects,
     serverConfigs,
+    pipelineLiveRuns,
     projectGroups,
     environmentLabelById,
     providerEntriesByEnvironment,
@@ -1445,6 +1466,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     scopedProjectKeys,
     serverConfigs,
     connectedEnvironmentIds,
+    pipelineLiveRuns,
     optimisticDrop,
     threads,
     delegatedUnderParent,
@@ -3478,6 +3500,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                     now: new Date().toISOString(),
                                   })
                                 : null,
+                            stepLabel: isStep
+                              ? pipelineStepLabel(pipelineLiveRuns, row)
+                              : undefined,
                             wokeAt: threadWokeAt(row, { now: snoozeNow }),
                             isActive: routeRowThreadKey === key,
                             revealRef: routeRowThreadKey === key ? revealActiveRow : undefined,
@@ -3544,9 +3569,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 ? `shelf:${section}`
                                 : undefined)
                             }
-                            stepStatus={
-                              steps === undefined ? null : resolveSidebarPipelineStepStatus(steps)
-                            }
+                            stepStatus={resolveSidebarPipelineStepStatus(
+                              steps ?? EMPTY_THREADS,
+                              livePipelineRunOf(pipelineLiveRuns, thread),
+                            )}
                             pipelineSteps={steps?.map((step) => rowProps(step, true))}
                           />
                         );
