@@ -28,6 +28,7 @@ import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/sh
 import {
   type ContextMenuItem,
   type EnvironmentId,
+  type PipelineRunSummary,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
@@ -1041,11 +1042,12 @@ export function resolveWindowTitleThreadStatus(
   }
 }
 
-/** What a pipeline's parent row shows for its steps; see `mergePipelineParentStatus`. */
+/** What a pipeline's parent row shows for its steps and live run; see `mergePipelineParentStatus`. */
 export function resolveSidebarPipelineStepStatus(
   steps: ReadonlyArray<SidebarThreadStatusInput>,
+  run?: Pick<PipelineRunSummary, "status"> | null,
 ): PipelineStepStatus | null {
-  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus));
+  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus), run);
 }
 
 /**

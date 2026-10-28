@@ -18,9 +18,12 @@ import { resolveThreadConnectionStatus } from "@t3tools/client-runtime/state/mod
 import {
   aggregatePipelineStepStatus,
   isPipelineGroupActive,
+  livePipelineRunOf,
   nestPipelineSteps,
   pipelineParentsOfSteps,
+  pipelineStepLabel,
   pipelineStepsOfParents,
+  type PipelineLiveRuns,
   type PipelineNesting,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
 import {
@@ -41,7 +44,12 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
-import { isListedThreadLineage, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
+import {
+  isListedThreadLineage,
+  type EnvironmentId,
+  type PipelineRunSummary,
+  type ProjectId,
+} from "@t3tools/contracts";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import type { MenuAction } from "@react-native-menu/menu";
 
@@ -363,11 +371,12 @@ export function resolveThreadListV2RowStatus(
   return hasUnseenRunFailure(thread) ? status : "ready";
 }
 
-/** What a pipeline's parent row shows for its steps; the row merges it with its own status. */
+/** What a pipeline's parent row shows for its steps and live run; the row merges it with its own status. */
 export function resolveThreadListV2StepStatus(
   steps: ReadonlyArray<Parameters<typeof resolveThreadListV2Status>[0]>,
+  run?: Pick<PipelineRunSummary, "status"> | null,
 ) {
-  return aggregatePipelineStepStatus(steps.map(resolveThreadListV2Status));
+  return aggregatePipelineStepStatus(steps.map(resolveThreadListV2Status), run);
 }
 
 /**
@@ -459,8 +468,10 @@ export interface ThreadListV2Item {
   readonly nested?: boolean;
   /** Whether this is the last step of its pipeline. */
   readonly isLastStep?: boolean;
-  /** On a pipeline's parent: what its steps need, for the parent to show. */
+  /** On a pipeline's parent: what its steps and live run need, for the parent to show. */
   readonly stepStatus?: ReturnType<typeof resolveThreadListV2StepStatus>;
+  /** On a pipeline step: its label under the parent. */
+  readonly stepLabel?: string;
 }
 
 export interface ThreadListV2Layout {
@@ -778,6 +789,8 @@ export function buildThreadListV2Items(input: {
   readonly workingShelfEnabled?: boolean;
   readonly workingShelfExpanded?: boolean;
   readonly isWorking?: (thread: EnvironmentThreadShell) => boolean;
+  /** Live pipeline runs of every environment that offers pipelines. */
+  readonly pipelineRuns?: PipelineLiveRuns;
   readonly inboxReturnAt?: (thread: EnvironmentThreadShell) => number | undefined;
   readonly snoozedShelfExpanded?: boolean;
   readonly settledShelfExpanded?: boolean;
@@ -871,7 +884,12 @@ export function buildThreadListV2Items(input: {
     } else if (
       // A pipeline counts as working while any of its steps does, so it stays on the shelf.
       workingShelfEnabled &&
-      isPipelineGroupActive(owner, stepsOfParent, input.isWorking ?? isThreadWorking)
+      isPipelineGroupActive(
+        owner,
+        stepsOfParent,
+        input.isWorking ?? isThreadWorking,
+        input.pipelineRuns,
+      )
     ) {
       working.push(thread);
     } else {
@@ -984,11 +1002,14 @@ export function buildThreadListV2Items(input: {
     row: Pick<ThreadListV2Item, "variant" | "snoozed" | "pinned" | "wokeAt">,
   ) => {
     const steps = stepsByParentKey.get(`${thread.environmentId}:${thread.id}`);
+    const run = livePipelineRunOf(input.pipelineRuns, thread);
     items.push({
       thread,
       ...row,
       isLast: false,
-      ...(steps === undefined ? {} : { stepStatus: resolveThreadListV2StepStatus(steps) }),
+      ...(steps === undefined && run === undefined
+        ? {}
+        : { stepStatus: resolveThreadListV2StepStatus(steps ?? [], run) }),
     });
     steps?.forEach((step, index) => {
       items.push({
@@ -1000,6 +1021,7 @@ export function buildThreadListV2Items(input: {
         isLast: false,
         nested: true,
         isLastStep: index === steps.length - 1,
+        stepLabel: pipelineStepLabel(input.pipelineRuns, step),
       });
     });
   };
