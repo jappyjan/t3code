@@ -350,6 +350,8 @@ export interface ChatComposerHandle {
     interactionMode: ProviderInteractionMode;
     interactionModeEnabled: boolean;
     shownPendingApprovalIds: ReadonlyArray<RuntimeRequestId>;
+    /** The pipeline this draft would start, as the composer shows it; null when none applies. */
+    selectedPipelineId: PipelineId | null;
   };
   validateProviderInput: (providerInput: string) => boolean;
   setMultipleModelSelections: (selections: ReadonlyArray<ModelSelection>) => void;
@@ -952,6 +954,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     externalSendDisabledReason ??
     (multipleModelSelections?.length === 0 ? "Select at least one model." : null) ??
     (selectedPipelineMissing ? "The selected pipeline no longer exists. Choose another." : null) ??
+    (pipelineActive && !draftPipelines.loaded ? "Loading pipelines." : null) ??
     (pipelineActive && (composerImages.length > 0 || composerFiles.length > 0)
       ? PIPELINE_TEXT_ONLY_HINT
       : null) ??
@@ -2380,9 +2383,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       getModelDisabledReason={getModelDisabledReason}
       pipelineActive={pipelineActive}
       pipelinePicker={
-        draftPipelines.available && draftPipelines.pipelines.length > 0 ? (
+        // A selected pipeline keeps the picker, even if it was deleted or has not loaded yet.
+        draftPipelines.available && (pipelineActive || draftPipelines.pipelines.length > 0) ? (
           <ComposerPipelinePicker
             pipelines={draftPipelines.pipelines}
+            pipelinesLoaded={draftPipelines.loaded}
             selectedPipelineId={selectedPipelineId}
             disabled={isSendBusy}
             size={composerControlsCollapsed ? "xs" : "sm"}
@@ -3019,6 +3024,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         selectedProviderModels,
         interactionMode,
         interactionModeEnabled: planModeUiEnabled,
+        selectedPipelineId,
       }),
       setMultipleModelSelections,
       validateProviderInput: (providerInput: string) => {
@@ -3079,6 +3085,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       routeKind,
       noProviderAvailable,
       pipelineActive,
+      selectedPipelineId,
       providerSendBlockReason,
       selectedPromptEffort,
       selectedProvider,

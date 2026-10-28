@@ -261,8 +261,6 @@ import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import {
   SidebarSearchResultRow,
-  PipelineStepRow,
-  SidebarPipelineSteps,
   SortableThreadRow,
   type SidebarProviderEntry,
   type SidebarSweepAction,
@@ -765,8 +763,14 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     ...nestedSnoozed.stepsByParentKey,
     ...nestedSettled.stepsByParentKey,
   ]);
+  // Steps nested under a parent in the list; a step whose parent is absent is an ordinary row.
+  const pipelineParentKeyByStepKey = new Map<string, string>();
+  for (const [parentKey, steps] of pipelineStepsByParentKey) {
+    for (const step of steps) pipelineParentKeyByStepKey.set(threadShellKey(step), parentKey);
+  }
   return {
     pipelineStepsByParentKey,
+    pipelineParentKeyByStepKey,
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
         ? sortedPinned
@@ -1378,6 +1382,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     snoozeNow,
     searchableThreads,
     pipelineStepsByParentKey,
+    pipelineParentKeyByStepKey,
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -1651,12 +1656,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     navigateToThread(threadRef);
   };
 
+  // The route's row: an open pipeline step stands in as its parent, which is what settles or snoozes.
+  const readRouteRowKey = () => {
+    const routeKey = readRouteThreadKey(router);
+    return routeKey === null ? null : (pipelineParentKeyByStepKey.get(routeKey) ?? routeKey);
+  };
+
   // Snapshot navigation before partition mutation; background parks use a null plan.
   const planForwardNavigation = (
     threadKey: string,
     coParkingKeys?: ReadonlySet<string>,
   ): (() => void) | null => {
-    if (readRouteThreadKey(router) !== threadKey) return null;
+    if (readRouteRowKey() !== threadKey) return null;
     const shell = threadByKeyRef.current.get(threadKey);
     const orderedKeys = orderedThreadKeysRef.current;
     const settledKeys = settledThreadKeysRef.current;
@@ -1666,7 +1677,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       currentIndex === -1
         ? null
         : ([...orderedKeys.slice(currentIndex + 1), ...orderedKeys.slice(0, currentIndex)].find(
-            (key) => !settledKeys.has(key) && !snoozedKeys.has(key) && !coParkingKeys?.has(key),
+            (key) =>
+              !settledKeys.has(key) &&
+              !snoozedKeys.has(key) &&
+              !coParkingKeys?.has(key) &&
+              pipelineParentKeyByStepKey.get(key) !== threadKey,
           ) ?? null);
     const nextThread = nextCardKey ? threadByKeyRef.current.get(nextCardKey) : null;
     return nextThread
@@ -1677,9 +1692,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   };
 
   const attemptSettle = (
-    threadRef: ScopedThreadRef,
+    requestedRef: ScopedThreadRef,
     opts: { coSettlingKeys?: ReadonlySet<string> } = {},
   ) => {
+    // Only a pipeline's parent settles; a step stands for its run (settle-and-advance from an open step).
+    const parentKey = pipelineParentKeyByStepKey.get(scopedThreadKey(requestedRef));
+    const parent = parentKey === undefined ? undefined : threadByKeyRef.current.get(parentKey);
+    if (parentKey !== undefined && (parent === undefined || parent.settledOverride === "settled")) {
+      return;
+    }
+    const threadRef = parent ? scopeThreadRef(parent.environmentId, parent.id) : requestedRef;
     void (async () => {
       const threadKey = scopedThreadKey(threadRef);
       if (settlingThreadKeysRef.current.has(threadKey)) return;
@@ -1703,7 +1725,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       if (
         shouldNavigateAfterThreadPark({
           threadKey,
-          currentThreadKey: readRouteThreadKey(router),
+          currentThreadKey: readRouteRowKey(),
           action: "settle",
           now: new Date().toISOString(),
           thread: readThreadShell(threadRef),
@@ -1865,6 +1887,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const thread = threadByKeyRef.current.get(key);
         return (
           thread !== undefined &&
+          !pipelineParentKeyByStepKey.has(key) &&
           sectionByThreadKeyRef.current.get(key) === originSection &&
           serverConfigs.has(thread.environmentId)
         );
@@ -2221,7 +2244,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             settled &&
             shouldNavigateAfterThreadPark({
               threadKey: activeKey,
-              currentThreadKey: readRouteThreadKey(router),
+              currentThreadKey: readRouteRowKey(),
               action: "settle",
               now: new Date().toISOString(),
               thread: readThreadShell(threadRef),
@@ -2292,7 +2315,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (
       shouldNavigateAfterThreadPark({
         threadKey,
-        currentThreadKey: readRouteThreadKey(router),
+        currentThreadKey: readRouteRowKey(),
         action: "snooze",
         // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
         now: new Date().toISOString(),
@@ -2340,14 +2363,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const thread = threadByKeyRef.current.get(threadKey);
         return thread ? [thread] : [];
       });
-      const settlingThreads = selectedThreads.filter(
+      // Nested steps follow their parent, so settle, snooze and unpin act on the other rows only.
+      const parkableThreads = selectedThreads.filter(
+        (thread) => !pipelineParentKeyByStepKey.has(threadShellKey(thread)),
+      );
+      const settlingThreads = parkableThreads.filter(
         (thread) => thread.settledOverride !== "settled",
       );
-      const canSnoozeSelection = selectedThreads.every(
-        (thread) =>
-          serverConfigs.has(thread.environmentId) &&
-          canSnooze(thread, { now: selectionNow.toISOString() }),
-      );
+      const canSnoozeSelection =
+        parkableThreads.length > 0 &&
+        parkableThreads.every(
+          (thread) =>
+            serverConfigs.has(thread.environmentId) &&
+            canSnooze(thread, { now: selectionNow.toISOString() }),
+        );
       const titleRegenerationThreads = selectedThreads.filter((thread) =>
         serverConfigs.has(thread.environmentId),
       );
@@ -2358,7 +2387,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         supportedCount: titleRegenerationThreads.length,
         actionableCount: regeneratableTitleThreads.length,
       });
-      const pinnedSelectedThreads = selectedThreads.filter(
+      const pinnedSelectedThreads = parkableThreads.filter(
         (thread) => serverConfigs.has(thread.environmentId) && thread.pinnedAt != null,
       );
       const unpinMenuItem = buildBulkUnpinContextMenuItem({
@@ -2380,26 +2409,26 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               : []),
             {
               id: "settle",
-              label: `Settle (${count})`,
+              label: `Settle (${parkableThreads.length})`,
               disabled: settlingThreads.length === 0 || !canOperateThreads(settlingThreads),
             },
             ...(canSnoozeSelection
               ? [
                   {
                     id: "snooze",
-                    label: `Snooze (${count})`,
-                    disabled: !canOperateThreads(selectedThreads),
+                    label: `Snooze (${parkableThreads.length})`,
+                    disabled: !canOperateThreads(parkableThreads),
                     children: [
                       ...snoozePresets.map((preset) => ({
                         id: `snooze:${preset.id}`,
                         label: `${preset.label} (${preset.whenLabel})`,
-                        disabled: !canOperateThreads(selectedThreads),
+                        disabled: !canOperateThreads(parkableThreads),
                       })),
                       {
                         id: "snooze:custom",
                         label: "Custom…",
                         separatorBefore: snoozePresets.length > 0,
-                        disabled: !canOperateThreads(selectedThreads),
+                        disabled: !canOperateThreads(parkableThreads),
                       },
                     ],
                   },
@@ -2439,7 +2468,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   );
                   return current && current.settledOverride !== "settled" ? [current] : [];
                 })
-              : selectedThreads;
+              : clicked.value?.startsWith("snooze:")
+                ? parkableThreads
+                : selectedThreads;
       if (clicked.value === "settle" && actionTargets.length === 0) return;
       if (clicked.value !== "mark-unread" && !checkThreadOperations(actionTargets)) return;
       if (clicked.value?.startsWith("snooze:")) {
@@ -2453,10 +2484,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 selectedThreads[0]!.environmentId,
               );
         if (preset) {
-          const coSnoozingKeys = new Set(threadKeys);
+          const coSnoozingKeys = new Set(parkableThreads.map((thread) => threadShellKey(thread)));
           clearSelection();
           const outcomes = await Promise.all(
-            selectedThreads.map(async (thread) => {
+            parkableThreads.map(async (thread) => {
               const threadRef = scopeThreadRef(thread.environmentId, thread.id);
               const outcome = await performSnooze(threadRef, preset, { coSnoozingKeys });
               return { outcome, threadRef };
@@ -2651,8 +2682,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           thread.worktreePath ??
           projectByKey.get(`${thread.environmentId}:${thread.projectId}`)?.workspaceRoot ??
           null;
+        // A nested step follows its parent's section, so these are the parent's to offer.
+        const isNestedStep = pipelineParentKeyByStepKey.has(threadKey);
         const configLoaded = serverConfigs.has(thread.environmentId);
         const supportsAutoSettleOptOut =
+          !isNestedStep &&
           serverConfigs.get(thread.environmentId)?.environment.capabilities
             .threadAutoSettleOptOut === true;
         const isRegeneratingTitle = thread.titleRegeneration != null;
@@ -2700,10 +2734,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               ),
               canTurnIntoProject: canTurnThreadIntoProject(threadRef),
               supports: {
-                settlement: configLoaded,
+                settlement: configLoaded && !isNestedStep,
                 autoSettleOptOut: supportsAutoSettleOptOut,
-                snooze: configLoaded,
-                pinning: configLoaded,
+                snooze: configLoaded && !isNestedStep,
+                pinning: configLoaded && !isNestedStep,
                 titleRegeneration: configLoaded,
               },
               snoozePresets,
@@ -3438,7 +3472,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             onUnsnooze: attemptUnsnooze,
                             onUnpin: attemptUnpin,
                             onAcknowledgeWoke: acknowledgeWoke,
-                            onFileDropThreads: handleThreadFileDrop,
+                            // A pipeline's parent has no composer to receive files.
+                            onFileDropThreads:
+                              row.pipeline != null && row.pipeline.stepId === null
+                                ? undefined
+                                : handleThreadFileDrop,
                           };
                         };
                         const steps = pipelineStepsByParentKey.get(threadKey);
@@ -3466,21 +3504,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             stepStatus={
                               steps === undefined ? null : resolveSidebarPipelineStepStatus(steps)
                             }
-                            pipelineSteps={
-                              steps === undefined ? undefined : (
-                                <SidebarPipelineSteps>
-                                  {steps.map((step, index) => (
-                                    <PipelineStepRow
-                                      key={scopedThreadKey(
-                                        scopeThreadRef(step.environmentId, step.id),
-                                      )}
-                                      {...rowProps(step, true)}
-                                      isLastStep={index === steps.length - 1}
-                                    />
-                                  ))}
-                                </SidebarPipelineSteps>
-                              )
-                            }
+                            pipelineSteps={steps?.map((step) => rowProps(step, true))}
                           />
                         );
                       };
