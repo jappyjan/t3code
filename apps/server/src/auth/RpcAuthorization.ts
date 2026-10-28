@@ -140,6 +140,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.agentFeedbackAnswerRequest]: AuthOrchestrationOperateScope,
   [WS_METHODS.pipelinesSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.pipelineRunsSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.pipelineRunsSubscribeLive]: AuthOrchestrationReadScope,
   [WS_METHODS.pipelinesUpsert]: AuthOrchestrationOperateScope,
   [WS_METHODS.pipelinesDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.pipelineRunsStart]: AuthOrchestrationOperateScope,

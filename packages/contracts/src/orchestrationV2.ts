@@ -33,7 +33,6 @@ import {
   isUnknownUnionMember,
   NonNegativeInt,
   PipelineRunId,
-  PipelineStepId,
   PlanId,
   PositiveInt,
   ProjectId,
@@ -175,10 +174,14 @@ export const OrchestrationV2WorkflowOrigin = Schema.Struct({
   step: TrimmedNonEmptyString,
 });
 export type OrchestrationV2WorkflowOrigin = typeof OrchestrationV2WorkflowOrigin.Type;
-/** Set by the server on a pipeline's parent thread (`stepId: null`) and on each step's thread. */
+
+/**
+ * Set by the server on a pipeline's parent thread (`stepId: null`) and on each step's thread.
+ * `stepId` is deliberately looser than `PipelineStepId` so a future id rule cannot break decoding.
+ */
 export const OrchestrationV2ThreadPipeline = Schema.Struct({
   runId: PipelineRunId,
-  stepId: Schema.NullOr(PipelineStepId),
+  stepId: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type OrchestrationV2ThreadPipeline = typeof OrchestrationV2ThreadPipeline.Type;
 
