@@ -2170,6 +2170,7 @@ export const layerWsRpc = (
               Effect.as(pipelines.subscribeRun(input)),
             ),
           ),
+        [WS_METHODS.pipelineRunsSubscribeLive]: (_input) => pipelines.subscribeLiveRuns(),
         [WS_METHODS.pipelineRunsStart]: (input) =>
           Effect.annotateCurrentSpan({ "pipeline.id": input.pipelineId }).pipe(
             Effect.andThen(pipelines.start(input)),

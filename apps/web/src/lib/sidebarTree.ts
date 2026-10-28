@@ -1,4 +1,6 @@
 const ROW = "[data-sidebar-row]";
+// A parent whose children always show: ArrowLeft leaves it instead of activating it.
+const FIXED_EXPANDED = "data-sidebar-fixed-expanded";
 const CONTROL = 'button, a[href], input, textarea, select, [contenteditable="true"], [tabindex]';
 const TEXT_ENTRY = 'input, textarea, select, [contenteditable="true"]';
 
@@ -197,8 +199,9 @@ export function installSidebarTree(root: HTMLElement) {
           );
         break;
       case "ArrowLeft":
-        if (row.getAttribute("aria-expanded") === "true") row.click();
-        else
+        if (row.getAttribute("aria-expanded") === "true" && !row.hasAttribute(FIXED_EXPANDED)) {
+          row.click();
+        } else
           target = rows.find(
             (candidate) => candidate.dataset.sidebarRow === row.dataset.sidebarParent,
           );
