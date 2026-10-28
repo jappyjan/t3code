@@ -249,6 +249,8 @@ function useCompactComposerEditor(text: ScaledTextRole, value: string, animate: 
 
 export interface ThreadComposerProps {
   readonly isDraft?: boolean;
+  /** A draft that starts a pipeline: the steps pick their own models, and the prompt is text only. */
+  readonly pipelineDraft?: boolean;
   readonly canOperateThread: boolean;
   readonly placeholder: string;
   readonly contentMaxWidth?: number;
@@ -995,13 +997,17 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               compact
               hidden={showsCompactDictation}
             >
-              <ComposerAttachmentButton
-                size={usesLargeControls ? "large" : "regular"}
-                disabled={isSubmissionLocked}
-                supportsFiles={props.serverConfig !== null}
-                onPickMedia={props.onPickDraftMedia}
-                onPickFiles={props.onPickDraftFiles}
-              />
+              {props.pipelineDraft ? (
+                <View className="w-3 shrink-0" />
+              ) : (
+                <ComposerAttachmentButton
+                  size={usesLargeControls ? "large" : "regular"}
+                  disabled={isSubmissionLocked}
+                  supportsFiles={props.serverConfig !== null}
+                  onPickMedia={props.onPickDraftMedia}
+                  onPickFiles={props.onPickDraftFiles}
+                />
+              )}
               <Animated.View
                 className="min-w-0 flex-1"
                 onLayout={compactEditor.onEditorLayout}
@@ -1188,7 +1194,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   entering={compactEditor.toolbarControlsEntering}
                 >
                   {compactControl}
-                  {modelControl}
+                  {props.pipelineDraft ? null : modelControl}
                 </Animated.View>
                 <ComposerDictationStartAction
                   size={usesLargeControls ? "large" : "regular"}
