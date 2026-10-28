@@ -24,6 +24,7 @@ import {
   isListedThreadLineage,
   type ContextMenuItem,
   type EnvironmentId,
+  type PipelineRunSummary,
   type ThreadId,
 } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
@@ -932,11 +933,12 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   return "ready";
 }
 
-/** What a pipeline's parent row shows for its steps; see `mergePipelineParentStatus`. */
+/** What a pipeline's parent row shows for its steps and live run; see `mergePipelineParentStatus`. */
 export function resolveSidebarPipelineStepStatus(
   steps: ReadonlyArray<SidebarThreadStatusInput>,
+  run?: Pick<PipelineRunSummary, "status"> | null,
 ): PipelineStepStatus | null {
-  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus));
+  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus), run);
 }
 
 /**
