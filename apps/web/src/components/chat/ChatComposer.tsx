@@ -261,6 +261,14 @@ import {
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useSoftwareKeyboardOpen } from "../../hooks/useSoftwareKeyboardOpen";
 import { useStableCallback } from "../../hooks/useStableCallback";
+import { useAtomValue } from "@effect/atom-react";
+import type { PipelineId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { ComposerPipelinePicker } from "./ComposerPipelinePicker";
+import { draftPipelineSelectionAtom } from "./chatViewSend";
+import { activeDraftPipelineId, PIPELINE_TEXT_ONLY_HINT } from "./composerSend.logic";
+import { useDraftPipelines } from "./useDraftPipelines";
 import { usePanelAnimationSettings } from "../../panelAnimations";
 import { readEnvironmentScope } from "../../state/session";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
@@ -893,8 +901,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     lockedInstanceId:
       activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId,
   });
+  // Pipelines start from new threads only (same gate as multiple models), and a pipeline and
+  // several models exclude each other.
+  const pipelineSelectionAtom = draftPipelineSelectionAtom(scopedThreadKey(routeThreadRef));
+  const draftPipelineSelection = useAtomValue(pipelineSelectionAtom);
+  const draftPipelines = useDraftPipelines(
+    environmentId,
+    routeKind === "draft" && multipleModelSelections === null,
+  );
+  const selectedPipelineId = draftPipelines.available
+    ? activeDraftPipelineId(draftPipelineSelection, environmentId)
+    : null;
+  const pipelineActive = selectedPipelineId !== null;
+  const selectedPipelineMissing =
+    pipelineActive &&
+    draftPipelines.loaded &&
+    !draftPipelines.pipelines.some((pipeline) => pipeline.id === selectedPipelineId);
+  const selectDraftPipeline = useStableCallback((pipelineId: PipelineId | null) => {
+    appAtomRegistry.set(
+      pipelineSelectionAtom,
+      pipelineId === null ? null : { environmentId, pipelineId },
+    );
+  });
   const noProviderAvailable =
-    selectedProviderEntry === undefined && multipleModelSelections === null;
+    selectedProviderEntry === undefined && multipleModelSelections === null && !pipelineActive;
   const providerCatalogPending = noProviderAvailable && !providerCatalogKnown;
   const showProviderUnavailable = noProviderAvailable && !providerCatalogPending;
   const providerSetupInstanceId = noProviderAvailable
@@ -921,10 +951,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const sendDisabledReason =
     externalSendDisabledReason ??
     (multipleModelSelections?.length === 0 ? "Select at least one model." : null) ??
+    (selectedPipelineMissing ? "The selected pipeline no longer exists. Choose another." : null) ??
+    (pipelineActive && (composerImages.length > 0 || composerFiles.length > 0)
+      ? PIPELINE_TEXT_ONLY_HINT
+      : null) ??
     (activePendingProgress
       ? attachmentBlockReason
       : (attachmentBlockReason ??
-        (multipleModelSelections === null ? providerSendBlockReason : null)));
+        (multipleModelSelections === null && !pipelineActive ? providerSendBlockReason : null)));
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
@@ -1180,6 +1214,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     (!isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan !== null);
   const showCollapsedMobilePromptRow = isComposerCollapsedMobile;
   const showComposerAttachAction =
+    !pipelineActive &&
     fileStagingLimit !== null &&
     (!activePendingProgress ||
       (supportsQuestionAttachments &&
@@ -2343,6 +2378,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onModelPickerOpenChange={setIsComposerModelPickerOpen}
       modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
       getModelDisabledReason={getModelDisabledReason}
+      pipelineActive={pipelineActive}
+      pipelinePicker={
+        draftPipelines.available && draftPipelines.pipelines.length > 0 ? (
+          <ComposerPipelinePicker
+            pipelines={draftPipelines.pipelines}
+            selectedPipelineId={selectedPipelineId}
+            disabled={isSendBusy}
+            size={composerControlsCollapsed ? "xs" : "sm"}
+            onSelect={selectDraftPipeline}
+          />
+        ) : null
+      }
     />
   );
   // An open question owns the space above the composer. Only a machine problem,
@@ -2965,6 +3012,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             : null,
         providerAvailable:
           multipleModelSelections !== null ||
+          pipelineActive ||
           (!noProviderAvailable && providerSendBlockReason === null),
         selectedProvider,
         selectedModel,
@@ -3030,6 +3078,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setMultipleModelSelections,
       routeKind,
       noProviderAvailable,
+      pipelineActive,
       providerSendBlockReason,
       selectedPromptEffort,
       selectedProvider,

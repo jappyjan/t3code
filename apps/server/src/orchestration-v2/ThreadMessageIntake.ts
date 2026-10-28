@@ -23,6 +23,7 @@ function dispatchWasNotAccepted(
     case "OrchestratorCommandPreviouslyRejectedError":
     case "OrchestratorCommandIdConflictError":
     case "OrchestratorSubagentThreadReadOnlyError":
+    case "OrchestratorPipelineThreadReadOnlyError":
     case "OrchestratorThreadAboveModeLimitError":
     case "ThreadManagementProviderInstanceDisabledError":
       return true;
