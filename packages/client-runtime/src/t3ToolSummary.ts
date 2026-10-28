@@ -274,6 +274,91 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "pipeline-list": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Listed pipelines {count} time} other {Listed pipelines {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to list pipelines {count} time} other {Tried to list pipelines {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "pipeline-start": {
+      const count = countEntities(entityIds("runId"));
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Started {count} pipeline} other {Started {count} pipelines}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to start {count} pipeline} other {Tried to start {count} pipelines}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "pipeline-status": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Checked pipeline status {count} time} other {Checked pipeline status {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to check pipeline status {count} time} other {Tried to check pipeline status {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "pipeline-continue": {
+      const count = countEntities(entityIds("runId"));
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Continued {count} pipeline run} other {Continued {count} pipeline runs}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to continue {count} pipeline run} other {Tried to continue {count} pipeline runs}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "pipeline-cancel": {
+      const count = countEntities(entityIds("runId"));
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Requested cancellation of {count} pipeline run} other {Requested cancellation of {count} pipeline runs}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to cancel {count} pipeline run} other {Tried to cancel {count} pipeline runs}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "schedule-run": {
       const count = selected.length;
       label = done
