@@ -13,6 +13,7 @@ import {
   type OrchestrationV2WorkflowOrigin,
   type OrchestrationV2LinkOrigin,
   type OrchestrationV2ProviderThreadNativeMetadata,
+  type OrchestrationV2ThreadPipeline,
   type OrchestrationV2ThreadProjection,
   type ProviderDriverKind,
   type ProviderInteractionMode,
@@ -131,6 +132,8 @@ export interface ThreadLaunchInput {
   readonly delegatedFrom?: OrchestrationV2DelegatedFrom;
   /** The workflow run this thread is an agent step of. */
   readonly workflowRun?: OrchestrationV2WorkflowOrigin;
+  /** Set by the pipeline runner for a step's thread. */
+  readonly pipeline?: OrchestrationV2ThreadPipeline;
 }
 
 type PreparationInput = Pick<
@@ -1585,6 +1588,7 @@ const make = Effect.gen(function* () {
                   ? {}
                   : { delegatedFrom: input.delegatedFrom }),
                 ...(input.workflowRun === undefined ? {} : { workflowRun: input.workflowRun }),
+                ...(input.pipeline === undefined ? {} : { pipeline: input.pipeline }),
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
                 ...(initialMessage === undefined

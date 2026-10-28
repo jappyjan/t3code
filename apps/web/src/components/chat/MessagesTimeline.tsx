@@ -297,6 +297,8 @@ interface MessagesTimelineProps {
     readonly title: string;
     /** A side chat's inherited rows collapse into this link. */
     readonly sideChat?: boolean;
+    /** Divider text before the title; subagents by default. */
+    readonly label?: string;
     /** Where it runs, when that is another environment. */
     readonly environmentLabel?: string;
     /** What this thread is to it, when not its subagent or side chat: `Step of`, say. */
@@ -1247,6 +1249,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
           <TimelineSystemDivider
             label={
               parentThreadLink.relation?.label ??
+              parentThreadLink.label ??
               (parentThreadLink.sideChat
                 ? gt("Context from", {
                     $context: "divider label; the parent thread title follows as a link",

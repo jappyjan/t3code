@@ -136,6 +136,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as PipelineService from "./pipelines/PipelineService.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as Workflows from "./workflows/Workflows.ts";
 import * as WorkflowRuntime from "./workflows/WorkflowRuntime.ts";
@@ -892,6 +893,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({}),
   Layer.mock(ResourceTelemetry.ResourceTelemetry)({}),
   Layer.mock(ReviewService.ReviewService)({}),
+  Layer.mock(PipelineService.PipelineService)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
   Workflows.layerDisabled,
   Layer.mock(WorkflowRuntime.WorkflowDefinitions)({}),

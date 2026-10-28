@@ -33,6 +33,11 @@ import {
 import { toServerClock } from "@t3tools/client-runtime/clock";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  mergePipelineParentStatus,
+  nestedPipelineStepLabel,
+  type PipelineStepStatus,
+} from "@t3tools/client-runtime/state/pipeline-nesting";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { MenuAction } from "@react-native-menu/menu";
 import { useNavigation } from "@react-navigation/native";
@@ -198,6 +203,28 @@ function ThreadListV2Duration(props: {
           messages,
         )}
       </RNText>
+    </>
+  );
+}
+
+// A quiet rail under the parent's icon with a tick into each step; the last one closes it.
+function PipelineStepConnector(props: {
+  readonly left: number;
+  readonly last: boolean;
+  readonly className: string;
+}) {
+  return (
+    <>
+      <View
+        pointerEvents="none"
+        className={cn("absolute top-0 w-px", props.className)}
+        style={{ left: props.left, ...(props.last ? { height: "50%" } : { bottom: 0 }) }}
+      />
+      <View
+        pointerEvents="none"
+        className={cn("absolute top-1/2 h-px w-2.5", props.className)}
+        style={{ left: props.left }}
+      />
     </>
   );
 }
@@ -760,6 +787,11 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
+  /** A pipeline step under its parent: indented, shows its own status, offers no settle, snooze or pin. */
+  readonly nested?: boolean;
+  readonly isLastStep?: boolean;
+  /** On a pipeline's parent: what its steps need; replaces a quiet status of its own. */
+  readonly stepStatus?: PipelineStepStatus | null;
   readonly hasQueuedMessages?: boolean;
   readonly snoozed?: boolean;
   readonly pinned?: boolean;
@@ -847,6 +879,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   } = props;
   const snoozedRow = props.snoozed === true;
   const pinnedRow = props.pinned === true;
+  // Steps follow their parent's shelf, so they offer none of the shelf actions.
+  const nested = props.nested === true;
+  const settlementSupported = props.settlementSupported && !nested;
+  const snoozeSupported = props.snoozeSupported && !nested;
+  const pinningSupported = props.pinningSupported && !nested;
   const dormant = useSwipeRowDormant(props.activationKey);
 
   const selectThread = () => onSelectThread(thread);
@@ -877,7 +914,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected);
 
   const rawStatus = resolveThreadListV2Status(thread);
-  const status = resolveThreadListV2RowStatus(thread);
+  const status = mergePipelineParentStatus(
+    resolveThreadListV2RowStatus(thread),
+    props.stepStatus ?? null,
+  );
   const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
   const showsWoke = status === "ready" && props.wokeAt !== null;
@@ -989,7 +1029,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // The gate's only time-dependent edge is the queued-turn grace window, so its
   // expiry is known without a clock: evaluate at the message's own timestamp.
   // A gate held by runtime status has no expiry, and no clock tick opens it.
-  const snoozeGateExpiryMs = props.snoozeSupported
+  const snoozeGateExpiryMs = snoozeSupported
     ? resolveThreadListV2SnoozeGateExpiryMs(thread, { now: thread.latestUserMessageAt ?? "" })
     : null;
   // The window is inclusive, so wake just past it.
@@ -997,8 +1037,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const snoozeGateNow = new Date(snoozeGateNowMs).toISOString();
   const swipeActions = resolveThreadListV2SwipeActions({
     variant,
-    settlementSupported: props.settlementSupported,
-    snoozeSupported: props.snoozeSupported,
+    settlementSupported,
+    snoozeSupported,
     snoozable: canSnooze(thread, { now: snoozeGateNow }),
     snoozed: snoozedRow,
   });
@@ -1023,7 +1063,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   );
   const reorderMenuItems = useMemo<MenuAction[]>(
     () =>
-      props.reorderSupported === true
+      props.reorderSupported === true && !nested
         ? [
             { id: "arrange", title: gt("Arrange threads…"), image: "line.3.horizontal" },
             {
@@ -1040,11 +1080,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             } satisfies MenuAction,
           ]
         : [],
-    [gt, props.canMoveDown, props.canMoveUp, props.reorderSupported],
+    [gt, props.canMoveDown, props.canMoveUp, props.reorderSupported, nested],
   );
   const pinMenuItems = useMemo<MenuAction[]>(
     () =>
-      props.pinningSupported
+      pinningSupported
         ? [
             thread.pinnedAt != null
               ? {
@@ -1055,7 +1095,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               : { id: "pin", title: gt("Pin", { $context: "verb, thread action" }), image: "pin" },
           ]
         : [],
-    [gt, props.pinningSupported, thread.pinnedAt],
+    [gt, props.pinningSupported, nested, thread.pinnedAt],
   );
   const autoSettleMenuItems = useMemo<MenuAction[]>(
     () =>
@@ -1122,7 +1162,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ],
   );
   const menuActions = useMemo<MenuAction[]>(() => {
-    const nested = Platform.OS === "ios";
+    const nestedMenus = Platform.OS === "ios";
     const localized = (action: MenuAction): MenuAction => ({ ...action, title: m(action.title) });
     const direct: MenuAction[] = [
       ...(thread.branch
@@ -1143,7 +1183,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     if (snoozedRow) {
       return layoutThreadListV2RowMenuActions(
         {
-          nested,
+          nested: nestedMenus,
           direct: [...direct, localized(SNOOZED_MENU_ACTIONS[0]!)],
           reorder: [],
           pin: [],
@@ -1157,10 +1197,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         m,
       );
     }
-    if (!props.settlementSupported) {
+    if (!settlementSupported) {
       return layoutThreadListV2RowMenuActions(
         {
-          nested,
+          nested: nestedMenus,
           direct: [...direct, localized(LEGACY_MENU_ACTIONS[0]!)],
           reorder: reorderMenuItems,
           pin: pinMenuItems,
@@ -1172,7 +1212,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     if (canUnsettle) {
       return layoutThreadListV2RowMenuActions(
         {
-          nested,
+          nested: nestedMenus,
           direct: [...direct, localized(SLIM_MENU_ACTIONS[0]!)],
           reorder: reorderMenuItems.filter(
             (action) => action.id !== "move-up" && action.id !== "move-down",
@@ -1190,7 +1230,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     }
     return layoutThreadListV2RowMenuActions(
       {
-        nested,
+        nested: nestedMenus,
         direct: [
           ...direct,
           localized(CARD_MENU_ACTIONS[0]!),
@@ -1221,8 +1261,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     canShareWithGuest,
     canUnsettle,
     pinMenuItems,
-    props.settlementSupported,
     reorderMenuItems,
+    settlementSupported,
     snoozePresetActions,
     snoozedRow,
     gt,
@@ -1392,6 +1432,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       : primaryAction.swipeSnoozeHint;
 
   const titleTextInset = props.project ? projectIconSize + 8 : 0;
+  // The slim row's horizontal padding (px-3 in the sidebar, px-5 on screen).
+  const rowInset = sidebarPane ? 12 : 20;
   const cardContent = (
     <>
       <View className="flex-row items-start gap-2">
@@ -1714,8 +1756,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             "min-h-[44px] flex-row items-center gap-2 py-2",
             sidebarPane && "px-3",
           )}
+          // Steps start where the parent's title does, with a rail under its icon.
+          style={nested ? { paddingLeft: rowInset + projectIconSize + 8 } : undefined}
         >
-          {props.project ? (
+          {nested ? (
+            <PipelineStepConnector
+              left={rowInset + projectIconSize / 2}
+              last={props.isLastStep === true}
+              className={sidebarPane ? "bg-drawer-border" : "bg-border"}
+            />
+          ) : props.project ? (
             <View className="opacity-40">
               <ProjectFavicon
                 environmentId={thread.environmentId}
@@ -1738,7 +1788,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               )}
               numberOfLines={1}
             >
-              {thread.title}
+              {nested ? nestedPipelineStepLabel(thread.title) : thread.title}
             </Text>
             {providerNameLabel ? (
               <Text
@@ -1764,20 +1814,48 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ) : null}
           </View>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
-          <Text
-            className={cn(
-              "font-mono text-sm tabular-nums",
-              selected
-                ? selectedThreadRowColors.mutedForegroundClassName
-                : snoozedRow
-                  ? rowAppearance.mutedForegroundClassName
-                  : rowAppearance.tertiaryForegroundClassName,
-            )}
-          >
-            {!pendingSync && snoozedRow && snoozeWakeLabelText !== undefined
-              ? snoozeWakeLabelText
-              : timeLabel}
-          </Text>
+          {nested && statusLabel ? (
+            <View className="flex-row items-center gap-1">
+              <SymbolView
+                name={statusLabel.icon}
+                size={13}
+                tintColorClassName={
+                  selected
+                    ? selectedThreadRowColors.iconTintClassName
+                    : statusLabel.iconTintClassName
+                }
+                type="monochrome"
+                weight="semibold"
+              />
+              <Text
+                className={cn(
+                  "text-xs font-t3-bold",
+                  status === "working" && "tabular-nums",
+                  selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
+                )}
+              >
+                {statusLabel.label}
+                {status === "working" ? (
+                  <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
+                ) : null}
+              </Text>
+            </View>
+          ) : (
+            <Text
+              className={cn(
+                "font-mono text-sm tabular-nums",
+                selected
+                  ? selectedThreadRowColors.mutedForegroundClassName
+                  : snoozedRow
+                    ? rowAppearance.mutedForegroundClassName
+                    : rowAppearance.tertiaryForegroundClassName,
+              )}
+            >
+              {!pendingSync && snoozedRow && snoozeWakeLabelText !== undefined
+                ? snoozeWakeLabelText
+                : timeLabel}
+            </Text>
+          )}
         </View>
       </RowPressable>
     );
@@ -1805,7 +1883,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         onSwipeableWillOpen={props.onSwipeableWillOpen}
         primaryAction={primaryAction}
         secondaryAction={secondaryAction}
-        resetKey={`${thread.environmentId}:${thread.id}:${variant}:${snoozedRow}:${thread.settledAt}:${thread.unsettledAt}:${thread.snoozedUntil}:${thread.pinnedAt}`}
+        resetKey={`${thread.environmentId}:${thread.id}:${variant}:${nested}:${snoozedRow}:${thread.settledAt}:${thread.unsettledAt}:${thread.snoozedUntil}:${thread.pinnedAt}`}
         simultaneousWith={props.simultaneousSwipeGesture}
         threadTitle={thread.title}
       >

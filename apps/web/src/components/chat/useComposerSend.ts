@@ -35,6 +35,7 @@ import {
   ProviderInteractionMode,
   RuntimeMode,
 } from "@t3tools/contracts";
+import { draftWorkspaceStrategy } from "@t3tools/client-runtime/operations";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import {
   declinePendingApprovals,
@@ -108,9 +109,12 @@ import {
   approvalRedirectNotice,
   composerDraftContentChanged,
   loadBalancingSendWarning,
+  activeDraftPipelineId,
   multipleModelSendBlock,
+  pipelineSendBlock,
   referencedThreadContexts,
 } from "./composerSend.logic";
+import { usePipelineSend } from "./usePipelineSend";
 import { useMultipleModelSend } from "./useMultipleModelSend";
 import type { SideChatMessage } from "./useSideChat";
 import { type ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
@@ -139,6 +143,7 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import {
   draftFanoutSelectionsAtom,
+  draftPipelineSelectionAtom,
   draftSendState,
   type MultipleModelTarget,
   resolveMultipleModelTargets,
@@ -411,6 +416,16 @@ export function useComposerSend(input: ComposerSendInput) {
     runtimeMode,
     startFromOrigin,
     worktreeRepositories,
+    resetLocalDispatch,
+    setThreadError,
+  });
+  const sendToPipeline = usePipelineSend({
+    environmentId,
+    routeThreadKey,
+    currentRouteThreadKeyRef,
+    composerDraftTarget,
+    composerRef,
+    promptRef,
     resetLocalDispatch,
     setThreadError,
   });
@@ -765,6 +780,14 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const multipleModelSelections = sendCtx.multipleModelSelections;
+    // A pipeline starts from a new thread and excludes multiple models.
+    const selectedPipelineId =
+      isLocalDraftThread && multipleModelSelections === null
+        ? activeDraftPipelineId(
+            appAtomRegistry.get(draftPipelineSelectionAtom(routeThreadKey)),
+            environmentId,
+          )
+        : null;
     const approvalFeedbackTarget = pendingApprovalsRef.current.find(
       (approval) =>
         approval.supportsFeedback && approval.requestId === sendCtx.shownPendingApprovalIds[0],
@@ -882,6 +905,7 @@ export function useComposerSend(input: ComposerSendInput) {
         composerEnvironmentContexts.length,
     });
     const feedbackCommand =
+      selectedPipelineId === null &&
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&
       composerFiles.length === 0 &&
@@ -1088,6 +1112,45 @@ export function useComposerSend(input: ComposerSendInput) {
         );
         return;
       }
+    }
+    if (selectedPipelineId !== null) {
+      const pipelineBlock = pipelineSendBlock({
+        attachmentCount: composerAttachmentsSnapshot.length,
+        hasContext:
+          sendableComposerTerminalContexts.length > 0 ||
+          composerPreviewAnnotationsSnapshot.length > 0 ||
+          composerReviewCommentsSnapshot.length > 0 ||
+          composerThreadContextsSnapshot.length > 0 ||
+          composerEnvironmentContextsSnapshot.length > 0,
+      });
+      if (pipelineBlock !== null) {
+        setThreadError(threadIdForSend, pipelineBlock);
+        return;
+      }
+      const workspaceStrategy = draftWorkspaceStrategy(
+        { branch: activeThreadBranch, worktreePath: activeThread.worktreePath },
+        baseBranchForWorktree
+          ? {
+              projectCwd: activeProject.workspaceRoot,
+              baseBranch: baseBranchForWorktree,
+              ...(startFromOrigin ? { startFromOrigin: true } : {}),
+            }
+          : undefined,
+      );
+      sendInFlightRef.current = true;
+      beginLocalDispatch({
+        preparingWorktree: workspaceStrategy.type === "worktree",
+        submissionIntent: "foreground",
+      });
+      await sendToPipeline({
+        threadId: threadIdForSend,
+        pipelineId: selectedPipelineId,
+        projectId: activeProject.id,
+        text: messageTextForSend,
+        promptAtSend: promptForSend,
+        workspaceStrategy,
+      });
+      return;
     }
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server

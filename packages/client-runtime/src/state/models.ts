@@ -200,6 +200,8 @@ export interface EnvironmentThreadShell {
   readonly delegatedFrom: OrchestrationV2ThreadShell["delegatedFrom"] | null;
   /** The workflow run this thread is an agent step of, if it is one. */
   readonly workflowRun: OrchestrationV2ThreadShell["workflowRun"] | null;
+  /** Set on a pipeline run's parent thread (`stepId: null`) and on each step's thread. */
+  readonly pipeline: OrchestrationV2ThreadShell["pipeline"] | null;
   readonly activeProviderThreadId: OrchestrationV2ThreadShell["activeProviderThreadId"];
   readonly latestRun: ThreadRunSummary | null;
   readonly runtime: ThreadRuntimeSummary | null;
@@ -353,6 +355,7 @@ export function presentThreadShell(
     linkOrigin: thread.linkOrigin ?? null,
     delegatedFrom: thread.delegatedFrom ?? null,
     workflowRun: thread.workflowRun ?? null,
+    pipeline: thread.pipeline ?? null,
     activeProviderThreadId: thread.activeProviderThreadId,
     latestRun,
     runtime,
