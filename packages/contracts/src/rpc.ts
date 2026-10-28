@@ -389,6 +389,8 @@ import {
   PipelineRunSetPauseBeforeInput,
   PipelineRunStartInput,
   PipelineRunStepActionInput,
+  PipelineRunsLiveInput,
+  PipelineRunsLiveResult,
   PipelineRunSubscribeInput,
   PipelineUpsertInput,
 } from "./pipeline.ts";
@@ -569,6 +571,7 @@ export const WS_METHODS = {
   pipelinesUpsert: "pipelines.upsert",
   pipelinesDelete: "pipelines.delete",
   pipelineRunsSubscribe: "pipelineRuns.subscribe",
+  pipelineRunsSubscribeLive: "pipelineRuns.subscribeLive",
   pipelineRunsStart: "pipelineRuns.start",
   pipelineRunsContinue: "pipelineRuns.continue",
   pipelineRunsRetryStep: "pipelineRuns.retryStep",
@@ -1963,6 +1966,13 @@ const WsPipelineRunsSubscribeRpc = Rpc.make(WS_METHODS.pipelineRunsSubscribe, {
   stream: true,
 });
 
+const WsPipelineRunsSubscribeLiveRpc = Rpc.make(WS_METHODS.pipelineRunsSubscribeLive, {
+  payload: PipelineRunsLiveInput,
+  success: PipelineRunsLiveResult,
+  error: Schema.Union([PipelineError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 const WsPipelineRunsStartRpc = Rpc.make(WS_METHODS.pipelineRunsStart, {
   payload: PipelineRunStartInput,
   success: PipelineRunResult,
@@ -2157,6 +2167,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPipelinesUpsertRpc,
   WsPipelinesDeleteRpc,
   WsPipelineRunsSubscribeRpc,
+  WsPipelineRunsSubscribeLiveRpc,
   WsPipelineRunsStartRpc,
   WsPipelineRunsContinueRpc,
   WsPipelineRunsRetryStepRpc,
