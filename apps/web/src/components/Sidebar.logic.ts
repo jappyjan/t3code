@@ -1,6 +1,10 @@
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import {
+  aggregatePipelineStepStatus,
+  type PipelineStepStatus,
+} from "@t3tools/client-runtime/state/pipeline-nesting";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
@@ -1008,6 +1012,13 @@ export function resolveWindowTitleThreadStatus(thread: SidebarThreadStatusInput)
     default:
       return null;
   }
+}
+
+/** What a pipeline's parent row shows for its steps; see `mergePipelineParentStatus`. */
+export function resolveSidebarPipelineStepStatus(
+  steps: ReadonlyArray<SidebarThreadStatusInput>,
+): PipelineStepStatus | null {
+  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus));
 }
 
 /**

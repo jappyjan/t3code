@@ -26,6 +26,8 @@ import {
   hasUnknownUnionTag,
   isUnknownUnionMember,
   NonNegativeInt,
+  PipelineRunId,
+  PipelineStepId,
   PlanId,
   PositiveInt,
   ProjectId,
@@ -151,6 +153,13 @@ export const OrchestrationV2LinkedSender = Schema.Struct({
   title: Schema.String,
 });
 export type OrchestrationV2LinkedSender = typeof OrchestrationV2LinkedSender.Type;
+
+/** Set by the server on a pipeline's parent thread (`stepId: null`) and on each step's thread. */
+export const OrchestrationV2ThreadPipeline = Schema.Struct({
+  runId: PipelineRunId,
+  stepId: Schema.NullOr(PipelineStepId),
+});
+export type OrchestrationV2ThreadPipeline = typeof OrchestrationV2ThreadPipeline.Type;
 
 export const OrchestrationV2NativeRefStrength = Schema.Literals(["strong", "weak", "none"]);
 export type OrchestrationV2NativeRefStrength = typeof OrchestrationV2NativeRefStrength.Type;
@@ -481,6 +490,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  pipeline: Schema.optional(OrchestrationV2ThreadPipeline),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
@@ -2195,6 +2205,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  pipeline: Schema.optional(OrchestrationV2ThreadPipeline),
   latestRunId: Schema.NullOr(RunId),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -3084,6 +3095,8 @@ export const OrchestrationV2Command = Schema.Union([
     linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
     /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /** Only the server sets this, for a pipeline run's parent and step threads. */
+    pipeline: Schema.optional(OrchestrationV2ThreadPipeline),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({
