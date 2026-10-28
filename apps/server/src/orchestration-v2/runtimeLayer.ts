@@ -302,7 +302,6 @@ const layerScratchThreadPromotionProvided = ScratchThreadPromotion.layer.pipe(
     ),
   ),
 );
-// ThreadLaunch/ThreadManagement/IdAllocator are for the run driver added with the runner.
 const layerPipelineProvided = PipelineService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
