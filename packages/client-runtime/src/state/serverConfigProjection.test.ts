@@ -112,7 +112,10 @@ describe("applyServerConfigProjection provider catalogs", () => {
 
     const reconnected = apply(projection([held]), {
       type: "snapshot",
-      config: { providers: [sent({ checkedAt: "b" })] },
+      config: {
+        environment: { capabilities: {} },
+        providers: [sent({ checkedAt: "b" })],
+      },
     });
     expect(reconnected).toMatchObject({ checkedAt: "b", loadedCatalogDigest: "d1" });
     expect(reconnected.slashCommands).toBe(slashCommands);
@@ -134,5 +137,38 @@ describe("applyServerConfigProjection provider catalogs", () => {
     });
     expect(legacy.slashCommands).toBe(slashCommands);
     expect(legacy.loadedCatalogDigest).toBeUndefined();
+  });
+});
+
+describe("applyServerConfigProjection memoryPressureUpdated", () => {
+  it("keeps pressure across a reconnect snapshot from a server that sends it, and drops it once pressure ends", () => {
+    const pressure = (level: "none" | "severe") =>
+      ({
+        type: "memoryPressureUpdated",
+        version: 1,
+        payload: { level, heaviestAgents: [] },
+      }) as ServerConfigStreamEvent;
+    const snapshotFrom = (memoryPressure: boolean) =>
+      ({
+        type: "snapshot",
+        version: 1,
+        config: { environment: { capabilities: { memoryPressure } } },
+      }) as ServerConfigStreamEvent;
+    const snapshot = snapshotFrom(true);
+    const calm = applyServerConfigProjection(
+      applyServerConfigProjection(Option.none(), snapshot),
+      pressure("none"),
+    );
+    expect(Option.isNone(calm)).toBe(true);
+    const severe = applyServerConfigProjection(
+      applyServerConfigProjection(Option.none(), snapshot),
+      pressure("severe"),
+    );
+    const reconnected = applyServerConfigProjection(severe, snapshot);
+    expect(Option.getOrThrow(reconnected).config.memoryPressure?.level).toBe("severe");
+    const olderServer = applyServerConfigProjection(severe, snapshotFrom(false));
+    expect(Option.getOrThrow(olderServer).config.memoryPressure).toBeUndefined();
+    const ended = applyServerConfigProjection(reconnected, pressure("none"));
+    expect(Option.getOrThrow(ended).config.memoryPressure).toBeUndefined();
   });
 });
