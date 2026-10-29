@@ -31,11 +31,19 @@ mkdir -p "$out"
 
 echo "Building T3 Code $version from $(git rev-parse --short HEAD) ($(git branch --show-current))"
 pnpm install --frozen-lockfile >"$log" 2>&1
-# Rust is only needed for the bundled resource monitor; nixpkgs provides it per build.
+# Rust is only needed for the bundled resource monitor. Use cargo/rustc from PATH when installed
+# (e.g. Homebrew), otherwise nixpkgs provides them per build.
+with_rust() {
+  if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1; then
+    "$@"
+  else
+    nix shell nixpkgs#cargo nixpkgs#rustc -c "$@"
+  fi
+}
 if ! CSC_IDENTITY_AUTO_DISCOVERY=false \
   T3CODE_DESKTOP_VERSION="$version" \
   T3CODE_DESKTOP_OUTPUT_DIR="$out" \
-  nix shell nixpkgs#cargo nixpkgs#rustc -c \
+  with_rust \
   pnpm exec node scripts/build-desktop-artifact.ts --platform mac --target zip --arch "$ARCH" >>"$log" 2>&1; then
   echo "Build failed; log: $log" >&2
   grep -v '^\s*at ' "$log" | tail -30 >&2

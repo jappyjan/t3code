@@ -19,7 +19,7 @@ Rules:
   app version (`defaults read "/Applications/<app>/Contents/Info.plist" CFBundleShortVersionString`),
   and whether nix-darwin manages it (`darwin-rebuild`, a `jappyjan/nix-mac-setup` checkout; that
   repo dropped the T3 Code cask in d9d72ee, so an older checkout would reinstall it).
-- Build tools: git, node, pnpm 12.14.0, nix (provides cargo/rustc), gh, sqlite3.
+- Build tools: git, node, pnpm 12.14.0, cargo/rustc (on PATH, or via nix), gh, sqlite3.
 - The fork builds "T3 Code (Nightly).app"; `install-desktop.sh` removes the `t3-code@nightly` cask
   record and keeps the old app for rollback. Say so if this machine has a different app or cask.
 
@@ -29,7 +29,9 @@ Missing tools:
 
 - Node: you may `nvm install 26.12.1`, make it the nvm default, and `corepack enable` for pnpm
   12.14.0. (Node 24 also builds fine on the Air.)
-- Nix: the installer needs sudo, so ask me to run
+- Rust: `brew install rust` is enough; `build-desktop.sh` uses cargo/rustc from PATH and only
+  falls back to `nix shell` without them.
+- Nix (only if you want it instead of Rust on PATH): the installer needs sudo, so ask me to run
   `curl -fsSL https://install.determinate.systems/nix | sh -s -- install` in Terminal.
 - Others: propose how to install them and ask.
 
