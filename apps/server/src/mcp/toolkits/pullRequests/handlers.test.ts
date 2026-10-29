@@ -1,5 +1,7 @@
 import {
   EnvironmentId,
+  PipelineRunId,
+  PipelineStepId,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -277,6 +279,21 @@ describe("pull request toolkit handlers", () => {
           source: "agent",
         },
       ]);
+    }),
+  );
+
+  it.effect("asks a pipeline step to end with its PR report after it links", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        thread: {
+          ...makeThread([]),
+          pipeline: { runId: PipelineRunId.make("run-1"), stepId: PipelineStepId.make("review") },
+        },
+      });
+      const result = yield* harness.call("link_pull_request", {
+        url: "https://github.com/t3tools/t3code/pull/124",
+      });
+      expect(result).toMatchObject({ number: 124, next: CHILD_PULL_REQUEST_REPORT_NEXT });
     }),
   );
 
