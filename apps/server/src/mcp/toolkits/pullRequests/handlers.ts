@@ -43,6 +43,11 @@ import {
   CHILD_PULL_REQUEST_REPORT_NEXT,
 } from "./tools.ts";
 
+/** A pipeline step hands its result back when its turn ends, like a subagent reporting to its parent. */
+function isPipelineStep(thread: OrchestrationV2ThreadShell): boolean {
+  return thread.pipeline != null && thread.pipeline.stepId !== null;
+}
+
 function entryOf(
   link: ThreadPullRequestLink,
   chains: ReturnType<typeof resolveThreadPullRequestChains>,
@@ -275,7 +280,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const thread = yield* requireThread(PullRequestLinkFailedError, input.threadId);
         const next =
-          thread.lineage.relationshipToParent === "subagent"
+          thread.lineage.relationshipToParent === "subagent" || isPipelineStep(thread)
             ? { next: CHILD_PULL_REQUEST_REPORT_NEXT }
             : {};
         const project = yield* projectOf(thread, PullRequestLinkFailedError);
