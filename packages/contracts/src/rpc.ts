@@ -396,6 +396,7 @@ import {
   PipelineRunResult,
   PipelineRunSetPauseBeforeInput,
   PipelineRunStartInput,
+  PipelineRunRetryInput,
   PipelineRunStepActionInput,
   PipelineRunsLiveInput,
   PipelineRunsLiveResult,
@@ -2089,7 +2090,7 @@ const WsPipelineRunsContinueRpc = Rpc.make(WS_METHODS.pipelineRunsContinue, {
 });
 
 const WsPipelineRunsRetryStepRpc = Rpc.make(WS_METHODS.pipelineRunsRetryStep, {
-  payload: PipelineRunStepActionInput,
+  payload: PipelineRunRetryInput,
   success: PipelineRunResult,
   error: Schema.Union([PipelineError, EnvironmentAuthorizationError]),
 });
