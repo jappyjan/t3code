@@ -47,7 +47,7 @@ mkdir -p "$BUILDS"
 if [[ $detach -eq 1 ]]; then
   args=()
   [[ $now -eq 1 ]] && args+=(--now)
-  nohup "$0" "${args[@]}" "$new_app" >>"$LOG" 2>&1 </dev/null &
+  nohup "$0" ${args[@]+"${args[@]}"} "$new_app" >>"$LOG" 2>&1 </dev/null &
   disown
   echo "Install running detached (pid $!); log: $LOG"
   exit 0
