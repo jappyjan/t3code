@@ -1,6 +1,7 @@
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
+import { ensurePipelineSchema } from "./PipelineSchema.ts";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -80,7 +81,6 @@ import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSea
 import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
 import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 import Migration0077 from "./Migrations/077_RepairBooleanSettledOverride.ts";
-import Migration0078 from "./Migrations/073_Pipelines.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -161,7 +161,6 @@ const migrationEntries = [
   [75, "SubagentDeliveryState", Migration0075],
   [76, "ProjectionProjectsPinArchive", Migration0076],
   [77, "RepairBooleanSettledOverride", Migration0077],
-  [78, "Pipelines", Migration0078],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -229,6 +228,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     ...previewMigrations,
     ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
   ];
+  if (toMigrationInclusive === undefined) yield* ensurePipelineSchema;
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
     ? Effect.logDebug("Database schema is current")
