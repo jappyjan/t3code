@@ -10,7 +10,6 @@ import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { useRightPanelStore } from "../../rightPanelStore";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { Button } from "../ui/button";
 import {
@@ -26,6 +25,7 @@ import { Radio, RadioGroup } from "../ui/radio-group";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Textarea } from "../ui/textarea";
 import { getComposerPromptLengthValidationMessage } from "./composerSubmission";
+import { openPipelineCoordinator } from "./openPipelineCoordinator";
 import { usePipelineCoordinatorSend } from "./usePipelineCoordinatorSend";
 import { usePipelineRevise } from "./usePipelineRevise";
 
@@ -73,7 +73,7 @@ export function PipelineMessageFeedbackDialog(props: {
     let sent: boolean;
     if (targetStepIndex === null) {
       sent = await sendToCoordinator(coordinatorMessage);
-      if (sent) useRightPanelStore.getState().open(stepThreadRef, "pipeline-coordinator");
+      if (sent) openPipelineCoordinator(stepThreadRef);
     } else {
       const revised = await revise({
         runId: run.id,

@@ -36,6 +36,8 @@ import { previewEnvironment } from "../../state/preview";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 interface RightPanelActionsInput {
+  /** An embedded chat has no right panel of its own, so it leaves global panel actions alone. */
+  readonly embedded: boolean;
   readonly activeThreadRef: ScopedThreadRef | null;
   readonly activeProject: EnvironmentProject | null;
   readonly activeRightPanelSurface: RightPanelSurface | null;
@@ -69,6 +71,7 @@ interface RightPanelActionsInput {
 export function useRightPanelActions(input: RightPanelActionsInput) {
   const {
     closeRightPanelSurface,
+    embedded,
     activeThreadRef,
     activeProject,
     activeRightPanelSurface,
@@ -314,13 +317,12 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   });
   const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the preview action bus to toggle the preview panel
-  useEffect(
-    () =>
-      subscribePreviewAction((action) => {
-        if (action === "toggle-panel") togglePreviewPanelStable();
-      }),
-    [togglePreviewPanelStable],
-  );
+  useEffect(() => {
+    if (embedded) return;
+    return subscribePreviewAction((action) => {
+      if (action === "toggle-panel") togglePreviewPanelStable();
+    });
+  }, [embedded, togglePreviewPanelStable]);
 
   const shortcuts = {
     "rightPanel.toggle": () => toggleRightPanel(),

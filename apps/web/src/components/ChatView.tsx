@@ -114,6 +114,10 @@ import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { useAtomValue } from "@effect/atom-react";
 import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
+import {
+  openPipelineCoordinator,
+  subscribeEmbeddedComposerFocus,
+} from "./chat/openPipelineCoordinator";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { assistantCitationFromLocation } from "../lib/assistantCitationNavigation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
@@ -1033,9 +1037,7 @@ export default function ChatView(props: ChatViewProps) {
       ),
     });
   const openCoordinator = useStableCallback(() => {
-    if (activeThreadRef) {
-      useRightPanelStore.getState().open(activeThreadRef, "pipeline-coordinator");
-    }
+    if (activeThreadRef) openPipelineCoordinator(activeThreadRef);
   });
   const [feedbackQuote, setFeedbackQuote] = useState<string | null>(null);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
@@ -1881,7 +1883,10 @@ export default function ChatView(props: ChatViewProps) {
   };
   const onInterruptStable = useStableCallback(onInterrupt);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window listener for the desktop snapshot event that focuses the composer
-  useEffect(() => subscribeSnapShotComposerFocus(focusComposerStable), [focusComposerStable]);
+  useEffect(() => {
+    if (embedded) return;
+    return subscribeSnapShotComposerFocus(focusComposerStable);
+  }, [embedded, focusComposerStable]);
   const scheduleComposerFocus = () => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -2174,14 +2179,31 @@ export default function ChatView(props: ChatViewProps) {
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules a frame to focus the composer DOM element when a thread opens with the terminal closed
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!activeThread?.id || terminalUiState.terminalOpen || embedded) return;
     const frame = window.requestAnimationFrame(() => {
       focusComposerStable();
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposerStable, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, embedded, focusComposerStable, terminalUiState.terminalOpen]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- an embedded chat focuses its composer only when the user opens its tab
+  useEffect(() => {
+    if (!activeThread?.id || !embedded) return;
+    let frame: number | null = null;
+    const unsubscribe = subscribeEmbeddedComposerFocus(() => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        focusComposerStable();
+      });
+    });
+    return () => {
+      unsubscribe();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [activeThread?.id, embedded, focusComposerStable]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window focus listener that refocuses the composer after the window regains focus
   useEffect(() => {
@@ -2405,6 +2427,7 @@ export default function ChatView(props: ChatViewProps) {
     toggleThreadPanelStable,
     shortcuts: rightPanelShortcuts,
   } = useRightPanelActions({
+    embedded,
     activeThreadRef,
     activeProject,
     activeRightPanelSurface,

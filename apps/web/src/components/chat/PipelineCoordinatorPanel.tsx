@@ -12,7 +12,7 @@ import { serverEnvironment } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { PipelineProgressBar } from "../PipelineProgressBar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { BackgroundThreadContext } from "./backgroundThread";
+import { BackgroundThreadContext, EmbeddedChatContext } from "./backgroundThread";
 import type { ChatComposerHandle } from "./ChatComposer";
 
 // ChatView renders this panel, so it loads lazily to keep the import cycle out of module setup.
@@ -101,17 +101,19 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
       <div className="relative flex min-h-0 flex-1 flex-col" data-step-thread={threadId}>
         {parentExists ? (
           <BackgroundThreadContext value>
-            <ComposerHandleContext value={composerRef}>
-              <Suspense fallback={null}>
-                <ChatView
-                  key={run.parentThreadId}
-                  environmentId={environmentId}
-                  threadId={run.parentThreadId}
-                  routeKind="server"
-                  embedded
-                />
-              </Suspense>
-            </ComposerHandleContext>
+            <EmbeddedChatContext value>
+              <ComposerHandleContext value={composerRef}>
+                <Suspense fallback={null}>
+                  <ChatView
+                    key={run.parentThreadId}
+                    environmentId={environmentId}
+                    threadId={run.parentThreadId}
+                    routeKind="server"
+                    embedded
+                  />
+                </Suspense>
+              </ComposerHandleContext>
+            </EmbeddedChatContext>
           </BackgroundThreadContext>
         ) : (
           <p className="p-4 text-sm text-muted-foreground">

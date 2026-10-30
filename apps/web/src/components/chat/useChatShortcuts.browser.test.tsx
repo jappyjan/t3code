@@ -1,3 +1,4 @@
+import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import { useEffect } from "react";
 import { expect, it } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -15,6 +16,11 @@ const shortcutContext = {
   isDesktop: false,
   modelPickerOpen: false,
 };
+
+const keybindings = compileResolvedKeybindingsConfig([
+  { key: "ctrl+b", command: "rightPanel.toggle" },
+  { key: "ctrl+.", command: "thread.stop" },
+]);
 
 const focusOnMount = (element: HTMLElement | null) => element?.focus();
 
@@ -48,10 +54,11 @@ function Chat(props: {
   composerKeys: string[];
   launcher?: { keys: string; received: string[] };
   embeddedChatFocused?: boolean;
+  commandsRun?: string[];
 }) {
   useChatShortcuts({
     enabled: true,
-    keybindings: [],
+    keybindings,
     scriptKeybindings: [],
     getShortcutContext: () => shortcutContext,
     threadFindActive: false,
@@ -66,7 +73,10 @@ function Chat(props: {
     },
     branchToolbarRef: { current: null },
     closeThreadFind: () => {},
-    commands: {},
+    commands: {
+      "rightPanel.toggle": () => void props.commandsRun?.push("rightPanel.toggle"),
+      "thread.stop": () => void props.commandsRun?.push("thread.stop"),
+    },
     fallback: () => undefined,
   });
   if (props.embeddedChatFocused) {
@@ -106,14 +116,28 @@ it("still types other letters into the composer while the launcher is open", asy
   expect(received).toEqual([]);
 });
 
-it("leaves keys typed in an embedded chat to that chat", async () => {
+it("leaves typing and the focused chat's commands to an embedded chat", async () => {
   const composerKeys: string[] = [];
+  const commandsRun: string[] = [];
   await using _screen = await render(
-    <Chat composerKeys={composerKeys} embeddedChatFocused />,
+    <Chat composerKeys={composerKeys} commandsRun={commandsRun} embeddedChatFocused />,
     options,
   );
 
-  await userEvent.keyboard("a");
+  await userEvent.keyboard("a{Control>}.{/Control}");
 
   expect(composerKeys).toEqual([]);
+  expect(commandsRun).toEqual([]);
+});
+
+it("still runs page commands such as the right panel toggle from an embedded chat", async () => {
+  const commandsRun: string[] = [];
+  await using _screen = await render(
+    <Chat composerKeys={[]} commandsRun={commandsRun} embeddedChatFocused />,
+    options,
+  );
+
+  await userEvent.keyboard("{Control>}b{/Control}");
+
+  expect(commandsRun).toEqual(["rightPanel.toggle"]);
 });

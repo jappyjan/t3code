@@ -5,3 +5,11 @@ import { createContext } from "react";
  * chat embedded in another thread's panel. Its global shortcuts stand down.
  */
 export const BackgroundThreadContext = createContext(false);
+
+/** True inside a chat embedded in another thread's panel (the pipeline coordinator tab). */
+export const EmbeddedChatContext = createContext(false);
+
+/** Events from inside an embedded chat belong to it, not to the page's own thread. */
+export function isFromEmbeddedChat(event: Event): boolean {
+  return event.target instanceof Element && event.target.closest("[data-embedded-chat]") !== null;
+}

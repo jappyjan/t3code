@@ -10,6 +10,7 @@ import {
 import { getTerminalFocusOwner, type TerminalFocusOwner } from "../../lib/terminalFocus";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { BranchToolbarHandle } from "../BranchToolbar";
+import { isFromEmbeddedChat } from "./backgroundThread";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
 import { composerShortcutCommands } from "./composerShortcuts";
 
@@ -38,9 +39,14 @@ interface ChatShortcutsInput {
   readonly fallback: (command: KeybindingCommand) => ChatShortcutHandler | undefined;
 }
 
-/** Keys typed in a chat embedded in this one (the pipeline coordinator tab) are not this chat's. */
-function isFromEmbeddedChat(event: KeyboardEvent): boolean {
-  return event.target instanceof Element && event.target.closest("[data-embedded-chat]") !== null;
+/** Commands aimed at the focused chat's composer or thread; an embedded chat's keys skip them. */
+function targetsFocusedChat(command: KeybindingCommand): boolean {
+  return (
+    command.startsWith("composer.") ||
+    command.startsWith("thread.") ||
+    command === "modelPicker.toggle" ||
+    command === "chat.find"
+  );
 }
 
 /**
@@ -60,12 +66,14 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.stopPropagation();
       return;
     }
-    if (!input.enabled || isCommandPaletteOpen() || isFromEmbeddedChat(event)) return;
+    if (!input.enabled || isCommandPaletteOpen()) return;
     const terminalFocusOwner = getTerminalFocusOwner();
     if (event.defaultPrevented && terminalFocusOwner === null) return;
     const shortcutContext = input.getShortcutContext(event.target);
+    const fromEmbeddedChat = isFromEmbeddedChat(event);
 
     if (
+      !fromEmbeddedChat &&
       !shortcutContext.terminalFocus &&
       !shortcutContext.modelPickerOpen &&
       shouldTypeToFocusComposer(event) &&
@@ -79,7 +87,7 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const command = resolveChatShortcutCommand(event, keybindings, input.scriptKeybindings, {
       context: shortcutContext,
     });
-    if (!command) return;
+    if (!command || (fromEmbeddedChat && targetsFocusedChat(command))) return;
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??

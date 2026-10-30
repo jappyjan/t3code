@@ -1,6 +1,6 @@
 import { type RuntimeRequestId, type ScopedThreadRef } from "@t3tools/contracts";
 import { memo, use, useEffect, useEffectEvent, useRef, useState } from "react";
-import { BackgroundThreadContext } from "./backgroundThread";
+import { BackgroundThreadContext, isFromEmbeddedChat } from "./backgroundThread";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { type PendingUserInput } from "../../session-logic";
 import type { PendingUserInputDraftAnswer } from "@t3tools/client-runtime/state/pending-user-input";
@@ -149,7 +149,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   useEffect(() => {
     if (!activeQuestion || responseDisabled || isCollapsed || backgroundThread) return;
     const handler = (event: globalThis.KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || isFromEmbeddedChat(event)) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         return;

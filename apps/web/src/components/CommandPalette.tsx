@@ -73,6 +73,7 @@ import {
   UserPlusIcon,
   WorkflowIcon,
 } from "lucide-react";
+import { openPipelineCoordinator } from "./chat/openPipelineCoordinator";
 import { openThreadFind } from "./chat/threadFindStore";
 import {
   useDeferredValue,
@@ -1416,7 +1417,7 @@ function OpenCommandPaletteDialog(props: {
       title: "Open pipeline coordinator",
       icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
-        useRightPanelStore.getState().open(threadRef, "pipeline-coordinator");
+        openPipelineCoordinator(threadRef);
       },
     });
   }
