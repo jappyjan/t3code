@@ -1354,14 +1354,9 @@ it.effect("exposes a thread's pipeline on the thread and shell, and keeps parent
         createdBy: "user",
         creationSource: "web",
       });
-    const before = yield* orchestrator.getThreadEventSequence(parentId);
-    const refused = yield* send(parentId, "pipeline-parent").pipe(Effect.flip);
-    assert.equal(refused._tag, "OrchestratorPipelineThreadReadOnlyError");
-    assert.equal(
-      refused.message,
-      "This is a pipeline thread; open a step's thread to talk to its agent.",
-    );
-    assert.equal(yield* orchestrator.getThreadEventSequence(parentId), before);
+    // The parent is the run's coordinator chat, so it takes messages like any provider thread.
+    yield* send(parentId, "pipeline-parent");
+    assert.lengthOf((yield* orchestrator.getThreadProjection(parentId)).runs, 1);
     yield* send(childId, "pipeline-child");
     yield* send(plainId, "pipeline-plain");
     assert.lengthOf((yield* orchestrator.getThreadProjection(childId)).runs, 1);

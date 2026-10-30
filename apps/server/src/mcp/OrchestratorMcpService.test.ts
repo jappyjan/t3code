@@ -3045,6 +3045,7 @@ describe("OrchestratorMcpService pipelines", () => {
         completedAt: null,
       },
     ],
+    revisions: [],
     createdBy: "agent",
     creationSource: "mcp",
     createdAt: at,
@@ -3071,6 +3072,7 @@ describe("OrchestratorMcpService pipelines", () => {
     const started: Array<{ input: unknown; options: unknown }> = [];
     const continued: Array<unknown> = [];
     const handedOff: Array<unknown> = [];
+    const revised: Array<unknown> = [];
     const shell = {
       ...liveThreadShell(callerThreadId, modes),
       ...extra.checkout,
@@ -3091,6 +3093,11 @@ describe("OrchestratorMcpService pipelines", () => {
         Effect.sync(() => {
           continued.push(input);
           return { run: run({ status: "running", pauseReason: null }) };
+        }),
+      reviseStep: (input) =>
+        Effect.sync(() => {
+          revised.push(input);
+          return { run: run({ status: "running", pauseReason: null, currentStepIndex: 0 }) };
         }),
       handoffStep: (input) =>
         Effect.sync(() => {
@@ -3138,6 +3145,7 @@ describe("OrchestratorMcpService pipelines", () => {
       started,
       continued,
       handedOff,
+      revised,
       scope,
       layer: OrchestratorMcpService.layer.pipe(
         Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
@@ -3385,6 +3393,52 @@ describe("OrchestratorMcpService pipelines", () => {
         }),
       );
       assert.equal(failed.continued.length, 1);
+    }),
+  );
+
+  it.effect("lets the run's coordinator chat continue a user's awaiting_continue pause", () =>
+    Effect.gen(function* () {
+      const coordinator = harness(
+        { runtimeMode: "full-access", interactionMode: "default" },
+        {
+          run: { createdBy: "user", parentThreadId: callerThreadId },
+          pipelineThread: { runId: PipelineRunId.make("pipeline-run:one"), stepId: null },
+        },
+      );
+      yield* withService(coordinator, (service) =>
+        service.continuePipeline(coordinator.scope, {
+          runId: PipelineRunId.make("pipeline-run:one"),
+          stepIndex: 1,
+        }),
+      );
+      assert.equal(coordinator.continued.length, 1);
+    }),
+  );
+
+  it.effect("sends feedback as the coordinator, as another agent, and never from a step", () =>
+    Effect.gen(function* () {
+      const runId = PipelineRunId.make("pipeline-run:one");
+      const input = { runId, stepIndex: 0, feedback: "Plan misses dark mode" };
+      const modes = { runtimeMode: "full-access", interactionMode: "default" } as const;
+      const coordinator = harness(modes, {
+        run: { parentThreadId: callerThreadId },
+        pipelineThread: { runId, stepId: null },
+      });
+      yield* withService(coordinator, (service) =>
+        service.revisePipelineStep(coordinator.scope, input),
+      );
+      assert.deepEqual(coordinator.revised, [{ ...input, author: "coordinator" }]);
+
+      const other = harness(modes);
+      yield* withService(other, (service) => service.revisePipelineStep(other.scope, input));
+      assert.deepEqual(other.revised, [{ ...input, author: "agent" }]);
+
+      const step = harness(modes, { pipelineThread: { runId, stepId: "plan" } });
+      const refused = yield* withService(step, (service) =>
+        service.revisePipelineStep(step.scope, input).pipe(Effect.flip),
+      );
+      assert.equal(refused.code, "invalid_request");
+      assert.equal(step.revised.length, 0);
     }),
   );
 

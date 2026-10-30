@@ -33,6 +33,7 @@ import {
   type OrchestratorMcpHandoffPipelineStepInput,
   type OrchestratorMcpHandoffPipelineStepResult,
   type OrchestratorMcpRerunPipelineInput,
+  type OrchestratorMcpRevisePipelineStepInput,
   type OrchestratorMcpListPipelinesResult,
   type OrchestratorMcpListScheduledTasksResult,
   type OrchestratorMcpPipelineRun,
@@ -220,6 +221,11 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpRerunPipelineInput,
   ) => Effect.Effect<OrchestratorMcpPipelineRun, OrchestratorMcpFailure>;
+  /** Refused from the run's own step threads, so steps cannot route feedback upstream. */
+  readonly revisePipelineStep: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpRevisePipelineStepInput,
+  ) => Effect.Effect<OrchestratorMcpPipelineRun, OrchestratorMcpFailure>;
   /** Only from a pipeline step's own thread. */
   readonly handoffPipelineStep: (
     scope: McpInvocationScope,
@@ -309,6 +315,8 @@ function pipelineFailure(error: PipelineError): OrchestratorMcpFailure {
     : failure("orchestration_error", "The pipeline service failed. Try again, or tell the user.");
 }
 
+const REVISION_FEEDBACK_PREVIEW_CHARS = 500;
+
 function pipelineRunSummary(
   environmentId: EnvironmentId,
   run: PipelineRun,
@@ -324,6 +332,16 @@ function pipelineRunSummary(
     pauseReason: run.pauseReason,
     error: run.error,
     currentStepIndex: run.currentStepIndex,
+    revisions: run.revisions.map((revision) => ({
+      stepIndex: revision.stepIndex,
+      stepId: revision.stepId,
+      feedback:
+        revision.feedback.length > REVISION_FEEDBACK_PREVIEW_CHARS
+          ? `${revision.feedback.slice(0, REVISION_FEEDBACK_PREVIEW_CHARS)}…`
+          : revision.feedback,
+      author: revision.author,
+      createdAt: revision.createdAt,
+    })),
     steps: run.steps.map((step) => ({
       index: step.index,
       stepId: step.stepId,
@@ -2218,7 +2236,13 @@ const make = Effect.gen(function* () {
           .getRun(input.runId)
           .pipe(Effect.mapError(pipelineFailure));
         yield* assertLiveCallerForOtherProject(scope, parent, existing.projectId);
-        if (existing.pauseReason === "awaiting_continue" && existing.createdBy === "user") {
+        // The run's own coordinator chat acts for the user; the server can only check who is asking.
+        const isCoordinator = parent?.thread.id === existing.parentThreadId;
+        if (
+          existing.pauseReason === "awaiting_continue" &&
+          existing.createdBy === "user" &&
+          !isCoordinator
+        ) {
           return yield* failure(
             "invalid_request",
             "The user started this run and set this pause, so only they can continue it. Tell the user it is waiting for them.",
@@ -2252,6 +2276,33 @@ const make = Effect.gen(function* () {
         yield* assertPipelineWithinLimits(limits, existing.definition.steps.slice(input.stepIndex));
         const { run } = yield* pipelines
           .rerunFromStep({ runId: input.runId, stepIndex: input.stepIndex })
+          .pipe(Effect.mapError(pipelineFailure));
+        return pipelineRunSummary(scope.environmentId, run);
+      },
+    ),
+    revisePipelineStep: Effect.fn("OrchestratorMcpService.revisePipelineStep")(
+      function* (scope, input) {
+        const { parent, limits } = yield* loadCaller(scope);
+        const existing = yield* pipelines
+          .getRun(input.runId)
+          .pipe(Effect.mapError(pipelineFailure));
+        yield* assertLiveCallerForOtherProject(scope, parent, existing.projectId);
+        const callerPipeline = parent?.thread.pipeline;
+        if (callerPipeline?.runId === existing.id && callerPipeline.stepId !== null) {
+          return yield* failure(
+            "invalid_request",
+            "A step of a run cannot send feedback to its own run. Say what you found in your reply or hand off; the user or the run's coordinator decides.",
+          );
+        }
+        // The run's steps were clamped to whoever started it. Redoing them launches them for this caller.
+        yield* assertPipelineWithinLimits(limits, existing.definition.steps.slice(input.stepIndex));
+        const { run } = yield* pipelines
+          .reviseStep({
+            runId: input.runId,
+            stepIndex: input.stepIndex,
+            feedback: input.feedback,
+            author: parent?.thread.id === existing.parentThreadId ? "coordinator" : "agent",
+          })
           .pipe(Effect.mapError(pipelineFailure));
         return pipelineRunSummary(scope.environmentId, run);
       },
