@@ -4,6 +4,7 @@ import {
   type AssistantCitation,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
+import { feedbackQuoteExcerpt } from "@t3tools/client-runtime/pipeline-run-presentation";
 import { MessageSquareIcon, QuoteIcon } from "lucide-react";
 import {
   useEffect,
@@ -42,7 +43,6 @@ export function AssistantSelectionToolbar({
     position: SelectionActionPoint;
     sourceAnchor: AssistantCitationSourceAnchor;
   } | null>(null);
-  const toolbarRef = useRef<HTMLButtonElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<ReturnType<typeof observeSelectionActions> | null>(null);
 
@@ -154,7 +154,7 @@ export function AssistantSelectionToolbar({
     });
     actionsRef.current = actions;
     const focusActions = (event: KeyboardEvent) => {
-      const toolbar = toolbarRef.current;
+      const wrapper = wrapperRef.current;
       if (
         event.key !== "Tab" ||
         event.shiftKey ||
@@ -163,15 +163,16 @@ export function AssistantSelectionToolbar({
         event.metaKey ||
         event.isComposing ||
         event.defaultPrevented ||
-        !toolbar ||
-        wrapperRef.current?.contains(event.target as Node)
+        !wrapper ||
+        wrapper.contains(event.target as Node)
       ) {
         return;
       }
-      if (toolbar.disabled) return;
+      const action = wrapper.querySelector<HTMLButtonElement>("button:not(:disabled)");
+      if (!action) return;
       event.preventDefault();
       event.stopPropagation();
-      toolbar.focus({ preventScroll: true });
+      action.focus({ preventScroll: true });
     };
     document.addEventListener("keydown", focusActions, true);
     document.addEventListener("selectionchange", actions.selectionChanged);
@@ -197,7 +198,7 @@ export function AssistantSelectionToolbar({
   };
   const sendFeedback = () => {
     if (onSendFeedback === undefined) return;
-    onSendFeedback(selection.citation.text);
+    onSendFeedback(feedbackQuoteExcerpt(selection.citation.text));
     window.getSelection()?.removeAllRanges();
     dismiss();
   };
@@ -215,7 +216,6 @@ export function AssistantSelectionToolbar({
       style={{ left: selection.position.x, top: selection.position.y }}
     >
       <Button
-        ref={toolbarRef}
         type="button"
         size="xs"
         variant="glass"

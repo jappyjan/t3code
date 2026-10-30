@@ -3,13 +3,17 @@ import { pipelineRunStateLabel, stepName } from "@t3tools/client-runtime/pipelin
 import { pipelineProgressSegments } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { PipelineRun, PipelineRunSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { lazy, Suspense } from "react";
+import { lazy, memo, Suspense, useRef } from "react";
 
+import { ComposerHandleContext } from "../../composerHandleContext";
 import { useEnvironmentQuery } from "../../state/query";
-import { useThreadShell } from "../../state/entities";
+import { useQuietThreadShell } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { PipelineProgressBar } from "../PipelineProgressBar";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { BackgroundThreadContext } from "./backgroundThread";
+import type { ChatComposerHandle } from "./ChatComposer";
 
 // ChatView renders this panel, so it loads lazily to keep the import cycle out of module setup.
 const ChatView = lazy(() => import("../ChatView"));
@@ -37,19 +41,25 @@ function summarizeRun(run: PipelineRun): PipelineRunSummary {
  * and composer, so it stays in sync with the run's main page, and it is subscribed only while the
  * tab is open.
  */
-export function PipelineCoordinatorPanel(props: { readonly stepThreadRef: ScopedThreadRef }) {
+export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(props: {
+  readonly stepThreadRef: ScopedThreadRef;
+}) {
   const { environmentId, threadId } = props.stepThreadRef;
   const navigate = useNavigate();
-  const stepShell = useThreadShell(props.stepThreadRef);
-  const runId = stepShell?.pipeline?.runId ?? null;
-  const run =
-    useEnvironmentQuery(
-      runId === null
-        ? null
-        : serverEnvironment.pipelineRunLive({ environmentId, input: { runId } }),
-    ).data?.run ?? null;
-  if (run === null) {
-    return <p className="p-4 text-sm text-muted-foreground">Loading pipeline run...</p>;
+  const composerRef = useRef<ChatComposerHandle | null>(null);
+  const runId = useQuietThreadShell(props.stepThreadRef)?.pipeline?.runId ?? null;
+  const query = useEnvironmentQuery(
+    runId === null ? null : serverEnvironment.pipelineRunLive({ environmentId, input: { runId } }),
+  );
+  const run = query.data?.run ?? null;
+  const parentRef = run === null ? null : scopeThreadRef(environmentId, run.parentThreadId);
+  const parentExists = useQuietThreadShell(parentRef) !== null;
+  if (run === null || parentRef === null) {
+    return (
+      <p className="p-4 text-sm text-muted-foreground">
+        {query.error ?? "Loading pipeline run..."}
+      </p>
+    );
   }
   const segments = pipelineProgressSegments(summarizeRun(run), [], () => "ready").map(
     (segment, index) => ({
@@ -62,7 +72,6 @@ export function PipelineCoordinatorPanel(props: { readonly stepThreadRef: Scoped
   const currentIndex = run.currentStepIndex;
   const openThread = (target: ScopedThreadRef) =>
     void navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(target) });
-  const parentRef = scopeThreadRef(environmentId, run.parentThreadId);
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="pipeline-coordinator-panel">
       <div className="flex shrink-0 flex-col gap-1 border-b border-border/60 px-3 py-2">
@@ -73,27 +82,43 @@ export function PipelineCoordinatorPanel(props: { readonly stepThreadRef: Scoped
             onOpenStep={(stepThreadId) => openThread(scopeThreadRef(environmentId, stepThreadId))}
           />
         </div>
-        <button
-          type="button"
-          className="min-w-0 cursor-pointer truncate text-start text-xs text-muted-foreground hover:text-foreground"
-          aria-label="Open the run's main page"
-          onClick={() => openThread(parentRef)}
-        >
-          Step {currentIndex + 1}/{run.steps.length} · {stepName(run, currentIndex)} ·{" "}
-          {pipelineRunStateLabel(run)}
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="min-w-0 cursor-pointer truncate text-start text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => openThread(parentRef)}
+              />
+            }
+          >
+            Step {currentIndex + 1}/{run.steps.length} · {stepName(run, currentIndex)} ·{" "}
+            {pipelineRunStateLabel(run)}
+          </TooltipTrigger>
+          <TooltipPopup side="left">Open the run's main page</TooltipPopup>
+        </Tooltip>
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col" data-step-thread={threadId}>
-        <Suspense fallback={null}>
-          <ChatView
-            key={run.parentThreadId}
-            environmentId={environmentId}
-            threadId={run.parentThreadId}
-            routeKind="server"
-            embedded
-          />
-        </Suspense>
+        {parentExists ? (
+          <BackgroundThreadContext value>
+            <ComposerHandleContext value={composerRef}>
+              <Suspense fallback={null}>
+                <ChatView
+                  key={run.parentThreadId}
+                  environmentId={environmentId}
+                  threadId={run.parentThreadId}
+                  routeKind="server"
+                  embedded
+                />
+              </Suspense>
+            </ComposerHandleContext>
+          </BackgroundThreadContext>
+        ) : (
+          <p className="p-4 text-sm text-muted-foreground">
+            The coordinator chat is not available.
+          </p>
+        )}
       </div>
     </div>
   );
-}
+});

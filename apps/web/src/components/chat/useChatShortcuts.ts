@@ -38,6 +38,11 @@ interface ChatShortcutsInput {
   readonly fallback: (command: KeybindingCommand) => ChatShortcutHandler | undefined;
 }
 
+/** Keys typed in a chat embedded in this one (the pipeline coordinator tab) are not this chat's. */
+function isFromEmbeddedChat(event: KeyboardEvent): boolean {
+  return event.target instanceof Element && event.target.closest("[data-embedded-chat]") !== null;
+}
+
 /**
  * The chat's window keyboard shortcuts, plus Escape closing thread find.
  * Listeners attach once; the effect events read the latest input, so handlers
@@ -55,7 +60,7 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.stopPropagation();
       return;
     }
-    if (!input.enabled || isCommandPaletteOpen()) return;
+    if (!input.enabled || isCommandPaletteOpen() || isFromEmbeddedChat(event)) return;
     const terminalFocusOwner = getTerminalFocusOwner();
     if (event.defaultPrevented && terminalFocusOwner === null) return;
     const shortcutContext = input.getShortcutContext(event.target);
@@ -90,7 +95,8 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.defaultPrevented ||
       event.isComposing ||
       event.keyCode === 229 ||
-      isCommandPaletteOpen()
+      isCommandPaletteOpen() ||
+      isFromEmbeddedChat(event)
     )
       return;
     const context = input.getShortcutContext(event.target);

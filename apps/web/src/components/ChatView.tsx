@@ -36,7 +36,8 @@ import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
-import { hasUnseenCompletion } from "./Sidebar.logic";
+import { hasUnseenCompletion, resolveThreadLastVisitedAt } from "./Sidebar.logic";
+import { useUiStateStore } from "../uiStateStore";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
@@ -188,11 +189,6 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
 import { newMessageId } from "~/lib/utils";
-import { formatThreadLink } from "@t3tools/shared/threadLinks";
-import {
-  buildCoordinatorFeedbackMessage,
-  pipelineStepPosition,
-} from "@t3tools/client-runtime/pipeline-run-presentation";
 import {
   NO_PROVIDER_MODEL_SELECTION,
   providerInstanceEntriesFor,
@@ -1022,60 +1018,26 @@ export default function ChatView(props: ChatViewProps) {
   const coordinatorShell = useQuietThreadShell(
     pipelineStepId !== null && !embedded ? pipelineParentThreadRef : null,
   );
-  const coordinatorUnread = coordinatorShell !== null && hasUnseenCompletion(coordinatorShell);
+  const coordinatorLocalVisitedAt = useUiStateStore((state) =>
+    pipelineParentThreadRef === null
+      ? undefined
+      : state.threadLastVisitedAtById[scopedThreadKey(pipelineParentThreadRef)],
+  );
+  const coordinatorUnread =
+    coordinatorShell !== null &&
+    hasUnseenCompletion({
+      ...coordinatorShell,
+      lastVisitedAt: resolveThreadLastVisitedAt(
+        coordinatorShell.lastVisitedAt,
+        coordinatorLocalVisitedAt,
+      ),
+    });
   const openCoordinator = useStableCallback(() => {
     if (activeThreadRef) {
       useRightPanelStore.getState().open(activeThreadRef, "pipeline-coordinator");
     }
   });
   const [feedbackQuote, setFeedbackQuote] = useState<string | null>(null);
-  const sendFeedbackToCoordinator = async (note: string): Promise<boolean> => {
-    if (
-      feedbackQuote === null ||
-      pipelineStepRun === undefined ||
-      pipelineStepId === null ||
-      coordinatorShell === null ||
-      activeThreadRef === null
-    ) {
-      return false;
-    }
-    const position = pipelineStepPosition(pipelineStepRun, pipelineStepId);
-    const stepThread = scopeThreadRef(activeThreadRef.environmentId, activeThreadRef.threadId);
-    const result = await startThreadTurn({
-      environmentId,
-      input: {
-        threadId: pipelineStepRun.parentThreadId,
-        message: {
-          messageId: newMessageId(),
-          role: "user",
-          text: buildCoordinatorFeedbackMessage({
-            quote: feedbackQuote,
-            sourceStepName: position?.name ?? pipelineStepId,
-            sourceStepLink: formatThreadLink({
-              environmentId: stepThread.environmentId,
-              threadId: stepThread.threadId,
-            }),
-            note,
-          }),
-          attachments: [],
-        },
-        runtimeMode: coordinatorShell.runtimeMode,
-        interactionMode: coordinatorShell.interactionMode,
-        dispatchMode: "queue",
-      },
-    });
-    if (result._tag === "Failure") {
-      const error = squashAtomCommandFailure(result);
-      toastManager.add({
-        type: "error",
-        title: "Could not send feedback",
-        description: error instanceof Error ? error.message : String(error),
-      });
-      return false;
-    }
-    useRightPanelStore.getState().open(activeThreadRef, "pipeline-coordinator");
-    return true;
-  };
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
     activeThreadRef?.environmentId ?? null,
@@ -1116,8 +1078,10 @@ export default function ChatView(props: ChatViewProps) {
   if (anchorRunSettled) {
     setTimelineAnchor({ threadKey: activeThreadKey, messageId: null });
   }
+  // An embedded copy has no right panel; the thread's own page keeps that state.
+  const rightPanelThreadRef = embedded ? null : activeThreadRef;
   const activeRightPanelKind = useRightPanelStore((state) =>
-    selectActiveRightPanel(state.byThreadKey, activeThreadRef),
+    selectActiveRightPanel(state.byThreadKey, rightPanelThreadRef),
   );
   const diffOpen = activeRightPanelKind === "diff";
   const explicitDiffOpenRef = useRef<ScopedThreadRef | null>(null);
@@ -1130,11 +1094,11 @@ export default function ChatView(props: ChatViewProps) {
     }
   }, [activeThreadRef, diffOpen]);
   const rightPanelState = useRightPanelStore((state) =>
-    selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
+    selectThreadRightPanelState(state.byThreadKey, rightPanelThreadRef),
   );
   const shouldUsePlanSidebarSheet = prefersPlanSidebarSheet && rightPanelState.maximized !== true;
   const activeRightPanelSurface = useRightPanelStore((state) =>
-    selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
+    selectActiveRightPanelSurface(state.byThreadKey, rightPanelThreadRef),
   );
   const activePreviewState = useThreadPreviewState(activeThreadRef);
   const activePreviewServerEpoch = activePreviewState.serverEpoch;
@@ -1806,7 +1770,6 @@ export default function ChatView(props: ChatViewProps) {
   const isGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd) ?? true;
   // Provider-native subagents cannot take messages; approvals and questions go to the top-level parent.
   const showProviderSubagentBar = isProviderSubagent;
-  // A pipeline's parent thread is read-only: its body is the run view, not a conversation.
   const composerMounted = !showProviderSubagentBar;
   const providerSubagentModels = selectedProviderEntry?.models ?? EMPTY_PROVIDER_MODELS;
   // Providers can report dated model ids or aliases.
@@ -2079,7 +2042,7 @@ export default function ChatView(props: ChatViewProps) {
     : linkedThreadPullRequestKey;
   const activeRunningTurnId = activeRuntime?.activeRunId ?? null;
   useProactivePanels({
-    threadRef: isServerThread ? activeThreadRef : null,
+    threadRef: isServerThread && !embedded ? activeThreadRef : null,
     enabled: settings.proactivePanelsEnabled && !shouldUsePlanSidebarSheet,
     settingsHydrated: clientSettingsHydrated,
     threadDetailLoading,
@@ -2222,7 +2185,7 @@ export default function ChatView(props: ChatViewProps) {
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window focus listener that refocuses the composer after the window regains focus
   useEffect(() => {
-    if (!activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
+    if (!activeThread?.id || terminalUiState.terminalOpen || isMobileViewport || embedded) return;
     let frame: number | null = null;
     const onWindowFocus = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -2240,7 +2203,13 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("focus", onWindowFocus);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposerStable, isMobileViewport, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    embedded,
+    focusComposerStable,
+    isMobileViewport,
+    terminalUiState.terminalOpen,
+  ]);
 
   // Promotion drops draftId while a send may still be dispatching, so key by thread.
   const [localDispatchThreadId, setLocalDispatchThreadId] = useState(threadId);
@@ -2729,8 +2698,8 @@ export default function ChatView(props: ChatViewProps) {
   // composer effect above.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
   useEffect(() => {
-    if (activeThreadRef) return focusTerminalOnThreadEnter(activeThreadRef);
-  }, [activeThreadRef]);
+    if (activeThreadRef && !embedded) return focusTerminalOnThreadEnter(activeThreadRef);
+  }, [activeThreadRef, embedded]);
 
   const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
     terminalFocus: getTerminalFocusOwner() !== null,
@@ -2809,13 +2778,14 @@ export default function ChatView(props: ChatViewProps) {
   // A focused desktop browser page forwards these chords as menu actions.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle the right panel
   useEffect(() => {
+    if (embedded) return;
     return window.desktopBridge?.onMenuAction((action) => {
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
     });
-  }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  }, [embedded, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
 
-  usePasteToFocusComposer(activeThreadId, composerRef);
+  usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
   const { onConfirmRevertStable, onForkFromRunStable, onRevertTimelineTurnStable } =
     useTimelineRewind({
       environmentId,
@@ -3303,12 +3273,15 @@ export default function ChatView(props: ChatViewProps) {
     <div
       ref={setWorkspaceLayoutElement}
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+      data-embedded-chat={embedded ? "true" : undefined}
     >
-      <DeviceSetupDialogHost
-        threadKey={activeThreadKey}
-        threadRef={activeThreadRef}
-        state={deviceState}
-      />
+      {embedded ? null : (
+        <DeviceSetupDialogHost
+          threadKey={activeThreadKey}
+          threadRef={activeThreadRef}
+          state={deviceState}
+        />
+      )}
       {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
       <div
         className={cn(
@@ -3352,11 +3325,7 @@ export default function ChatView(props: ChatViewProps) {
               activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
               activeProject={activeProject ?? null}
               parentThreadLink={headerParentThreadLink}
-              onOpenCoordinator={
-                pipelineStepId !== null && pipelineParentThreadRef !== null
-                  ? openCoordinator
-                  : undefined
-              }
+              onOpenCoordinator={coordinatorShell === null ? undefined : openCoordinator}
               coordinatorUnread={coordinatorUnread}
               onOpenThread={onOpenRelatedThreadStable}
               rightPanelOpen={inlineRightPanelOwnsTitleBar}
@@ -3835,7 +3804,7 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             }
 
-            {canOperatePreview && activeThreadRef && activeEnvironmentServerBrowser ? (
+            {canOperatePreview && activeThreadRef && activeEnvironmentServerBrowser && !embedded ? (
               <PreviewSessionSync threadRef={activeThreadRef} />
             ) : null}
             {activeThreadRef && shownPreviewMiniPlayer ? (
@@ -4013,13 +3982,13 @@ export default function ChatView(props: ChatViewProps) {
           environmentId={environmentId}
           run={pipelineStepRun}
           sourceStepId={pipelineStepId}
+          stepThreadRef={routeThreadRef}
           quote={feedbackQuote}
           onClose={() => setFeedbackQuote(null)}
-          onSendToCoordinator={sendFeedbackToCoordinator}
         />
       ) : null}
       <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
-      <LinkPullRequestDialogHost />
+      {embedded ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       <ExpandedImageDialogHost threadKey={routeThreadKey} />
     </div>
