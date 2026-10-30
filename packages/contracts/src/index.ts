@@ -33,6 +33,7 @@ export * from "./vcs.ts";
 export * from "./sourceControl.ts";
 export * from "./projectClone.ts";
 export * from "./pullRequest.ts";
+export * from "./linear.ts";
 export * from "./pullRequestReviewGuide.ts";
 export * from "./orchestrationDispatch.ts";
 export * from "./orchestrationProject.ts";
