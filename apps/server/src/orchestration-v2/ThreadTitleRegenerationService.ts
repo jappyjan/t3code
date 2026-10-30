@@ -3,7 +3,6 @@ import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContext
 import {
   CommandId,
   type ChatAttachment,
-  type MessageId,
   type OrchestrationV2AppThread,
   type OrchestrationV2ConversationMessage,
   type RunId,
@@ -18,6 +17,7 @@ import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 
 import * as ServerSettings from "../serverSettings.ts";
+import type { ThreadTitleGenerationKind } from "./EffectOutbox.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import type { OrchestratorV2Error } from "./Orchestrator.ts";
 import * as ProjectStore from "./ProjectStore.ts";
@@ -32,9 +32,7 @@ export class ThreadTitleRegenerationService extends Context.Service<
     readonly execute: (input: {
       readonly threadId: ThreadId;
       readonly requestId: CommandId;
-      readonly kind:
-        | { readonly type: "initial"; readonly messageId: MessageId }
-        | { readonly type: "regenerate" };
+      readonly kind: ThreadTitleGenerationKind;
     }) => Effect.Effect<
       void,
       | OrchestratorV2Error
@@ -116,7 +114,9 @@ const make = Effect.gen(function* () {
         ["messages"],
         input.kind.type === "initial"
           ? { messageIds: [input.kind.messageId] }
-          : { messageRoles: ["user", "assistant"] },
+          : input.kind.type === "source"
+            ? { messageIds: [] }
+            : { messageRoles: ["user", "assistant"] },
       );
       if (projection.thread.titleRegeneration?.requestId !== input.requestId) {
         return { type: "stale" as const };
@@ -143,6 +143,8 @@ const make = Effect.gen(function* () {
                 message: isAttachmentOnlyBootstrapPrompt(message.text) ? "" : message.text,
                 attachments: message.attachments,
               };
+      } else if (input.kind.type === "source") {
+        context = { message: input.kind.text, attachments: [] };
       } else {
         context = formatThreadTitleContext(
           projection.messages.filter((message) => !message.streaming),
@@ -176,7 +178,7 @@ const make = Effect.gen(function* () {
         : { type: "complete" as const, title: result.title };
     }).pipe(
       Effect.retry({
-        times: input.kind.type === "initial" ? 2 : 0,
+        times: input.kind.type === "regenerate" ? 0 : 2,
         schedule: Schedule.exponential("2 seconds"),
       }),
       Effect.catchCause((cause) =>
