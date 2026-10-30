@@ -3507,6 +3507,8 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     title: Schema.optional(TrimmedNonEmptyString),
     regenerateTitle: Schema.optional(Schema.Boolean),
+    /** With `regenerateTitle`, titles the thread from this text instead of its messages. */
+    titleSource: Schema.optional(TrimmedNonEmptyString),
     branch: Schema.optional(Schema.NullOr(GitRefName)),
     worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     expectedWorktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
