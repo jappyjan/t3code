@@ -383,6 +383,7 @@ import {
   PipelineRunResult,
   PipelineRunSetPauseBeforeInput,
   PipelineRunStartInput,
+  PipelineRunRerunInput,
   PipelineRunRetryInput,
   PipelineRunStepActionInput,
   PipelineRunsLiveInput,
@@ -570,6 +571,7 @@ export const WS_METHODS = {
   pipelineRunsContinue: "pipelineRuns.continue",
   pipelineRunsRetryStep: "pipelineRuns.retryStep",
   pipelineRunsSkipStep: "pipelineRuns.skipStep",
+  pipelineRunsRerunFromStep: "pipelineRuns.rerunFromStep",
   pipelineRunsCancel: "pipelineRuns.cancel",
   pipelineRunsSetPauseBefore: "pipelineRuns.setPauseBefore",
 
@@ -1949,6 +1951,12 @@ const WsPipelineRunsSkipStepRpc = Rpc.make(WS_METHODS.pipelineRunsSkipStep, {
   error: Schema.Union([PipelineError, EnvironmentAuthorizationError]),
 });
 
+const WsPipelineRunsRerunFromStepRpc = Rpc.make(WS_METHODS.pipelineRunsRerunFromStep, {
+  payload: PipelineRunRerunInput,
+  success: PipelineRunResult,
+  error: Schema.Union([PipelineError, EnvironmentAuthorizationError]),
+});
+
 const WsPipelineRunsCancelRpc = Rpc.make(WS_METHODS.pipelineRunsCancel, {
   payload: PipelineRunCancelInput,
   success: PipelineRunResult,
@@ -2123,6 +2131,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPipelineRunsContinueRpc,
   WsPipelineRunsRetryStepRpc,
   WsPipelineRunsSkipStepRpc,
+  WsPipelineRunsRerunFromStepRpc,
   WsPipelineRunsCancelRpc,
   WsPipelineRunsSetPauseBeforeRpc,
   WsServerReportClientActivityRpc,
