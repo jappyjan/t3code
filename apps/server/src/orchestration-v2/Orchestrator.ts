@@ -5223,8 +5223,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const userMessages = projection.messages.filter((message) => message.role === "user");
     const onlyMaintenanceHistory =
       userMessages.length > 0 && userMessages.every(isNativeMaintenanceCommand);
+    // A pipeline thread's title names the run, so the coordinator chat never retitles it.
     if (
       !isNativeMaintenanceCommand(command) &&
+      projection.thread.pipeline === undefined &&
       ((command.titleSeed !== undefined &&
         (yield* projectionStore
           .getMessageCount(command.threadId)
