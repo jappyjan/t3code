@@ -69,6 +69,7 @@ export function useThreadListV2(input: {
   readonly workingShelfExpanded: boolean;
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
+  readonly expandedPipelineKeys: ReadonlyArray<string>;
   readonly selectedThreadKey: string | null;
 }) {
   const { threads, workingShelfEnabled } = input;
@@ -159,6 +160,7 @@ export function useThreadListV2(input: {
         inboxReturnAt: inbox.returnedAt,
         isWorking: inbox.isWorking,
         pipelineRuns,
+        expandedPipelineKeys: input.expandedPipelineKeys,
         snoozedShelfExpanded: input.snoozedShelfExpanded,
         settledShelfExpanded: input.settledShelfExpanded,
         selectedThreadKey: input.selectedThreadKey,
@@ -192,6 +194,7 @@ export function useThreadListV2(input: {
       inbox.returnedAt,
       inbox.isWorking,
       pipelineRuns,
+      input.expandedPipelineKeys,
       input.snoozedShelfExpanded,
       input.settledShelfExpanded,
       input.selectedThreadKey,
