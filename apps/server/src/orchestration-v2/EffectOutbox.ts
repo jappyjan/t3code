@@ -132,6 +132,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     kind: Schema.Union([
       Schema.Struct({ type: Schema.Literal("initial"), messageId: MessageId }),
       Schema.Struct({ type: Schema.Literal("regenerate") }),
+      Schema.Struct({ type: Schema.Literal("source"), text: Schema.String }),
     ]),
   }),
   Schema.Struct({
@@ -140,6 +141,10 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   }),
 ]);
 export type OrchestrationEffectRequestV2 = typeof OrchestrationEffectRequestV2.Type;
+export type ThreadTitleGenerationKind = Extract<
+  OrchestrationEffectRequestV2,
+  { readonly type: "thread-title.generate" }
+>["kind"];
 
 export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
   "provider-runtime.continue",
