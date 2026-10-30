@@ -33,7 +33,7 @@ import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
 import * as EventSink from "./EventSink.ts";
-import { pipelineCoordinatorInstructions } from "../pipelines/pipelineCoordinator.ts";
+import { pipelineCoordinatorNote } from "../pipelines/pipelineCoordinator.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
 import {
   DEFAULT_HANDOFF_TOKEN_CAP,
@@ -792,19 +792,13 @@ export const layer: Layer.Layer<
           ? ""
           : restartCancelledBackgroundWorkNote(restartCancelledWork);
       // The coordinator's role is sent once per provider thread, ahead of the user's first message.
-      const coordinatorNote =
-        !goalCommand &&
-        !isCompactionCommandMessage(message) &&
-        projection.thread.pipeline !== undefined &&
-        projection.thread.pipeline.stepId === null &&
-        !projection.providerTurns.some(
-          (turn) =>
-            turn.providerThreadId === providerThread.id &&
-            turn.runAttemptId !== run.activeAttemptId &&
-            (turn.status === "completed" || turn.status === "running"),
-        )
-          ? pipelineCoordinatorInstructions(projection.thread.pipeline.runId)
-          : "";
+      const coordinatorNote = pipelineCoordinatorNote({
+        pipeline: projection.thread.pipeline,
+        nativeCommand: Boolean(goalCommand) || isCompactionCommandMessage(message),
+        providerThreadId: providerThread.id,
+        activeAttemptId: run.activeAttemptId,
+        providerTurns: projection.providerTurns,
+      });
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );

@@ -16,6 +16,7 @@ import {
 import { Radio, RadioGroup } from "../ui/radio-group";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Textarea } from "../ui/textarea";
+import { getComposerPromptLengthValidationMessage } from "./composerSubmission";
 import { usePipelineRevise } from "./usePipelineRevise";
 
 const COORDINATOR_ROUTE = "coordinator";
@@ -41,9 +42,10 @@ export function PipelineMessageFeedbackDialog(props: {
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const sourceStep = run.steps.find((step) => step.stepId === props.sourceStepId);
+  const lengthMessage = getComposerPromptLengthValidationMessage(note);
 
   const submit = async () => {
-    if (sending || note.trim() === "") return;
+    if (sending || note.trim() === "" || lengthMessage !== null) return;
     setSending(true);
     let sent: boolean;
     if (route === COORDINATOR_ROUTE) {
@@ -106,6 +108,11 @@ export function PipelineMessageFeedbackDialog(props: {
                 onChange={(event) => setNote(event.target.value)}
                 rows={4}
               />
+              {lengthMessage === null ? null : (
+                <p className="text-xs text-destructive-foreground" role="alert">
+                  {lengthMessage}
+                </p>
+              )}
               <RadioGroup
                 aria-label="Send to"
                 value={route}
@@ -142,7 +149,10 @@ export function PipelineMessageFeedbackDialog(props: {
             <Button type="button" variant="outline" onClick={props.onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={sending || note.trim() === ""}>
+            <Button
+              type="submit"
+              disabled={sending || note.trim() === "" || lengthMessage !== null}
+            >
               Send
             </Button>
           </DialogFooter>
