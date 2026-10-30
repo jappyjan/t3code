@@ -279,7 +279,6 @@ it.effect("round-trips a run with steps, truncating previews but keeping full ou
 it.effect("persists revisions and the revising flag, and reads runs without any as empty", () =>
   Effect.gen(function* () {
     const store = yield* PipelineStore.PipelineStore;
-    const sql = yield* SqlClient.SqlClient;
     yield* store.insertRunWithSteps(newRun(), newSteps(["plan", "build"]));
     assert.deepStrictEqual((yield* store.getRun(runId))?.revisions, []);
     assert.isFalse(yield* store.isStepRevising(runId, 1));
@@ -302,10 +301,6 @@ it.effect("persists revisions and the revising flag, and reads runs without any 
     assert.isTrue(yield* store.isStepRevising(runId, 1));
     yield* store.updateStep(runId, 1, { revising: false });
     assert.isFalse(yield* store.isStepRevising(runId, 1));
-
-    // A row written before revisions existed holds the column default.
-    yield* sql`UPDATE pipeline_runs SET revisions_json = '[]' WHERE run_id = ${runId}`;
-    assert.deepStrictEqual((yield* store.getRun(runId))?.revisions, []);
   }).pipe(Effect.provide(testLayer)),
 );
 

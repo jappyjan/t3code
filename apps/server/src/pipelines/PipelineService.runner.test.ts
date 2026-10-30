@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   CheckpointRef,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   PipelineDefinition,
   PipelineError,
   PipelineRun,
@@ -125,13 +126,12 @@ const makeHarness = Effect.gen(function* () {
   const commands: Array<OrchestrationV2ServerCommand> = [];
   /** Keyed by the run a wait names, else by its thread. */
   const waits = new Map<string, Deferred.Deferred<ThreadManagementWaitResult>>();
-  /** Run ids that waits named: a reused thread must be awaited by the run a message started. */
-  const waitedRunIds: Array<string> = [];
   const sentMessages = yield* Queue.unbounded<{
     input: ThreadManagementSendInput;
     runId: string;
   }>();
-  const outputs = new Map<ThreadId, CannedOutput>();
+  /** Keyed by a run id, else by a thread for all its runs. */
+  const outputs = new Map<string, CannedOutput>();
 
   const runFor = (threadId: ThreadId, status: RunStatus, runId?: string) =>
     ({ id: runId ?? `run-of:${threadId}`, status }) as unknown as OrchestrationV2Run;
@@ -167,7 +167,7 @@ const makeHarness = Effect.gen(function* () {
   });
 
   const recordsFor = (threadId: ThreadId, runId = `run-of:${threadId}`) => {
-    const output = outputs.get(threadId) ?? {};
+    const output = outputs.get(runId) ?? outputs.get(threadId) ?? {};
     const turnItems: Array<Record<string, unknown>> = [];
     if (output.reply !== undefined) {
       turnItems.push({
@@ -196,6 +196,7 @@ const makeHarness = Effect.gen(function* () {
       worktreePath: recorded ? `${behavior.worktreeRoot}/${threadId}` : null,
       activeRunId: activeRuns.has(threadId) ? "run-active" : null,
       deletedAt: deletedThreads.has(threadId) ? "2026-10-28T10:00:00.000Z" : null,
+      archivedAt: null,
     } as unknown as OrchestrationV2ThreadShell;
   };
 
@@ -228,10 +229,7 @@ const makeHarness = Effect.gen(function* () {
           return { run: { id: runId } } as never;
         }),
       waitForThread: (input) =>
-        Effect.sync(() => {
-          if (input.runId !== undefined) waitedRunIds.push(input.runId);
-        }).pipe(
-          Effect.andThen(Queue.offer(waitsStarted, input.threadId)),
+        Queue.offer(waitsStarted, input.threadId).pipe(
           Effect.andThen(Deferred.await(waitFor(input.runId ?? input.threadId))),
           Effect.onInterrupt(() => Deferred.succeed(interrupted, input.threadId)),
         ),
@@ -308,7 +306,6 @@ const makeHarness = Effect.gen(function* () {
     layer,
     launches,
     sentMessages,
-    waitedRunIds,
     waitsStarted,
     events,
     interrupted,
@@ -352,7 +349,13 @@ const withService = <A, E>(
       const settle = harness.settle;
       harness.settle = (threadId, status, runId) =>
         (status === "completed" && harness.behavior.autoHandoff
-          ? handoffOnceRecorded(service, threadId, harness.outputs.get(threadId)?.reply ?? "")
+          ? handoffOnceRecorded(
+              service,
+              threadId,
+              (runId === undefined ? undefined : harness.outputs.get(runId))?.reply ??
+                harness.outputs.get(threadId)?.reply ??
+                "",
+            )
           : Effect.void
         ).pipe(Effect.andThen(settle(threadId, status, runId)));
       return yield* body(harness, service, store);
@@ -642,7 +645,8 @@ const seedRun = (
 it.effect("startup recovery re-waits running steps and relaunches unlaunched ones", () => {
   return withService(
     Effect.fn(function* (harness) {
-      // Run "a" waits on its existing child; "b" never launched; "c" stopped between write and launch.
+      // Run "a" waits on its existing child; "b" never launched; "c" stopped between write and launch;
+      // "d" was revising into its existing child.
       const launched = [yield* Queue.take(harness.launches), yield* Queue.take(harness.launches)];
       assert.sameMembers(
         launched.map((entry) => entry.input.commandId),
@@ -659,8 +663,23 @@ it.effect("startup recovery re-waits running steps and relaunches unlaunched one
         yield* Queue.take(harness.waitsStarted),
         yield* Queue.take(harness.waitsStarted),
         yield* Queue.take(harness.waitsStarted),
+        yield* Queue.take(harness.waitsStarted),
       ];
       assert.include(waiting, decodeThreadId("child-a"));
+      assert.include(waiting, decodeThreadId("child-d"));
+      // The revision goes out once, with the ids a replay would reuse.
+      const sent = yield* Queue.take(harness.sentMessages);
+      assert.deepStrictEqual(
+        [sent.input.threadId, sent.input.messageId, sent.input.commandId, sent.input.text],
+        [
+          "child-d",
+          "pipeline-run-message:run-d:plan:2",
+          "pipeline-run:run-d:revise-message:plan:2",
+          "saved revision",
+        ],
+      );
+      assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
+      assert.strictEqual(yield* Queue.size(harness.launches), 0);
     }),
     (store) =>
       seedRun(store, "run-a", "parent-a", {
@@ -675,6 +694,16 @@ it.effect("startup recovery re-waits running steps and relaunches unlaunched one
             attempt: 1,
             prompt: "saved prompt",
             workspaceStrategy: { type: "existing_worktree", worktreePath: "/saved/wt" },
+          }),
+        ),
+        Effect.andThen(
+          seedRun(store, "run-d", "parent-d", {
+            status: "running",
+            attempt: 2,
+            childThreadId: decodeThreadId("child-d"),
+            prompt: "saved revision",
+            workspaceStrategy: { type: "root" },
+            revising: true,
           }),
         ),
       ),
@@ -1257,6 +1286,7 @@ it.effect(
     withService(
       Effect.fn(function* (harness, service) {
         const { run, first, second } = yield* completedRun(harness, service, "cmd-revise");
+        harness.behavior.autoHandoff = false;
 
         const { run: revised } = yield* service.reviseStep({
           runId: run.id,
@@ -1289,13 +1319,24 @@ it.effect(
         assert.include(feedback.input.text, "Cover dark mode too");
         assert.include(feedback.input.text, "> Only light mode is planned");
         assert.include(feedback.input.text, "Pipeline handoff:");
+        assert.strictEqual(feedback.input.createdBy, "user");
         // Nobody is launched fresh: both steps keep their threads.
         assert.strictEqual(yield* Queue.size(harness.launches), 0);
 
-        harness.outputs.set(first.threadId, { reply: "plan with dark mode" });
+        // Only the revision's turn settles the step, not the thread's earlier finished run.
+        harness.outputs.set(feedback.runId, { reply: "plan with dark mode" });
         yield* harness.settle(first.threadId, "completed", feedback.runId);
-        // The wait named the revision's turn, so the earlier finished run cannot settle the step.
-        assert.include(harness.waitedRunIds, feedback.runId);
+        const answered = yield* awaitRun(
+          service,
+          run.id,
+          (current) => current.pauseReason === "awaiting_handoff",
+        );
+        assert.strictEqual(answered.steps[0]?.outputPreview, "plan with dark mode");
+        yield* service.handoffStep({
+          runId: run.id,
+          threadId: first.threadId,
+          output: "plan with dark mode",
+        });
 
         const ping = yield* Queue.take(harness.sentMessages);
         assert.strictEqual(ping.input.threadId, second.threadId);
@@ -1303,15 +1344,17 @@ it.effect(
         assert.include(ping.input.text, "plan with dark mode");
         assert.include(ping.input.text, "Cover dark mode too");
         assert.strictEqual(ping.input.messageId, `pipeline-run-message:${run.id}:build:2`);
+        assert.strictEqual(ping.input.createdBy, "user");
 
-        harness.outputs.set(second.threadId, { reply: "built it again" });
+        harness.behavior.autoHandoff = true;
+        harness.outputs.set(ping.runId, { reply: "built it again" });
         yield* harness.settle(second.threadId, "completed", ping.runId);
         const done = yield* awaitRun(service, run.id, (current) => current.status === "completed");
         assert.deepStrictEqual(
-          done.steps.map((current) => [current.status, current.attempt]),
+          done.steps.map((current) => [current.status, current.attempt, current.outputPreview]),
           [
-            ["completed", 2],
-            ["completed", 2],
+            ["completed", 2, "plan with dark mode"],
+            ["completed", 2, "built it again"],
           ],
         );
         assert.strictEqual(yield* Queue.size(harness.launches), 0);
@@ -1340,6 +1383,21 @@ it.effect("revise stops a running later step first and rejects what cannot be re
 
       yield* harness.settle(first.threadId, "completed");
       const second = yield* Queue.take(harness.launches);
+      yield* awaitRun(service, run.id, (current) => current.steps[1]?.childThreadId !== null);
+      // Too long for the step's thread: refused before the running step is stopped.
+      const tooLong = yield* Effect.flip(
+        service.reviseStep({
+          runId: run.id,
+          stepIndex: 0,
+          feedback: "x".repeat(PROVIDER_SEND_TURN_MAX_INPUT_CHARS),
+          author: "user",
+        }),
+      );
+      assert.include(tooLong.message, "Shorten the feedback");
+      assert.strictEqual(commandOfType(harness.commands, "thread.stop").length, 0);
+      assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
+      assert.deepStrictEqual((yield* service.getRun(run.id)).revisions, []);
+
       yield* service.reviseStep({
         runId: run.id,
         stepIndex: 0,
@@ -1371,6 +1429,9 @@ it.effect(
           author: "coordinator",
         });
         const feedback = yield* Queue.take(harness.sentMessages);
+        // The coordinator's feedback is not the user's message.
+        assert.strictEqual(feedback.input.createdBy, "agent");
+        assert.strictEqual(feedback.input.creationSource, "mcp");
         harness.outputs.set(first.threadId, { reply: "plan v2" });
         yield* harness.settle(first.threadId, "completed", feedback.runId);
 
@@ -1382,4 +1443,101 @@ it.effect(
         assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
       }),
     ),
+);
+
+it.effect("revise steers the current step while it waits for a handoff, stopping nothing", () =>
+  withService(
+    Effect.fn(function* (harness, service) {
+      harness.behavior.autoHandoff = false;
+      const { run } = yield* service.start(startInput("cmd-revise-handoff"));
+      const first = yield* Queue.take(harness.launches);
+      harness.outputs.set(first.threadId, { reply: "Which base should I use?" });
+      yield* harness.settle(first.threadId, "completed");
+      yield* awaitRun(service, run.id, (current) => current.pauseReason === "awaiting_handoff");
+
+      const { run: revised } = yield* service.reviseStep({
+        runId: run.id,
+        stepIndex: 0,
+        feedback: "Use main",
+        author: "user",
+      });
+      assert.strictEqual(revised.status, "running");
+      assert.deepStrictEqual(
+        [revised.steps[0]?.status, revised.steps[0]?.attempt, revised.steps[1]?.status],
+        ["running", 2, "pending"],
+      );
+      const feedback = yield* Queue.take(harness.sentMessages);
+      assert.strictEqual(feedback.input.threadId, first.threadId);
+      assert.include(feedback.input.text, "Use main");
+      assert.strictEqual(commandOfType(harness.commands, "thread.stop").length, 0);
+      assert.strictEqual(yield* Queue.size(harness.launches), 0);
+    }),
+  ),
+);
+
+it.effect("a revision that raced another one changes nothing and asks to try again", () =>
+  withService(
+    Effect.fn(function* (harness, service) {
+      const { run, second } = yield* completedRun(harness, service, "cmd-revise-race");
+      harness.behavior.holdStops = true;
+      const earlier = yield* Effect.forkChild(
+        service.reviseStep({ runId: run.id, stepIndex: 0, feedback: "Plan again", author: "user" }),
+      );
+      // The first revision is stopping step 2 when the second one revises step 2 itself.
+      assert.strictEqual(yield* Queue.take(harness.stopStarted), second.threadId);
+      yield* service.reviseStep({
+        runId: run.id,
+        stepIndex: 1,
+        feedback: "Build again",
+        author: "user",
+      });
+      yield* Deferred.succeed(harness.stopGate, undefined);
+
+      const raced = yield* Effect.flip(Fiber.join(earlier));
+      assert.include(raced.message, "The run moved on. Try again.");
+      const after = yield* service.getRun(run.id);
+      assert.deepStrictEqual(
+        after.revisions.map((revision) => revision.feedback),
+        ["Build again"],
+      );
+      assert.deepStrictEqual(
+        [after.currentStepIndex, after.steps[0]?.attempt, after.steps[1]?.attempt],
+        [1, 1, 2],
+      );
+      const sent = yield* Queue.take(harness.sentMessages);
+      assert.strictEqual(sent.input.threadId, second.threadId);
+      assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
+    }),
+  ),
+);
+
+it.effect("retry after a failed revision relaunches the step with the feedback", () =>
+  withService(
+    Effect.fn(function* (harness, service) {
+      const { run, first } = yield* completedRun(harness, service, "cmd-revise-retry");
+      yield* service.reviseStep({
+        runId: run.id,
+        stepIndex: 0,
+        feedback: "Cover dark mode too",
+        author: "user",
+      });
+      const feedback = yield* Queue.take(harness.sentMessages);
+      harness.outputs.set(feedback.runId, { error: "provider down" });
+      yield* harness.settle(first.threadId, "failed", feedback.runId);
+      yield* awaitRun(service, run.id, (current) => current.pauseReason === "step_failed");
+
+      yield* service.retryStep({ runId: run.id, stepIndex: 0 });
+      const retried = yield* Queue.take(harness.launches);
+      assert.strictEqual(retried.input.commandId, `pipeline-run:${run.id}:plan:3`);
+      assert.include(retried.input.initialMessage?.text, "Revision feedback:");
+      assert.include(retried.input.initialMessage?.text, "Cover dark mode too");
+      // The first step's earlier thread still provides the workspace.
+      assert.deepStrictEqual(retried.input.workspaceStrategy, {
+        type: "existing_worktree",
+        worktreePath: `/wt/${first.threadId}`,
+        branch: "feature",
+      });
+      assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
+    }),
+  ),
 );

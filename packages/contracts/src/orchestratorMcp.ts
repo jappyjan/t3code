@@ -864,7 +864,7 @@ export const OrchestratorMcpPipelineRun = Schema.Struct({
   error: Schema.NullOr(Schema.String),
   currentStepIndex: NonNegativeInt,
   steps: Schema.Array(OrchestratorMcpPipelineStep),
-  revisions: Schema.optional(Schema.Array(OrchestratorMcpPipelineRevision)),
+  revisions: Schema.Array(OrchestratorMcpPipelineRevision),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   completedAt: Schema.NullOr(IsoDateTime),
