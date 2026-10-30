@@ -29,6 +29,7 @@ export interface PersistedUiState {
   sidebarProjectScopeKey?: string | null;
   sidebarProjectScopeKeys?: string[];
   pullRequestMergeMethod?: string;
+  expandedPipelineThreadKeys?: string[];
 }
 
 export interface UiProjectState {
@@ -39,6 +40,8 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
+  /** Pipeline parents whose step rows show in the sidebar; the rest show a progress bar. */
+  expandedPipelineThreadKeys: string[];
 }
 
 export interface UiEndpointState {
@@ -57,9 +60,13 @@ const initialState: UiState = {
   projectOrder: [],
   sidebarProjectScopeKeys: [],
   threadLastVisitedAtById: {},
+  expandedPipelineThreadKeys: [],
   defaultAdvertisedEndpointKey: null,
   pullRequestMergeMethod: "merge",
 };
+
+// Pipelines start collapsed, so only the latest expansions are worth keeping.
+const MAX_EXPANDED_PIPELINES = 200;
 
 const LEGACY_PROJECT_CWD_PREFERENCE_PREFIX = "legacy-project-cwd:";
 const LEGACY_PROJECT_EXPANSION_DEFAULT_KEY = "legacy-project-expansion-default";
@@ -140,6 +147,9 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
     projectExpandedById,
     projectOrder,
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
+    expandedPipelineThreadKeys: sanitizeStringArray(parsed.expandedPipelineThreadKeys).slice(
+      -MAX_EXPANDED_PIPELINES,
+    ),
     defaultAdvertisedEndpointKey: sanitizeOptionalKey(parsed.defaultAdvertisedEndpointKey),
     sidebarProjectScopeKeys: sanitizeStringArray(
       parsed.sidebarProjectScopeKeys ?? [parsed.sidebarProjectScopeKey],
@@ -190,6 +200,7 @@ export function persistState(state: UiState): void {
           state.sidebarProjectScopeKeys.length === 1
             ? (state.sidebarProjectScopeKeys[0] ?? null)
             : null,
+        expandedPipelineThreadKeys: state.expandedPipelineThreadKeys,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
       } satisfies PersistedUiState),
     );
@@ -249,6 +260,19 @@ export function markThreadUnread(
       ...state.threadLastVisitedAtById,
       [threadId]: unreadVisitedAt,
     },
+  };
+}
+
+function setPipelineExpanded(state: UiState, threadKey: string, expanded: boolean): UiState {
+  const current = state.expandedPipelineThreadKeys;
+  if (current.includes(threadKey) === expanded) {
+    return state;
+  }
+  return {
+    ...state,
+    expandedPipelineThreadKeys: expanded
+      ? [...current, threadKey].slice(-MAX_EXPANDED_PIPELINES)
+      : current.filter((key) => key !== threadKey),
   };
 }
 
@@ -363,6 +387,7 @@ export function reorderProjects(
 interface UiStateStore extends UiState {
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
+  setPipelineExpanded: (threadKey: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
   setSidebarProjectScopeKeys: (projectKeys: readonly string[]) => void;
   setPullRequestMergeMethod: (method: PullRequestMergeMethod) => void;
@@ -380,6 +405,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId, latestTurnCompletedAt) =>
     set((state) => markThreadUnread(state, threadId, latestTurnCompletedAt)),
+  setPipelineExpanded: (threadKey, expanded) =>
+    set((state) => setPipelineExpanded(state, threadKey, expanded)),
   setDefaultAdvertisedEndpointKey: (key) =>
     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
   setSidebarProjectScopeKeys: (projectKeys) =>

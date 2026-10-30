@@ -21,6 +21,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectOrder: [],
     sidebarProjectScopeKeys: [],
     threadLastVisitedAtById: {},
+    expandedPipelineThreadKeys: [],
     defaultAdvertisedEndpointKey: null,
     pullRequestMergeMethod: "merge",
     ...overrides,
@@ -106,6 +107,7 @@ describe("parsePersistedState", () => {
         invalid: "not-a-date",
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
+      expandedPipelineThreadKeys: ["environment:parent-1", "", "environment:parent-1"],
     });
 
     expect(parsed).toEqual({
@@ -119,6 +121,7 @@ describe("parsePersistedState", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
       pullRequestMergeMethod: "merge",
+      expandedPipelineThreadKeys: ["environment:parent-1"],
     });
   });
 
@@ -186,6 +189,7 @@ describe("uiStateStore persistence", () => {
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },
+      expandedPipelineThreadKeys: ["environment:parent-1"],
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
     });
 
@@ -205,6 +209,7 @@ describe("uiStateStore persistence", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
       sidebarProjectScopeKey: null,
+      expandedPipelineThreadKeys: ["environment:parent-1"],
       pullRequestMergeMethod: "merge",
     });
     expect(parsePersistedState(persisted)).toEqual({

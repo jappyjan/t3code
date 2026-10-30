@@ -212,6 +212,7 @@ import {
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
+  resolveSidebarPipelineProgress,
   resolveSidebarPipelineStepStatus,
   resolveSidebarThreadSection,
   resolveSidebarReorderableThreadKeys,
@@ -513,6 +514,8 @@ function useSidebarThreads(input: {
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
   const [showAllFolderKeys, setShowAllFolderKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const expandedPipelineThreadKeys = useUiStateStore((store) => store.expandedPipelineThreadKeys);
+  const setPipelineExpanded = useUiStateStore((store) => store.setPipelineExpanded);
   const [settledTail, setSettledTail] = useState({
     scopeKey: projectScopeKey,
     count: SETTLED_TAIL_INITIAL_COUNT,
@@ -609,22 +612,36 @@ function useSidebarThreads(input: {
             canShowLess: showAll && hidden.length > 0,
           };
         });
-  // Keyboard order, jump numbers and range selection follow the rows as drawn: steps right after their parent.
-  const withSteps = (list: readonly EnvironmentThreadShell[]) =>
-    pipelineStepsByParentKey.size === 0
-      ? list
-      : list.flatMap((thread) => [
-          thread,
-          ...(pipelineStepsByParentKey.get(threadShellKey(thread)) ?? EMPTY_THREADS),
-        ]);
+  // A collapsed pipeline draws its progress bar instead of its steps, like a closed folder
+  // keeping only the open step in view.
+  const expandedPipelines = new Set(expandedPipelineThreadKeys);
+  const shownPipelineStepsByParentKey = new Map<string, readonly EnvironmentThreadShell[]>();
+  for (const [parentKey, steps] of pipelineStepsByParentKey) {
+    const shown = expandedPipelines.has(parentKey)
+      ? steps
+      : steps.filter((step) => threadShellKey(step) === routeRowThreadKey);
+    if (shown.length > 0) shownPipelineStepsByParentKey.set(parentKey, shown);
+  }
+  const withStepsFrom =
+    (stepsByParentKey: ReadonlyMap<string, readonly EnvironmentThreadShell[]>) =>
+    (list: readonly EnvironmentThreadShell[]) =>
+      stepsByParentKey.size === 0
+        ? list
+        : list.flatMap((thread) => [
+            thread,
+            ...(stepsByParentKey.get(threadShellKey(thread)) ?? EMPTY_THREADS),
+          ]);
+  const withSteps = withStepsFrom(pipelineStepsByParentKey);
+  // Keyboard order, jump numbers and range selection follow the rows as drawn: shown steps right after their parent.
+  const withShownSteps = withStepsFrom(shownPipelineStepsByParentKey);
   const orderedThreads = [
-    ...withSteps(pinnedThreads),
-    ...withSteps(
+    ...withShownSteps(pinnedThreads),
+    ...withShownSteps(
       projectFolders === null ? activeThreads : projectFolders.flatMap((folder) => folder.threads),
     ),
-    ...withSteps(visibleWorkingThreads),
-    ...withSteps(visibleSnoozedThreads),
-    ...withSteps(renderedSettledThreads),
+    ...withShownSteps(visibleWorkingThreads),
+    ...withShownSteps(visibleSnoozedThreads),
+    ...withShownSteps(renderedSettledThreads),
   ];
   const sectionByThreadKey = new Map<string, SidebarSection>();
   for (const [list, section] of [
@@ -662,6 +679,9 @@ function useSidebarThreads(input: {
     toggleSnoozedShelf: () => setSnoozedShelfExpanded((value) => !value),
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
+    shownPipelineStepsByParentKey,
+    expandedPipelines,
+    setPipelineExpanded,
     projectFolders,
     toggleProjectFolder: (group: SidebarProjectSnapshot) => {
       const keys = sidebarFolderExpansionKeys(group);
@@ -1481,6 +1501,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     searchableThreads,
     pipelineStepsByParentKey,
     pipelineParentKeyByStepKey,
+    shownPipelineStepsByParentKey,
+    expandedPipelines,
+    setPipelineExpanded,
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -3800,6 +3823,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           };
                         };
                         const steps = pipelineStepsByParentKey.get(threadKey);
+                        const liveRun = livePipelineRunOf(pipelineLiveRuns, thread);
                       return (
                         <SortableThreadRow
                           key={threadKey}
@@ -3820,9 +3844,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           }
                             stepStatus={resolveSidebarPipelineStepStatus(
                               steps ?? EMPTY_THREADS,
-                              livePipelineRunOf(pipelineLiveRuns, thread),
+                              liveRun,
                             )}
-                          pipelineSteps={steps?.map((step) => rowProps(step, true))}
+                            pipelineSteps={shownPipelineStepsByParentKey
+                              .get(threadKey)
+                              ?.map((step) => rowProps(step, true))}
+                            pipelineProgress={
+                              thread.pipeline != null && thread.pipeline.stepId === null
+                                ? resolveSidebarPipelineProgress(liveRun, steps ?? EMPTY_THREADS)
+                                : undefined
+                            }
+                            pipelineExpanded={expandedPipelines.has(threadKey)}
+                            onPipelineExpandedChange={setPipelineExpanded}
                         />
                       );
                     };
