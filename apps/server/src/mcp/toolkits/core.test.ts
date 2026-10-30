@@ -779,6 +779,7 @@ const pipelineRun = {
   pauseReason: null,
   error: null,
   currentStepIndex: 0,
+  revisions: [],
   steps: [],
   createdAt: "2026-10-28T10:00:00.000Z",
   updatedAt: "2026-10-28T10:00:00.000Z",
