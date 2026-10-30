@@ -80,8 +80,9 @@ Use **Send feedback…** on a step in the run page, or **Send feedback** on an a
 (or on selected text) in any step's thread. The step receives your feedback in its own thread,
 fixes its work and hands off again. Every later step then gets a message in its own thread saying
 what changed, and redoes its work against the new result, including the feedback given earlier in
-the run. A later step that is running is stopped first. Steps that never ran, or whose thread is
-gone, start fresh instead. Pauses before later steps still apply.
+the run. A later step that is running is stopped first. Steps that never ran, or whose thread was
+archived or deleted, start fresh instead. Pauses before later steps still apply. If a step fails
+while redoing its work, **Retry** keeps the feedback.
 
 This differs from **Rerun from here**, which starts the step and everything after it again in new
 threads with the original prompts. Use rerun for a clean start, and feedback to correct what is
@@ -97,7 +98,9 @@ any thread. The step list stays pinned above the chat, where each step's feedbac
 
 From a step's thread, click **Coordinator** in the header (or run **Open pipeline coordinator**
 from the command palette) to chat with it beside the step. On a message, **Send feedback** lets
-the coordinator decide where it goes, or sends it straight to one step.
+the coordinator decide where it goes, or sends it straight to one step. On mobile, tap
+**Coordinator** on the bar above a step's composer to chat in a sheet, and the speech bubble below
+an assistant message to send feedback.
 
 ### Shared workspace
 

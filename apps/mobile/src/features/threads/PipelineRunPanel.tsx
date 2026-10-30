@@ -29,7 +29,8 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
-import { useThreadShell } from "../../state/entities";
+import { formatMessageTime } from "../../lib/time";
+import { useQuietThreadShell } from "../../state/entities";
 import { threadHasUnseenCompletion } from "./threadListV2";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
@@ -438,7 +439,7 @@ function PipelineStepRow(props: {
   const name = definition?.name ?? `Step ${step.index + 1}`;
   const [outputExpanded, setOutputExpanded] = useState(false);
   const childThreadId = step.childThreadId;
-  const childShell = useThreadShell(
+  const childShell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId: props.environmentId, threadId: childThreadId },
   );
   const tone = STEP_TONES[pipelineStepTone(step.status)];
@@ -531,7 +532,8 @@ function PipelineStepRow(props: {
               className="gap-1 border-l-2 border-border pl-3"
             >
               <Text textRole="footnote" className="font-t3-medium text-foreground-secondary">
-                {pipelineRevisionAuthorLabel(revision.author)}
+                {pipelineRevisionAuthorLabel(revision.author)} ·{" "}
+                {formatMessageTime(revision.createdAt)}
               </Text>
               {revision.quote ? (
                 <Text textRole="footnote" className="text-foreground-muted" numberOfLines={2}>
@@ -588,7 +590,7 @@ export function PipelineStepParentBar(props: {
   const openThread = useOpenLinkedThread();
   const navigation = useNavigation();
   const run = runQuery.data?.run ?? null;
-  const parentShell = useThreadShell(
+  const parentShell = useQuietThreadShell(
     run === null ? null : { environmentId: props.environmentId, threadId: run.parentThreadId },
   );
   const coordinatorUnread = parentShell !== null && threadHasUnseenCompletion(parentShell);

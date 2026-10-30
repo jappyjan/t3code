@@ -16,6 +16,7 @@ import {
   MessageId,
   PipelineRunId,
   PipelineStepId,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   ThreadId,
 } from "@t3tools/contracts";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
@@ -36,6 +37,7 @@ import { readEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
 export type PipelineFeedbackRouteParams = {
   readonly environmentId: string;
@@ -49,6 +51,12 @@ export type PipelineFeedbackRouteParams = {
 };
 
 type Route = "coordinator" | number;
+
+function lengthValidationMessage(text: string): string | null {
+  const excess = text.length - PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
+  if (excess <= 0) return null;
+  return `Feedback is ${excess.toLocaleString("en-US")} ${excess === 1 ? "character" : "characters"} over the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS.toLocaleString("en-US")}-character limit. Shorten it before sending.`;
+}
 
 export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedbackRouteParams>) {
   const params = route.params;
@@ -75,42 +83,50 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
   const [selected, setSelected] = useState<Route>("coordinator");
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
+  const openThread = useOpenLinkedThread();
 
   const target: Route = fixedStep ?? selected;
   const options = run === null ? [] : pipelineFeedbackRoutes(run);
   const trimmed = note.trim();
+  const coordinatorText = (() => {
+    if (run === null || target !== "coordinator") return null;
+    const sourceIndex = run.steps.findIndex((step) => step.stepId === params.sourceStepId);
+    const sourceName = sourceIndex < 0 ? "this step" : stepName(run, sourceIndex);
+    const sourceThreadId = params.sourceThreadId ?? run.steps[sourceIndex]?.childThreadId ?? null;
+    return buildCoordinatorFeedbackMessage({
+      quote: params.quote ?? "",
+      sourceStepName: sourceName,
+      sourceStepLink:
+        sourceThreadId === null
+          ? sourceName
+          : formatThreadLink({ environmentId, threadId: ThreadId.make(sourceThreadId) }),
+      note: trimmed,
+    });
+  })();
+  const lengthMessage = lengthValidationMessage(coordinatorText ?? trimmed);
   const canSend =
-    run !== null && trimmed.length > 0 && !sending && (target === "coordinator" ? true : canRevise);
+    run !== null &&
+    trimmed.length > 0 &&
+    lengthMessage === null &&
+    !sending &&
+    (target === "coordinator" ? true : canRevise);
 
   const send = async () => {
     if (run === null || !canSend) return;
     setSending(true);
     try {
-      if (target === "coordinator") {
+      if (coordinatorText !== null) {
         if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
           Dialog.alert("Could not send feedback", "You cannot message this pipeline.");
           return;
         }
-        const sourceIndex = run.steps.findIndex((step) => step.stepId === params.sourceStepId);
-        const sourceName = sourceIndex < 0 ? "this step" : stepName(run, sourceIndex);
-        const sourceThreadId =
-          params.sourceThreadId ?? run.steps[sourceIndex]?.childThreadId ?? null;
-        const text = buildCoordinatorFeedbackMessage({
-          quote: params.quote ?? "",
-          sourceStepName: sourceName,
-          sourceStepLink:
-            sourceThreadId === null
-              ? sourceName
-              : formatThreadLink({ environmentId, threadId: ThreadId.make(sourceThreadId) }),
-          note: trimmed,
-        });
         const metadata = makeQueuedMessageMetadata();
         await enqueueThreadOutboxMessage({
           environmentId,
           threadId: run.parentThreadId,
           messageId: MessageId.make(metadata.messageId),
           commandId: CommandId.make(metadata.commandId),
-          text,
+          text: coordinatorText,
           attachments: [],
           createdAt: metadata.createdAt,
         });
@@ -122,6 +138,7 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
         );
         return;
       }
+      if (target === "coordinator") return;
       const result = await revise({
         environmentId,
         input: {
@@ -136,6 +153,24 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
       });
       if (result._tag === "Success") {
         navigation.goBack();
+        const revisedThreadId = run.steps[target]?.childThreadId ?? null;
+        Dialog.alert(
+          "Feedback sent",
+          `${stepName(run, target)} is revising. Later steps redo their work after it.`,
+          revisedThreadId === null
+            ? undefined
+            : [
+                { text: "Done", style: "cancel" },
+                {
+                  text: "Open step",
+                  onPress: () =>
+                    openThread({
+                      environmentId: params.environmentId,
+                      threadId: String(revisedThreadId),
+                    }),
+                },
+              ],
+        );
       } else if (!isAtomCommandInterrupted(result)) {
         Dialog.alert("Could not send feedback", String(squashAtomCommandFailure(result)));
       }
@@ -214,6 +249,9 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
               textAlignVertical="top"
               className="min-h-24 rounded-xl bg-subtle px-4 py-3 text-base"
             />
+            {lengthMessage === null ? null : (
+              <Text className="text-xs text-danger-text">{lengthMessage}</Text>
+            )}
           </View>
           {chooserVisible ? (
             <View className="gap-1">
