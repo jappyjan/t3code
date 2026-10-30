@@ -23,6 +23,7 @@ const RIGHT_PANEL_KINDS = [
   "pull-requests",
   "issue",
   "side-chat",
+  "pipeline-coordinator",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -94,7 +95,8 @@ export type RightPanelSurface =
       key: string;
       url?: string;
     }
-  | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId };
+  | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId }
+  | { id: "pipeline-coordinator"; kind: "pipeline-coordinator" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 15;
@@ -256,6 +258,8 @@ const singletonSurface = (
       return { id: "pull-requests", kind };
     case "device":
       return { id: "device", kind };
+    case "pipeline-coordinator":
+      return { id: "pipeline-coordinator", kind };
   }
 };
 

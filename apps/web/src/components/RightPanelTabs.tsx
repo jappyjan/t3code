@@ -46,6 +46,7 @@ import {
   Files,
   Globe2,
   MessagesSquare,
+  MessageSquare as MessageSquareIcon,
   Plus,
   TerminalSquare,
   Volume2Icon,
@@ -599,6 +600,8 @@ function surfaceTitle(
     case "issue":
       // A git host numbers its issues; a tracker with keys of its own, such as Linear, names them.
       return /^\d+$/.test(surface.key) ? `#${surface.key}` : surface.key;
+    case "pipeline-coordinator":
+      return "Coordinator";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "side-chat":
@@ -695,6 +698,8 @@ function SurfaceIcon({
       return <IssueSurfaceIcon surface={surface} environmentId={environmentId} />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
+    case "pipeline-coordinator":
+      return <MessageSquareIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
