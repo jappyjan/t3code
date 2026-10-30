@@ -36,6 +36,7 @@ import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
+import { hasUnseenCompletion } from "./Sidebar.logic";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
@@ -187,6 +188,11 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
 import { newMessageId } from "~/lib/utils";
+import { formatThreadLink } from "@t3tools/shared/threadLinks";
+import {
+  buildCoordinatorFeedbackMessage,
+  pipelineStepPosition,
+} from "@t3tools/client-runtime/pipeline-run-presentation";
 import {
   NO_PROVIDER_MODEL_SELECTION,
   providerInstanceEntriesFor,
@@ -269,6 +275,7 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { useCitedHistory } from "./chat/citationProcedure";
 import type { MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ThreadTimeline } from "./chat/ThreadTimeline";
+import { PipelineMessageFeedbackDialog } from "./chat/PipelineMessageFeedbackDialog";
 import { PipelineRunView } from "./chat/PipelineRunView";
 import { pipelineStepBreadcrumbTitle } from "@t3tools/client-runtime/pipeline-run-presentation";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
@@ -393,6 +400,8 @@ type ChatViewProps =
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
+      /** The conversation alone, inside another surface: no header, side panel or terminal. */
+      embedded?: boolean;
       routeKind: "server";
       draftId?: never;
     }
@@ -402,6 +411,7 @@ type ChatViewProps =
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
+      embedded?: never;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -416,6 +426,7 @@ export default function ChatView(props: ChatViewProps) {
     onDiffPanelOpen,
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
+    embedded = false,
   } = props;
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
@@ -1008,6 +1019,63 @@ export default function ChatView(props: ChatViewProps) {
     return labels;
   })();
   const activeThreadRef = useActiveThreadRef(activeThread);
+  const coordinatorShell = useQuietThreadShell(
+    pipelineStepId !== null && !embedded ? pipelineParentThreadRef : null,
+  );
+  const coordinatorUnread = coordinatorShell !== null && hasUnseenCompletion(coordinatorShell);
+  const openCoordinator = useStableCallback(() => {
+    if (activeThreadRef) {
+      useRightPanelStore.getState().open(activeThreadRef, "pipeline-coordinator");
+    }
+  });
+  const [feedbackQuote, setFeedbackQuote] = useState<string | null>(null);
+  const sendFeedbackToCoordinator = async (note: string): Promise<boolean> => {
+    if (
+      feedbackQuote === null ||
+      pipelineStepRun === undefined ||
+      pipelineStepId === null ||
+      coordinatorShell === null ||
+      activeThreadRef === null
+    ) {
+      return false;
+    }
+    const position = pipelineStepPosition(pipelineStepRun, pipelineStepId);
+    const stepThread = scopeThreadRef(activeThreadRef.environmentId, activeThreadRef.threadId);
+    const result = await startThreadTurn({
+      environmentId,
+      input: {
+        threadId: pipelineStepRun.parentThreadId,
+        message: {
+          messageId: newMessageId(),
+          role: "user",
+          text: buildCoordinatorFeedbackMessage({
+            quote: feedbackQuote,
+            sourceStepName: position?.name ?? pipelineStepId,
+            sourceStepLink: formatThreadLink({
+              environmentId: stepThread.environmentId,
+              threadId: stepThread.threadId,
+            }),
+            note,
+          }),
+          attachments: [],
+        },
+        runtimeMode: coordinatorShell.runtimeMode,
+        interactionMode: coordinatorShell.interactionMode,
+        dispatchMode: "queue",
+      },
+    });
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      toastManager.add({
+        type: "error",
+        title: "Could not send feedback",
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+    useRightPanelStore.getState().open(activeThreadRef, "pipeline-coordinator");
+    return true;
+  };
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
     activeThreadRef?.environmentId ?? null,
@@ -1739,7 +1807,7 @@ export default function ChatView(props: ChatViewProps) {
   // Provider-native subagents cannot take messages; approvals and questions go to the top-level parent.
   const showProviderSubagentBar = isProviderSubagent;
   // A pipeline's parent thread is read-only: its body is the run view, not a conversation.
-  const composerMounted = !showProviderSubagentBar && !isPipelineParent;
+  const composerMounted = !showProviderSubagentBar;
   const providerSubagentModels = selectedProviderEntry?.models ?? EMPTY_PROVIDER_MODELS;
   // Providers can report dated model ids or aliases.
   const providerSubagentModelSlug = selectedProviderEntry
@@ -3241,7 +3309,7 @@ export default function ChatView(props: ChatViewProps) {
         threadRef={activeThreadRef}
         state={deviceState}
       />
-      {rightPanelControlsAtRoot ? panelLayoutControls : null}
+      {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
@@ -3251,46 +3319,54 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column
         inert={rightPanelMaximized}
       >
-        <header
-          ref={threadPanelPopoverAnchorRef}
-          data-chat-header
-          className={cn(
-            "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
-            isElectron
-              ? cn(
-                  "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
-                  reserveTitleBarControlInset &&
-                    !inlineRightPanelOwnsTitleBar &&
-                    "wco:pr-(--workspace-native-controls-inset)",
-                )
-              : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
-            COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-          )}
-        >
-          {isElectron && rightPanelControlsAtRoot ? (
-            <span
-              aria-hidden
-              className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+        {embedded ? null : (
+          <header
+            ref={threadPanelPopoverAnchorRef}
+            data-chat-header
+            className={cn(
+              "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
+              isElectron
+                ? cn(
+                    "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
+                    reserveTitleBarControlInset &&
+                      !inlineRightPanelOwnsTitleBar &&
+                      "wco:pr-(--workspace-native-controls-inset)",
+                  )
+                : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
+              COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+            )}
+          >
+            {isElectron && rightPanelControlsAtRoot ? (
+              <span
+                aria-hidden
+                className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+              />
+            ) : null}
+            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
+            {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
+            <ChatHeader
+              activeThreadEnvironmentId={activeThread.environmentId}
+              activeThreadId={activeThread.id}
+              isServerThread={isServerThread}
+              activeThreadTitle={activeThread.title}
+              activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
+              activeProject={activeProject ?? null}
+              parentThreadLink={headerParentThreadLink}
+              onOpenCoordinator={
+                pipelineStepId !== null && pipelineParentThreadRef !== null
+                  ? openCoordinator
+                  : undefined
+              }
+              coordinatorUnread={coordinatorUnread}
+              onOpenThread={onOpenRelatedThreadStable}
+              rightPanelOpen={inlineRightPanelOwnsTitleBar}
+              onNewThreadInProject={handleNewThreadInActiveProjectStable}
+              {...(activeDraftLogicalProjectKey
+                ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
+                : {})}
             />
-          ) : null}
-          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
-          {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
-          <ChatHeader
-            activeThreadEnvironmentId={activeThread.environmentId}
-            activeThreadId={activeThread.id}
-            isServerThread={isServerThread}
-            activeThreadTitle={activeThread.title}
-            activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
-            activeProject={activeProject ?? null}
-            parentThreadLink={headerParentThreadLink}
-            onOpenThread={onOpenRelatedThreadStable}
-            rightPanelOpen={inlineRightPanelOwnsTitleBar}
-            onNewThreadInProject={handleNewThreadInActiveProjectStable}
-            {...(activeDraftLogicalProjectKey
-              ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
-              : {})}
-          />
-        </header>
+          </header>
+        )}
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <ThreadFindCanvas
@@ -3334,13 +3410,14 @@ export default function ChatView(props: ChatViewProps) {
               {...conversationArea}
               className="relative flex min-h-0 flex-1 flex-col bg-background"
             >
-              {isPipelineParent && threadPipeline !== null ? (
+              {isPipelineParent && !embedded && threadPipeline !== null ? (
                 <PipelineRunView
                   environmentId={activeThread.environmentId}
                   runId={threadPipeline.runId}
                   cwd={gitCwd ?? undefined}
                 />
-              ) : (
+              ) : null}
+              {
                 <ThreadTimeline
                   pendingApprovals={pendingApprovals}
                   heldApprovalRequestIds={heldApprovalRequestIds}
@@ -3413,6 +3490,9 @@ export default function ChatView(props: ChatViewProps) {
                   onSendAppMessage={sendAppMessageStable}
                   isRevertingCheckpoint={isRevertingCheckpoint}
                   onImageExpand={onExpandTimelineImageStable}
+                  {...(pipelineStepId !== null && !embedded && pipelineStepRun !== undefined
+                    ? { onSendFeedback: setFeedbackQuote }
+                    : {})}
                   onFileOpen={openFileAttachmentStable}
                   onFileDownload={downloadFileAttachmentStable}
                   markdownCwd={gitCwd ?? undefined}
@@ -3435,7 +3515,7 @@ export default function ChatView(props: ChatViewProps) {
                     ? {}
                     : { historyControls: threadHistoryControls })}
                 />
-              )}
+              }
 
               {showScrollToBottom && !isThreadFindActive && (
                 <ScrollToEndButton
@@ -3446,8 +3526,7 @@ export default function ChatView(props: ChatViewProps) {
               )}
             </div>
 
-            {/* A pipeline parent has no composer, so it gets no composer overlay or outline either. */}
-            {isPipelineParent ? null : (
+            {
               <div
                 {...composerArea}
                 ref={(overlay: HTMLDivElement | null) => {
@@ -3754,7 +3833,7 @@ export default function ChatView(props: ChatViewProps) {
                   </div>
                 </div>
               </div>
-            )}
+            }
 
             {canOperatePreview && activeThreadRef && activeEnvironmentServerBrowser ? (
               <PreviewSessionSync threadRef={activeThreadRef} />
@@ -3852,21 +3931,23 @@ export default function ChatView(props: ChatViewProps) {
           </ThreadFindCanvas>
         </div>
 
-        <ChatTerminalDrawers
-          activeThreadKey={activeThreadKey}
-          activeTerminalOpen={Boolean(terminalUiState.terminalOpen)}
-          composerHeight={composerReservedHeight}
-          launchContext={activeTerminalLaunchContext ?? null}
-          splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-          splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
-          newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-          closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-          keybindings={keybindings}
-          onAddTerminalContext={addTerminalContextToDraftStable}
-        />
+        {embedded ? null : (
+          <ChatTerminalDrawers
+            activeThreadKey={activeThreadKey}
+            activeTerminalOpen={Boolean(terminalUiState.terminalOpen)}
+            composerHeight={composerReservedHeight}
+            launchContext={activeTerminalLaunchContext ?? null}
+            splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
+            splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
+            newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+            closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
+            keybindings={keybindings}
+            onAddTerminalContext={addTerminalContextToDraftStable}
+          />
+        )}
       </div>
 
-      {rightPanelPresent && activeThreadRef ? (
+      {rightPanelPresent && !embedded && activeThreadRef ? (
         <ChatRightPanel
           sheet={shouldUsePlanSidebarSheet}
           workspaceLayoutElement={workspaceLayoutElement}
@@ -3927,6 +4008,16 @@ export default function ChatView(props: ChatViewProps) {
         </ChatRightPanel>
       ) : null}
 
+      {feedbackQuote !== null && pipelineStepRun !== undefined && pipelineStepId !== null ? (
+        <PipelineMessageFeedbackDialog
+          environmentId={environmentId}
+          run={pipelineStepRun}
+          sourceStepId={pipelineStepId}
+          quote={feedbackQuote}
+          onClose={() => setFeedbackQuote(null)}
+          onSendToCoordinator={sendFeedbackToCoordinator}
+        />
+      ) : null}
       <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
       <LinkPullRequestDialogHost />
       <ThreadVisitWatermark threadRef={routeThreadRef} />

@@ -12,11 +12,17 @@ export interface PipelineRunActions {
    * or cancelled run is offered as Retry instead.
    */
   readonly rerunFrom: (stepIndex: number) => boolean;
+  /**
+   * Whether feedback can be sent to the step at `stepIndex`: it already ran and is not working
+   * right now. A step that is working is steered in its own thread instead.
+   */
+  readonly revise: (stepIndex: number) => boolean;
 }
 
 /**
  * Mirrors the server guards: continue needs paused; retry/skip need paused or
- * cancelled; cancel needs running or paused; rerun needs paused, cancelled or completed.
+ * cancelled; cancel needs running or paused; rerun needs paused, cancelled or completed;
+ * revise needs a step that ran and is not working.
  */
 export function availablePipelineActions(run: PipelineRun): PipelineRunActions {
   const paused = run.status === "paused";
@@ -32,6 +38,14 @@ export function availablePipelineActions(run: PipelineRun): PipelineRunActions {
       if (stepIndex > run.currentStepIndex) return stepIndex < run.steps.length;
       if (stepIndex < run.currentStepIndex) return false;
       return run.steps[stepIndex]?.status === "pending";
+    },
+    revise: (stepIndex) => {
+      const step = run.steps[stepIndex];
+      if (step === undefined || stepIndex > run.currentStepIndex) return false;
+      if (step.attempt === 0 && step.status === "pending") return false;
+      if (stepIndex < run.currentStepIndex) return true;
+      if (step.status === "running") return pipelineStepAwaitsHandoff(run, stepIndex);
+      return step.status !== "pending";
     },
     rerunFrom: (stepIndex) => {
       if (stepIndex < 0 || stepIndex >= run.steps.length) return false;
@@ -152,4 +166,45 @@ export function pipelineFeedingStep(run: PipelineRun): PipelineFeedingStep | nul
     name: stepName(run, feeding.index),
     childThreadId: feeding.childThreadId,
   };
+}
+
+/** Whether the step is the one working right now, so feedback belongs in its own thread. */
+export function pipelineStepIsWorking(run: PipelineRun, stepIndex: number): boolean {
+  return (
+    run.status === "running" &&
+    run.currentStepIndex === stepIndex &&
+    run.steps[stepIndex]?.status === "running"
+  );
+}
+
+export interface CoordinatorFeedbackInput {
+  /** The quoted text the feedback is about. */
+  readonly quote: string;
+  readonly sourceStepName: string;
+  /** The source step's thread, as a markdown thread link the coordinator can name. */
+  readonly sourceStepLink: string;
+  readonly note: string;
+}
+
+/**
+ * The message "Send feedback → Coordinator decides" posts to the run's coordinator: a blockquote,
+ * the step it came from, then the user's note. The coordinator's instructions rely on this shape.
+ */
+export function buildCoordinatorFeedbackMessage(input: CoordinatorFeedbackInput): string {
+  const quoted = input.quote
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n");
+  return `${quoted}\n\nFrom step ${input.sourceStepName} (${input.sourceStepLink})\n\n${input.note.trim()}`;
+}
+
+const FEEDBACK_EXCERPT_CHARS = 600;
+
+/** A message's text trimmed to a quotable excerpt. */
+export function feedbackQuoteExcerpt(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length <= FEEDBACK_EXCERPT_CHARS
+    ? trimmed
+    : `${trimmed.slice(0, FEEDBACK_EXCERPT_CHARS).trimEnd()}…`;
 }

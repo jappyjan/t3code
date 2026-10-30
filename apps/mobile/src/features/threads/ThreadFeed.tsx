@@ -365,6 +365,8 @@ export interface ThreadFeedProps {
   readonly onEndFollowEnabledChange?: (enabled: boolean) => void;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   readonly onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
+  /** Set on pipeline step threads: long-pressing an assistant message's copy button offers it. */
+  readonly onSendFeedback?: (messageText: string) => void;
 }
 
 const THREAD_SHELL_WAIT_MS = 2_000;
@@ -395,6 +397,39 @@ function UserMessageCopyButton(props: {
       actions={USER_MESSAGE_COPY_MENU_ACTIONS}
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "copy-prompt-link") void copyPromptLink(linkText);
+      }}
+      shouldOpenOnLongPress
+    >
+      {button}
+    </Menu>
+  );
+}
+
+const ASSISTANT_MESSAGE_MENU_ACTIONS = [
+  { id: "send-feedback", title: "Send feedback", image: "text.bubble" },
+];
+
+function AssistantCopyButton(props: {
+  readonly text: string;
+  readonly tintColor: ColorValue;
+  readonly onSendFeedback: ((messageText: string) => void) | undefined;
+}) {
+  const button = (
+    <CopyTextButton
+      accessibilityLabel="Copy message"
+      text={props.text}
+      tintColor={props.tintColor}
+      buttonSize={28}
+      iconSize={13}
+    />
+  );
+  const { onSendFeedback } = props;
+  if (onSendFeedback === undefined) return button;
+  return (
+    <Menu
+      actions={ASSISTANT_MESSAGE_MENU_ACTIONS}
+      onPressAction={({ nativeEvent }) => {
+        if (nativeEvent.event === "send-feedback") onSendFeedback(props.text);
       }}
       shouldOpenOnLongPress
     >
@@ -1295,6 +1330,7 @@ function renderFeedEntry(
     ThreadFeedProps,
     | "environmentId"
     | "onUseArtifactTemplate"
+    | "onSendFeedback"
     | "skills"
     | "dispatchingMessageId"
     | "onEditPendingMessage"
@@ -1837,12 +1873,10 @@ function renderFeedEntry(
         ) : null}
         {showAssistantMeta ? (
           <View className="mt-1 flex-row items-center gap-1">
-            <CopyTextButton
-              accessibilityLabel="Copy message"
+            <AssistantCopyButton
               text={renderedText}
               tintColor={iconSubtleColor}
-              buttonSize={28}
-              iconSize={13}
+              onSendFeedback={props.onSendFeedback}
             />
             {message.projectedItem ? (
               <AssistantForkButton
@@ -3138,6 +3172,7 @@ export const ThreadFeed = memo(function ThreadFeed({
             dispatchingMessageId: props.dispatchingMessageId,
             onEditPendingMessage: props.onEditPendingMessage,
             onUseArtifactTemplate: props.onUseArtifactTemplate,
+            onSendFeedback: props.onSendFeedback,
             threadId: props.threadId,
             copiedRowId,
             expandedWorkRows,

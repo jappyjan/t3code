@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   availablePipelineActions,
+  buildCoordinatorFeedbackMessage,
   pipelineFeedingStep,
   pipelineRunStatusLabel,
   pipelineStepAwaitsHandoff,
@@ -171,6 +172,57 @@ describe("rerunFrom", () => {
       false,
       false,
     ]);
+  });
+});
+
+describe("revise", () => {
+  it("offers steps that ran and are not working, in any run status", () => {
+    const running = makeRun({
+      status: "running",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "running", "pending"],
+    });
+    expect([0, 1, 2, 3].map(availablePipelineActions(running).revise)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+    const stopped = makeRun({
+      status: "paused",
+      pauseReason: "step_stopped",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "stopped", "pending"],
+    });
+    expect([0, 1, 2].map(availablePipelineActions(stopped).revise)).toEqual([true, true, false]);
+    const noHandoff = makeRun({
+      status: "paused",
+      pauseReason: "awaiting_handoff",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "running", "pending"],
+    });
+    expect([0, 1, 2].map(availablePipelineActions(noHandoff).revise)).toEqual([true, true, false]);
+    const completed = makeRun({
+      status: "completed",
+      currentStepIndex: 2,
+      stepStatuses: ["completed", "completed", "completed"],
+    });
+    expect([0, 1, 2].map(availablePipelineActions(completed).revise)).toEqual([true, true, true]);
+  });
+});
+
+describe("buildCoordinatorFeedbackMessage", () => {
+  it("quotes the text, names the source step, then adds the note", () => {
+    expect(
+      buildCoordinatorFeedbackMessage({
+        quote: "line one\nline two",
+        sourceStepName: "Guide",
+        sourceStepLink: "[Guide](t3code://v2/e/t)",
+        note: " Implement missed this. ",
+      }),
+    ).toBe(
+      "> line one\n> line two\n\nFrom step Guide ([Guide](t3code://v2/e/t))\n\nImplement missed this.",
+    );
   });
 });
 

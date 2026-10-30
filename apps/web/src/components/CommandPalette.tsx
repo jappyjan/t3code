@@ -1407,6 +1407,20 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  if (activeThread?.pipeline != null && activeThread.pipeline.stepId !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:open-pipeline-coordinator",
+      searchTerms: ["pipeline", "coordinator", "feedback", "run", "chat"],
+      title: "Open pipeline coordinator",
+      icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "pipeline-coordinator");
+      },
+    });
+  }
+
   if (activeThread !== null && canShareActiveThreadWithGuest) {
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     actionItems.push({

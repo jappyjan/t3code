@@ -28,6 +28,7 @@ import {
   CircleDashedIcon,
   CircleDotIcon,
   ExternalLinkIcon,
+  MessageSquareIcon,
   RotateCcwIcon,
   SkipForwardIcon,
   SquareIcon,
@@ -52,7 +53,7 @@ import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Switch } from "../ui/switch";
 import { AgentElapsed } from "./AgentElapsed";
-import { useChatCanvas } from "./ChatCanvasContext";
+import { PipelineFeedbackDialog } from "./PipelineFeedbackDialog";
 import {
   newerPipelineRun,
   pipelineChildLiveState,
@@ -92,12 +93,16 @@ function useOpenThread(environmentId: EnvironmentId) {
   };
 }
 
-/** The parent thread's body: one subscription per run, scoped to this view. */
+/**
+ * The run's steps, pinned above the coordinator chat on the parent thread: one subscription per
+ * run, scoped to this view. It collapses to a one-line summary and scrolls within its own cap.
+ */
 export function PipelineRunView(props: {
   readonly environmentId: EnvironmentId;
   readonly runId: PipelineRun["id"];
   readonly cwd: string | undefined;
 }) {
+  const [expanded, setExpanded] = useState(true);
   const query = useEnvironmentQuery(
     serverEnvironment.pipelineRunLive({
       environmentId: props.environmentId,
@@ -105,23 +110,32 @@ export function PipelineRunView(props: {
     }),
   );
   const run = query.data?.run ?? null;
-  // The same scroller as the message timeline, so the chat canvas insets it beside the details card.
-  const registerTimeline = useChatCanvas()?.registerTimeline;
   return (
-    <div
-      ref={registerTimeline}
-      className="messages-timeline-scroll scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto"
-      data-testid="pipeline-run-view"
-    >
-      <div className="chat-content-lane py-6">
-        {run === null ? (
-          <p className="text-sm text-muted-foreground">
-            {query.error ?? "Loading pipeline run..."}
-          </p>
-        ) : (
-          <PipelineRunBody environmentId={props.environmentId} liveRun={run} cwd={props.cwd} />
-        )}
+    <div className="shrink-0 border-b border-border/60" data-testid="pipeline-run-view">
+      <div className="chat-content-lane pt-2">
+        <CollapsibleSectionHeader
+          expanded={expanded}
+          aria-label={`${expanded ? "Collapse" : "Expand"} pipeline run`}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {run === null
+            ? "Pipeline run"
+            : `${run.definition.name} · ${pipelineRunStatusLabel(run)}`}
+        </CollapsibleSectionHeader>
       </div>
+      {expanded ? (
+        <div className="scrollbar-gutter-both max-h-[45vh] overflow-y-auto">
+          <div className="chat-content-lane py-3">
+            {run === null ? (
+              <p className="text-sm text-muted-foreground">
+                {query.error ?? "Loading pipeline run..."}
+              </p>
+            ) : (
+              <PipelineRunBody environmentId={props.environmentId} liveRun={run} cwd={props.cwd} />
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -178,6 +192,10 @@ function PipelineRunBody(props: {
   });
   // One command at a time: the run changes shape under every action.
   const [inFlight, setInFlight] = useState<string | null>(null);
+  const [feedbackStepIndex, setFeedbackStepIndex] = useState<number | null>(null);
+  const canRevise = useAtomValue(
+    serverEnvironment.revisePipelineStep.permissionAtom(environmentId),
+  );
   const busy = inFlight !== null;
 
   const perform = async (
@@ -345,6 +363,8 @@ function PipelineRunBody(props: {
             }
             canRerun={canRerun && !busy && actions.rerunFrom(step.index)}
             onRerun={() => void confirmRerun(step.index)}
+            canSendFeedback={canRevise && !busy && actions.revise(step.index)}
+            onSendFeedback={() => setFeedbackStepIndex(step.index)}
             onPauseBeforeChange={(pauseBefore) =>
               void perform(`pause:${step.index}`, "Could not update pause", () =>
                 setPauseBefore({
@@ -356,6 +376,15 @@ function PipelineRunBody(props: {
           />
         ))}
       </ol>
+      {feedbackStepIndex === null ? null : (
+        <PipelineFeedbackDialog
+          environmentId={environmentId}
+          run={run}
+          stepIndex={feedbackStepIndex}
+          onClose={() => setFeedbackStepIndex(null)}
+          onRevised={setCommandRun}
+        />
+      )}
     </div>
   );
 }
@@ -389,6 +418,8 @@ function PipelineStepRow(props: {
   readonly onPauseBeforeChange: (pauseBefore: boolean) => void;
   readonly canRerun: boolean;
   readonly onRerun: () => void;
+  readonly canSendFeedback: boolean;
+  readonly onSendFeedback: () => void;
 }) {
   const { environmentId, run, step } = props;
   const [outputOpen, setOutputOpen] = useState(false);
@@ -498,7 +529,12 @@ function PipelineStepRow(props: {
         </div>
       ) : null}
 
-      {childThreadId !== null || step.status === "pending" || props.canRerun ? (
+      <PipelineStepFeedback run={run} stepIndex={step.index} />
+
+      {childThreadId !== null ||
+      step.status === "pending" ||
+      props.canRerun ||
+      props.canSendFeedback ? (
         <div className="flex items-center justify-between gap-2 ps-6">
           {childThreadId === null ? (
             <span />
@@ -513,6 +549,17 @@ function PipelineStepRow(props: {
               Open thread
             </Button>
           )}
+          {props.canSendFeedback ? (
+            <Button
+              size="xs"
+              variant="ghost-muted"
+              aria-label={`Send feedback to ${stepName(run, step.index)}`}
+              onClick={props.onSendFeedback}
+            >
+              <MessageSquareIcon className="size-3" />
+              Send feedback…
+            </Button>
+          ) : null}
           {props.canRerun ? (
             <Button
               size="xs"
@@ -539,5 +586,51 @@ function PipelineStepRow(props: {
         </div>
       ) : null}
     </li>
+  );
+}
+
+const REVISION_AUTHOR_LABEL = {
+  user: "You",
+  coordinator: "Coordinator",
+  agent: "An agent",
+} as const;
+
+/** Why this step reran: the feedback sent to it, newest last. */
+function PipelineStepFeedback(props: { readonly run: PipelineRun; readonly stepIndex: number }) {
+  const [open, setOpen] = useState(false);
+  const revisions = props.run.revisions.filter(
+    (revision) => revision.stepIndex === props.stepIndex,
+  );
+  if (revisions.length === 0) return null;
+  return (
+    <div className="ps-4">
+      <CollapsibleSectionHeader
+        expanded={open}
+        aria-label={`${open ? "Collapse" : "Expand"} feedback on ${stepName(props.run, props.stepIndex)}`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        Feedback ({revisions.length})
+      </CollapsibleSectionHeader>
+      {open ? (
+        <ul className="m-0 flex list-none flex-col gap-2 px-2 pb-1 text-sm">
+          {revisions.map((revision) => (
+            <li key={revision.createdAt} className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">
+                {REVISION_AUTHOR_LABEL[revision.author]} ·{" "}
+                <time dateTime={revision.createdAt}>
+                  {new Date(revision.createdAt).toLocaleString()}
+                </time>
+              </span>
+              {revision.quote ? (
+                <blockquote className="m-0 border-s-2 border-border ps-2 text-xs text-muted-foreground">
+                  {revision.quote}
+                </blockquote>
+              ) : null}
+              <p className="m-0 whitespace-pre-wrap">{revision.feedback}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
