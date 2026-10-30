@@ -251,9 +251,11 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     snoozedShelfExpanded,
     workingShelfEnabled,
     workingShelfExpanded,
+    expandedPipelineKeys,
     toggleSettledShelf,
     toggleSnoozedShelf,
     toggleWorkingShelf,
+    togglePipelineExpanded,
   } = useThreadListV2ShelfPreferences();
   const now = useThreadListNow(threads);
   const listEnvironments = useAtomValue(threadListEnvironmentsAtom);
@@ -298,6 +300,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     workingShelfExpanded,
     snoozedShelfExpanded,
     settledShelfExpanded,
+    expandedPipelineKeys,
     selectedThreadKey,
   });
   const listItems: readonly SidebarListItem[] =
@@ -427,6 +430,9 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             isLastStep={item.item.isLastStep}
             stepStatus={item.item.stepStatus}
             stepLabel={item.item.stepLabel}
+            pipelineProgress={item.item.pipelineProgress}
+            pipelineExpanded={item.item.pipelineExpanded}
+            onTogglePipelineSteps={togglePipelineExpanded}
             hasQueuedMessages={item.hasQueuedMessages}
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}
