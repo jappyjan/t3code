@@ -28,6 +28,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "thread",
   "environment",
   "response",
+  "linear-issue",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -251,6 +252,40 @@ export const ResponseContextRecord = Schema.Struct({
 });
 export type ResponseContextRecord = typeof ResponseContextRecord.Type;
 
+const LINEAR_CONTEXT_TEXT_MAX_CHARS = 16_000;
+
+/** Snapshot of a Linear issue taken when it was attached; the agent reads this, not live data. */
+export const LinearIssueContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("linear-issue"),
+  issueId: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  identifier: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  title: ShortString,
+  url: ShortString,
+  teamName: ShortString,
+  projectName: NullableShortString,
+  milestoneName: NullableShortString,
+  stateName: ShortString,
+  stateType: ShortString,
+  priorityLabel: ShortString,
+  assigneeName: NullableShortString,
+  labels: Schema.Array(ShortString).check(Schema.isMaxLength(50)),
+  branchName: ShortString,
+  description: BoundedString(LINEAR_CONTEXT_TEXT_MAX_CHARS),
+  subIssues: Schema.Array(
+    Schema.Struct({ identifier: ShortString, title: ShortString, stateType: ShortString }),
+  ).check(Schema.isMaxLength(50)),
+  comments: Schema.Array(
+    Schema.Struct({
+      author: NullableShortString,
+      createdAt: ShortString,
+      body: BoundedString(2_000),
+    }),
+  ).check(Schema.isMaxLength(10)),
+  linkedPullRequests: Schema.Array(ShortString).check(Schema.isMaxLength(20)),
+});
+export type LinearIssueContextRecord = typeof LinearIssueContextRecord.Type;
+
 const isJson = Schema.is(Schema.Json);
 
 /** Excludes known discriminators so malformed known records fail their own schema. */
@@ -283,6 +318,7 @@ export const KnownComposerContextRecord = Schema.Union([
   ThreadContextRecord,
   EnvironmentContextRecord,
   ResponseContextRecord,
+  LinearIssueContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 
