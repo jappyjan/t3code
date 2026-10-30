@@ -251,7 +251,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     run: PipelineRun,
     step: PipelineRunStep,
     threadId: ThreadId,
-    action: "cancel" | "retry" | "skip" | "rerun" | "revise",
+    action: "cancel" | "retry" | "skip" | "rerun" | "revise" | "superseded",
   ) =>
     bestEffort(
       "Could not stop pipeline step thread",
@@ -266,7 +266,9 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
               ? "The pipeline was rerun from an earlier step."
               : action === "revise"
                 ? "An earlier step of the pipeline was revised."
-                : `The pipeline step was ${action === "retry" ? "retried" : "skipped"}.`,
+                : action === "superseded"
+                  ? "The pipeline run moved on while this step's message was sent."
+                  : `The pipeline step was ${action === "retry" ? "retried" : "skipped"}.`,
       }),
     );
 
@@ -550,9 +552,11 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     if (revised === undefined) return;
     const outputs = yield* store.getStepOutputs(run.id);
     const ready = (index: number) => run.steps[index]?.status === "completed";
-    // Steps before the revised one did not change, so they are not new outputs.
+    // Steps before every revised one did not change. Chained revisions can leave this step behind
+    // more than the latest, so the earliest bounds what is new; an older one included is harmless.
+    const earliest = Math.min(...run.revisions.map((revision) => revision.stepIndex));
     const referenced = pipelineReferencedStepIndexes(run.definition, cursor, ready).filter(
-      (index) => index >= revised.stepIndex && ready(index) && outputs.has(index),
+      (index) => index >= earliest && ready(index) && outputs.has(index),
     );
     const wanted = referenced.length > 0 ? referenced : [revised.stepIndex];
     const text = pipelineUpstreamChangedMessage({
@@ -648,9 +652,10 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
           );
           return null;
         }
-        // A stop that landed while the message was in flight would leave its turn unsettled.
+        // A stop that landed while the message was in flight missed its turn; a cancel's id is
+        // already used, so this stop needs its own.
         if (!(yield* withGuard(run.id, expect, () => Effect.void))) {
-          yield* stopThread(run, step, childThreadId, "cancel");
+          yield* stopThread(run, step, childThreadId, "superseded");
           return null;
         }
         return sent.success.run.id;
@@ -1488,8 +1493,15 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
           );
         }
         if (run.currentStepIndex > input.stepIndex) {
-          yield* stopCurrentChild(run, "revise");
           const running = run.steps[run.currentStepIndex];
+          // Its launch is in flight: there is no thread to stop yet, and the launch would outlive this.
+          if (running?.status === "running" && running.childThreadId === null) {
+            return yield* pipelineError(
+              "The running step is still starting. Try again in a moment.",
+              { runId: run.id },
+            );
+          }
+          yield* stopCurrentChild(run, "revise");
           // Two step agents must never write to the shared workspace at once.
           if (
             running?.status === "running" &&
@@ -1514,6 +1526,8 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
               current.currentStepIndex !== run.currentStepIndex ||
               current.steps[current.currentStepIndex]?.attempt !==
                 run.steps[run.currentStepIndex]?.attempt ||
+              current.steps[current.currentStepIndex]?.childThreadId !==
+                run.steps[run.currentStepIndex]?.childThreadId ||
               latest.attempt !== target.attempt ||
               latest.childThreadId !== target.childThreadId
             ) {
@@ -1534,9 +1548,14 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
                   completedAt: null,
                 }
               : {
-                  // No thread to continue in: the driver launches it fresh with the feedback.
+                  // No thread to continue in: the driver launches it fresh with the feedback. With
+                  // no earlier step's thread, the old one is the workspace donor, as in a retry.
                   status: "pending",
-                  childThreadId: null,
+                  ...(current.steps
+                    .slice(0, input.stepIndex)
+                    .some((step) => step.childThreadId !== null)
+                    ? { childThreadId: null }
+                    : {}),
                   output: null,
                   handedOff: false,
                   revising: true,

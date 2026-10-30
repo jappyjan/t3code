@@ -105,10 +105,14 @@ const makeHarness = Effect.gen(function* () {
   const subscribed = yield* Deferred.make<void>();
   const stopStarted = yield* Queue.unbounded<ThreadId>();
   const stopGate = yield* Deferred.make<void>();
+  const sendGate = yield* Deferred.make<void>();
+  const launchGate = yield* Deferred.make<void>();
   const idleChecks = yield* Queue.unbounded<ThreadId>();
   const providerEnabled = yield* Ref.make(true);
   const behavior = {
     holdStops: false,
+    holdSends: false,
+    holdLaunches: false,
     failFirstSubscription: false,
     failParentCreate: false,
     subscriptionCount: 0,
@@ -123,6 +127,7 @@ const makeHarness = Effect.gen(function* () {
   /** Threads whose shell has no workspace, as after a failed worktree setup. */
   const unrecordedWorkspaces = new Set<ThreadId>();
   const deletedThreads = new Set<ThreadId>();
+  const archivedThreads = new Set<ThreadId>();
   const commands: Array<OrchestrationV2ServerCommand> = [];
   /** Keyed by the run a wait names, else by its thread. */
   const waits = new Map<string, Deferred.Deferred<ThreadManagementWaitResult>>();
@@ -196,7 +201,7 @@ const makeHarness = Effect.gen(function* () {
       worktreePath: recorded ? `${behavior.worktreeRoot}/${threadId}` : null,
       activeRunId: activeRuns.has(threadId) ? "run-active" : null,
       deletedAt: deletedThreads.has(threadId) ? "2026-10-28T10:00:00.000Z" : null,
-      archivedAt: null,
+      archivedAt: archivedThreads.has(threadId) ? "2026-10-28T10:00:00.000Z" : null,
     } as unknown as OrchestrationV2ThreadShell;
   };
 
@@ -205,6 +210,7 @@ const makeHarness = Effect.gen(function* () {
       launch: (input) => {
         const threadId = decodeThreadId(`thread-of:${input.commandId}`);
         return Queue.offer(launches, { input, threadId }).pipe(
+          Effect.andThen(behavior.holdLaunches ? Deferred.await(launchGate) : Effect.void),
           Effect.as({ threadId, projection: {} as never, resumed: false }),
         );
       },
@@ -226,6 +232,7 @@ const makeHarness = Effect.gen(function* () {
         Effect.gen(function* () {
           const runId = `turn-of:${input.messageId}`;
           yield* Queue.offer(sentMessages, { input, runId });
+          if (behavior.holdSends) yield* Deferred.await(sendGate);
           return { run: { id: runId } } as never;
         }),
       waitForThread: (input) =>
@@ -316,12 +323,15 @@ const makeHarness = Effect.gen(function* () {
     subscriptions,
     stopStarted,
     stopGate,
+    sendGate,
+    launchGate,
     idleChecks,
     activeRuns,
     checkpointOps,
     behavior,
     unrecordedWorkspaces,
     deletedThreads,
+    archivedThreads,
   };
 });
 
@@ -1381,8 +1391,16 @@ it.effect("revise stops a running later step first and rejects what cannot be re
       );
       assert.include(outOfRange.message, "not part of the run");
 
+      harness.behavior.holdLaunches = true;
       yield* harness.settle(first.threadId, "completed");
       const second = yield* Queue.take(harness.launches);
+      // Step 2 runs but has no thread yet: nothing could be stopped, so nothing is revised.
+      const starting = yield* Effect.flip(
+        service.reviseStep({ runId: run.id, stepIndex: 0, feedback: "x", author: "user" }),
+      );
+      assert.include(starting.message, "The running step is still starting");
+      harness.behavior.holdLaunches = false;
+      yield* Deferred.succeed(harness.launchGate, undefined);
       yield* awaitRun(service, run.id, (current) => current.steps[1]?.childThreadId !== null);
       // Too long for the step's thread: refused before the running step is stopped.
       const tooLong = yield* Effect.flip(
@@ -1441,6 +1459,25 @@ it.effect(
         assert.include(again.input.initialMessage?.text, "Revision feedback:");
         assert.include(again.input.initialMessage?.text, "Use the new API");
         assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
+
+        // An archived first step relaunches in its old workspace, not a new one.
+        yield* harness.settle(again.threadId, "completed");
+        yield* awaitRun(service, run.id, (current) => current.status === "completed");
+        harness.archivedThreads.add(first.threadId);
+        yield* service.reviseStep({
+          runId: run.id,
+          stepIndex: 0,
+          feedback: "Plan it once more",
+          author: "user",
+        });
+        const relaunched = yield* Queue.take(harness.launches);
+        assert.strictEqual(relaunched.input.commandId, `pipeline-run:${run.id}:plan:3`);
+        assert.include(relaunched.input.initialMessage?.text, "Plan it once more");
+        assert.deepStrictEqual(relaunched.input.workspaceStrategy, {
+          type: "existing_worktree",
+          worktreePath: `/wt/${first.threadId}`,
+          branch: "feature",
+        });
       }),
     ),
 );
@@ -1511,6 +1548,32 @@ it.effect("a revision that raced another one changes nothing and asks to try aga
   ),
 );
 
+it.effect("a cancel while the revision message is sent still stops its new turn", () =>
+  withService(
+    Effect.fn(function* (harness, service) {
+      const { run, first, second } = yield* completedRun(harness, service, "cmd-revise-cancel");
+      harness.behavior.holdSends = true;
+      yield* service.reviseStep({ runId: run.id, stepIndex: 0, feedback: "Redo", author: "user" });
+      assert.strictEqual(yield* Queue.take(harness.stopStarted), second.threadId);
+      const feedback = yield* Queue.take(harness.sentMessages);
+      assert.strictEqual(feedback.input.threadId, first.threadId);
+
+      yield* service.cancel({ runId: run.id });
+      assert.strictEqual(yield* Queue.take(harness.stopStarted), first.threadId);
+      yield* Deferred.succeed(harness.sendGate, undefined);
+      assert.strictEqual(yield* Queue.take(harness.stopStarted), first.threadId);
+
+      // The cancel's stop went out before the turn began, so the second one needs its own id.
+      assert.deepStrictEqual(
+        commandOfType(harness.commands, "thread.stop")
+          .filter((stop) => stop.threadId === first.threadId)
+          .map((stop) => stop.commandId),
+        [`pipeline-run:${run.id}:cancel:plan:2`, `pipeline-run:${run.id}:superseded:plan:2`],
+      );
+    }),
+  ),
+);
+
 it.effect("retry after a failed revision relaunches the step with the feedback", () =>
   withService(
     Effect.fn(function* (harness, service) {
@@ -1538,6 +1601,63 @@ it.effect("retry after a failed revision relaunches the step with the feedback",
         branch: "feature",
       });
       assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
+    }),
+  ),
+);
+
+it.effect("after chained revisions a later step gets every revised output it reads", () =>
+  withService(
+    Effect.fn(function* (harness, service, store) {
+      yield* store.updateDefinition(
+        definition([
+          step("plan", "{{input}}"),
+          step("build", "Build from: {{previous.output}}"),
+          step("ship", "Ship the plan: {{steps.plan.output}}"),
+        ]),
+      );
+      const { run } = yield* service.start(startInput("cmd-revise-chain"));
+      const threads: Array<ThreadId> = [];
+      for (const reply of ["plan v1", "build v1", "ship v1"]) {
+        const launched = yield* Queue.take(harness.launches);
+        threads.push(launched.threadId);
+        harness.outputs.set(launched.threadId, { reply });
+        yield* harness.settle(launched.threadId, "completed");
+      }
+      yield* awaitRun(service, run.id, (current) => current.status === "completed");
+      const [plan, build, ship] = threads;
+      if (plan === undefined || build === undefined || ship === undefined) return;
+      harness.behavior.autoHandoff = false;
+
+      // Revise the plan; the build catches up but is revised again before the ship step runs.
+      const answer = Effect.fn(function* (threadId: ThreadId, output: string) {
+        const sent = yield* Queue.take(harness.sentMessages);
+        assert.strictEqual(sent.input.threadId, threadId);
+        yield* harness.settle(threadId, "completed", sent.runId);
+        yield* awaitRun(service, run.id, (current) => current.pauseReason === "awaiting_handoff");
+        yield* service.handoffStep({ runId: run.id, threadId, output });
+      });
+      yield* service.reviseStep({
+        runId: run.id,
+        stepIndex: 0,
+        feedback: "Add tests",
+        author: "user",
+      });
+      yield* answer(plan, "plan v2");
+      const buildPing = yield* Queue.take(harness.sentMessages);
+      assert.strictEqual(buildPing.input.threadId, build);
+      yield* harness.settle(build, "completed", buildPing.runId);
+      yield* awaitRun(service, run.id, (current) => current.pauseReason === "awaiting_handoff");
+      yield* service.reviseStep({
+        runId: run.id,
+        stepIndex: 1,
+        feedback: "Faster",
+        author: "user",
+      });
+      yield* answer(build, "build v2");
+
+      const shipPing = yield* Queue.take(harness.sentMessages);
+      assert.strictEqual(shipPing.input.threadId, ship);
+      assert.include(shipPing.input.text, "plan v2");
     }),
   ),
 );
