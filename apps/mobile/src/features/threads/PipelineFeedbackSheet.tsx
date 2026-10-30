@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   buildCoordinatorFeedbackMessage,
+  pipelineFeedbackRoutes,
   stepName,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
 import {
@@ -35,7 +36,6 @@ import { readEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { feedbackStepRoutes } from "./pipeline-run-view";
 
 export type PipelineFeedbackRouteParams = {
   readonly environmentId: string;
@@ -77,7 +77,7 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
   const [sending, setSending] = useState(false);
 
   const target: Route = fixedStep ?? selected;
-  const options = run === null ? [] : feedbackStepRoutes(run);
+  const options = run === null ? [] : pipelineFeedbackRoutes(run);
   const trimmed = note.trim();
   const canSend =
     run !== null && trimmed.length > 0 && !sending && (target === "coordinator" ? true : canRevise);

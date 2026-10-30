@@ -8,6 +8,7 @@ import type {
 } from "@t3tools/contracts";
 import {
   availablePipelineActions,
+  pipelineRevisionAuthorLabel,
   pipelineRunStateLabel,
   pipelineStepPosition,
   pipelineStepStatusLabel,
@@ -46,12 +47,6 @@ const STEP_TONES: Record<PipelineStepTone, Omit<StatusTone, "label">> = {
   },
   danger: { pillClassName: "bg-danger", textClassName: "text-danger-foreground" },
   muted: { pillClassName: "bg-subtle", textClassName: "text-foreground-secondary" },
-};
-
-const REVISION_AUTHOR_LABELS: Record<PipelineRun["revisions"][number]["author"], string> = {
-  user: "You",
-  coordinator: "Coordinator",
-  agent: "Agent",
 };
 
 function reportFailure(title: string, result: AtomCommandResult<unknown, unknown>) {
@@ -536,7 +531,7 @@ function PipelineStepRow(props: {
               className="gap-1 border-l-2 border-border pl-3"
             >
               <Text textRole="footnote" className="font-t3-medium text-foreground-secondary">
-                {REVISION_AUTHOR_LABELS[revision.author]}
+                {pipelineRevisionAuthorLabel(revision.author)}
               </Text>
               {revision.quote ? (
                 <Text textRole="footnote" className="text-foreground-muted" numberOfLines={2}>

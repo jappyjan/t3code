@@ -10,6 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   availablePipelineActions,
   buildCoordinatorFeedbackMessage,
+  pipelineFeedbackRoutes,
   pipelineFeedingStep,
   pipelineRunStateLabel,
   pipelineRunStatusLabel,
@@ -31,7 +32,12 @@ function makeRun(input: {
     pauseReason: input.pauseReason ?? null,
     currentStepIndex: input.currentStepIndex,
     definition: { name: "Pipeline", steps: NAMES.map((name) => ({ name })) },
-    steps: input.stepStatuses.map((status, index) => ({ index, status })),
+    steps: input.stepStatuses.map((status, index) => ({
+      index,
+      stepId: `s${index}`,
+      status,
+      attempt: status === "pending" ? 0 : 1,
+    })),
   } as unknown as PipelineRun;
 }
 
@@ -209,6 +215,42 @@ describe("revise", () => {
       stepStatuses: ["completed", "completed", "completed"],
     });
     expect([0, 1, 2].map(availablePipelineActions(completed).revise)).toEqual([true, true, true]);
+    const failed = makeRun({
+      status: "paused",
+      pauseReason: "step_failed",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "failed", "pending"],
+    });
+    expect([0, 1, 2].map(availablePipelineActions(failed).revise)).toEqual([true, true, false]);
+    const cancelled = makeRun({
+      status: "cancelled",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "stopped", "pending"],
+    });
+    expect([0, 1, 2].map(availablePipelineActions(cancelled).revise)).toEqual([true, true, false]);
+    // Skipped at its pause gate, so it never ran (attempt 0).
+    const skippedAtGate = makeRun({
+      status: "paused",
+      currentStepIndex: 2,
+      stepStatuses: ["completed", "skipped", "pending"],
+    });
+    const gate = {
+      ...skippedAtGate,
+      steps: skippedAtGate.steps.map((step) => (step.index === 1 ? { ...step, attempt: 0 } : step)),
+    };
+    expect([0, 1].map(availablePipelineActions(gate).revise)).toEqual([true, false]);
+  });
+
+  it("routes feedback to steps that may be revised and disables the working one", () => {
+    const run = makeRun({
+      status: "running",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "running", "pending"],
+    });
+    expect(pipelineFeedbackRoutes(run)).toEqual([
+      { stepIndex: 0, name: "Plan", disabled: false, hint: null },
+      { stepIndex: 1, name: "Implement", disabled: true, hint: "Message this step directly" },
+    ]);
   });
 });
 

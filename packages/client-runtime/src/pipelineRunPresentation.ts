@@ -42,7 +42,8 @@ export function availablePipelineActions(run: PipelineRun): PipelineRunActions {
     revise: (stepIndex) => {
       const step = run.steps[stepIndex];
       if (step === undefined || stepIndex > run.currentStepIndex) return false;
-      if (step.attempt === 0 && step.status === "pending") return false;
+      // A step skipped at its pause gate never ran either.
+      if (step.attempt === 0) return false;
       if (stepIndex < run.currentStepIndex) return true;
       if (step.status === "running") return pipelineStepAwaitsHandoff(run, stepIndex);
       return step.status !== "pending";
@@ -194,12 +195,54 @@ export function pipelineFeedingStep(run: PipelineRun): PipelineFeedingStep | nul
 }
 
 /** Whether the step is the one working right now, so feedback belongs in its own thread. */
-export function pipelineStepIsWorking(run: PipelineRun, stepIndex: number): boolean {
+function pipelineStepIsWorking(run: PipelineRun, stepIndex: number): boolean {
   return (
     run.status === "running" &&
     run.currentStepIndex === stepIndex &&
     run.steps[stepIndex]?.status === "running"
   );
+}
+
+export interface PipelineFeedbackRoute {
+  readonly stepIndex: number;
+  readonly name: string;
+  readonly disabled: boolean;
+  readonly hint: string | null;
+}
+
+/**
+ * The steps feedback can be sent to directly: every step `revise` allows, plus the working step
+ * as a disabled entry that points the user at its own thread.
+ */
+export function pipelineFeedbackRoutes(run: PipelineRun): ReadonlyArray<PipelineFeedbackRoute> {
+  const actions = availablePipelineActions(run);
+  const routes: PipelineFeedbackRoute[] = [];
+  for (const step of run.steps) {
+    const name = stepName(run, step.index);
+    if (actions.revise(step.index)) {
+      routes.push({ stepIndex: step.index, name, disabled: false, hint: null });
+    } else if (pipelineStepIsWorking(run, step.index)) {
+      routes.push({
+        stepIndex: step.index,
+        name,
+        disabled: true,
+        hint: "Message this step directly",
+      });
+    }
+  }
+  return routes;
+}
+
+const REVISION_AUTHOR_LABELS: Record<PipelineRun["revisions"][number]["author"], string> = {
+  user: "You",
+  coordinator: "Coordinator",
+  agent: "Agent",
+};
+
+export function pipelineRevisionAuthorLabel(
+  author: PipelineRun["revisions"][number]["author"],
+): string {
+  return REVISION_AUTHOR_LABELS[author];
 }
 
 export interface CoordinatorFeedbackInput {

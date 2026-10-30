@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { PipelineRun } from "@t3tools/contracts";
 
-import { feedbackStepRoutes, pipelineStepTone, stepRevisions } from "./pipeline-run-view";
+import { pipelineStepTone, stepRevisions } from "./pipeline-run-view";
 
 function makeRun(input: {
   readonly status: PipelineRun["status"];
@@ -25,24 +25,6 @@ describe("pipelineStepTone", () => {
     expect(pipelineStepTone("completed")).toBe("success");
     expect(pipelineStepTone("failed")).toBe("danger");
     expect(pipelineStepTone("skipped")).toBe("muted");
-  });
-});
-
-describe("feedbackStepRoutes", () => {
-  it("offers finished steps and disables the working one with a hint", () => {
-    const run = makeRun({
-      status: "running",
-      currentStepIndex: 1,
-      steps: [
-        { status: "completed", attempt: 1 },
-        { status: "running", attempt: 1 },
-        { status: "pending", attempt: 0 },
-      ],
-    });
-    expect(feedbackStepRoutes(run)).toEqual([
-      { stepIndex: 0, name: "S1", disabled: false, hint: null },
-      { stepIndex: 1, name: "S2", disabled: true, hint: "Message this step directly" },
-    ]);
   });
 });
 
