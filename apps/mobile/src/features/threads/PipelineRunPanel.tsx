@@ -8,7 +8,7 @@ import type {
 } from "@t3tools/contracts";
 import {
   availablePipelineActions,
-  pipelineRunStatusLabel,
+  pipelineRunStateLabel,
   pipelineStepPosition,
   pipelineStepStatusLabel,
   stepName,
@@ -269,7 +269,7 @@ export function PipelineRunPanel(props: {
           </View>
         </View>
         <Text textRole="footnote" className="text-foreground-secondary" numberOfLines={1}>
-          {runProgressLabel(run)} · {currentStepName} · {pipelineRunStatusLabel(run)}
+          {runProgressLabel(run)} · {currentStepName} · {pipelineRunStateLabel(run)}
         </Text>
       </Pressable>
       {run.error ? (

@@ -1,8 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import {
-  pipelineRunStatusLabel,
-  stepName,
-} from "@t3tools/client-runtime/pipeline-run-presentation";
+import { pipelineRunStateLabel, stepName } from "@t3tools/client-runtime/pipeline-run-presentation";
 import { pipelineProgressSegments } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { PipelineRun, PipelineRunSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -83,7 +80,7 @@ export function PipelineCoordinatorPanel(props: { readonly stepThreadRef: Scoped
           onClick={() => openThread(parentRef)}
         >
           Step {currentIndex + 1}/{run.steps.length} · {stepName(run, currentIndex)} ·{" "}
-          {pipelineRunStatusLabel(run)}
+          {pipelineRunStateLabel(run)}
         </button>
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col" data-step-thread={threadId}>

@@ -102,6 +102,31 @@ export function pipelineRunStatusLabel(run: PipelineRun, feedingActive = false):
   }
 }
 
+/** The run's state without a step name, for headers that already show the current step. */
+export function pipelineRunStateLabel(run: Pick<PipelineRun, "status" | "pauseReason">): string {
+  switch (run.status) {
+    case "running":
+      return "Running";
+    case "paused":
+      switch (run.pauseReason) {
+        case "awaiting_handoff":
+          return "No handoff";
+        case "step_failed":
+          return "Failed";
+        case "step_stopped":
+          return "Stopped";
+        default:
+          return "Paused";
+      }
+    case "completed":
+      return "Completed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Unknown";
+  }
+}
+
 export function pipelineStepStatusLabel(step: Pick<PipelineRunStep, "status">): string {
   switch (step.status) {
     case "pending":

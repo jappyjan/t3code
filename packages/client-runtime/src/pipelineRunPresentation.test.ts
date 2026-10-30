@@ -11,6 +11,7 @@ import {
   availablePipelineActions,
   buildCoordinatorFeedbackMessage,
   pipelineFeedingStep,
+  pipelineRunStateLabel,
   pipelineRunStatusLabel,
   pipelineStepAwaitsHandoff,
   pipelineStepBreadcrumbTitle,
@@ -235,6 +236,7 @@ describe("missing handoff", () => {
       stepStatuses: ["completed", "running", "pending"],
     });
     expect(pipelineRunStatusLabel(run)).toBe("Implement ended without handing off");
+    expect(pipelineRunStateLabel(run)).toBe("No handoff");
     expect([0, 1, 2].map((index) => pipelineStepAwaitsHandoff(run, index))).toEqual([
       false,
       true,
