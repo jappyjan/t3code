@@ -1,6 +1,4 @@
 const ROW = "[data-sidebar-row]";
-// A parent whose children always show: ArrowLeft leaves it instead of activating it.
-const FIXED_EXPANDED = "data-sidebar-fixed-expanded";
 const CONTROL = 'button, a[href], input, textarea, select, [contenteditable="true"], [tabindex]';
 const TEXT_ENTRY = 'input, textarea, select, [contenteditable="true"]';
 
@@ -44,6 +42,15 @@ export function installSidebarTree(root: HTMLElement) {
       if (!ownTabIndex.has(control)) ownTabIndex.set(control, control.tabIndex);
       setTabIndex(control, reachable ? ownTabIndex.get(control)! : -1);
     }
+  };
+
+  // A row whose click opens it (a pipeline's parent) expands through its own toggle instead.
+  const toggle = (row: HTMLElement) => {
+    const id = row.dataset.sidebarRow;
+    const control = id
+      ? root.querySelector<HTMLElement>(`[data-sidebar-toggle-for="${CSS.escape(id)}"]`)
+      : null;
+    (control ?? row).click();
   };
 
   const setTabStop = (row: HTMLElement) => {
@@ -192,16 +199,15 @@ export function installSidebarTree(root: HTMLElement) {
         target = rows.at(-1);
         break;
       case "ArrowRight":
-        if (row.getAttribute("aria-expanded") === "false") row.click();
+        if (row.getAttribute("aria-expanded") === "false") toggle(row);
         else
           target = rows.find(
             (candidate) => candidate.dataset.sidebarParent === row.dataset.sidebarRow,
           );
         break;
       case "ArrowLeft":
-        if (row.getAttribute("aria-expanded") === "true" && !row.hasAttribute(FIXED_EXPANDED)) {
-          row.click();
-        } else
+        if (row.getAttribute("aria-expanded") === "true") toggle(row);
+        else
           target = rows.find(
             (candidate) => candidate.dataset.sidebarRow === row.dataset.sidebarParent,
           );
