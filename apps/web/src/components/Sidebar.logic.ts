@@ -1020,10 +1020,10 @@ export function resolveWindowTitleThreadStatus(thread: SidebarThreadStatusInput)
 
 /** What a pipeline's parent row shows for its steps and live run; see `mergePipelineParentStatus`. */
 export function resolveSidebarPipelineStepStatus(
-  steps: ReadonlyArray<SidebarThreadStatusInput>,
-  run?: Pick<PipelineRunSummary, "status"> | null,
+  steps: ReadonlyArray<SidebarThreadStatusInput & PipelineNestable>,
+  run?: Pick<PipelineRunSummary, "status" | "currentStepIndex" | "steps"> | null,
 ): PipelineStepStatus | null {
-  return aggregatePipelineStepStatus(steps.map(resolveSidebarThreadStatus), run);
+  return aggregatePipelineStepStatus(steps, resolveSidebarThreadStatus, run);
 }
 
 /** One segment of a pipeline parent's progress bar, flat so row props compare by value. */
