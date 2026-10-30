@@ -1053,7 +1053,7 @@ it.effect.each([
 );
 
 it.effect(
-  "pipeline tools: a read-only client lists and checks runs but cannot start, continue or cancel",
+  "pipeline tools: a read-only client lists and checks runs but cannot start, continue, revise or cancel",
   () =>
     Effect.gen(function* () {
       const server = yield* McpServer.McpServer;
@@ -1078,6 +1078,7 @@ it.effect(
           { pipeline: "Feature delivery", prompt: "Add dark mode", projectId: "project-a" },
         ],
         ["continue_pipeline", { runId, stepIndex: 0 }],
+        ["revise_pipeline_step", { runId, stepIndex: 0, feedback: "Cover dark mode" }],
         ["cancel_pipeline", { runId }],
       ] as const) {
         expect(declaredFailure(yield* call("read-only", name, args)), name).toMatchObject({
@@ -1152,6 +1153,7 @@ const pipelineRun = {
   pauseReason: null,
   error: null,
   currentStepIndex: 0,
+  revisions: [],
   steps: [],
   createdAt: "2026-10-28T10:00:00.000Z",
   updatedAt: "2026-10-28T10:00:00.000Z",

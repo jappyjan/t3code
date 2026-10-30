@@ -42,6 +42,8 @@ import { isThreadEnvironmentLocked, resolveDraftHeroState } from "./ChatView.log
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
+import { hasUnseenCompletion, resolveThreadLastVisitedAt } from "./Sidebar.logic";
+import { useUiStateStore } from "../uiStateStore";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
@@ -126,6 +128,10 @@ import { useAtomValue } from "@effect/atom-react";
 import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { WorkspaceMutationIdContext } from "./chat/ChatMarkdownMedia";
+import {
+  openPipelineCoordinator,
+  subscribeEmbeddedComposerFocus,
+} from "./chat/openPipelineCoordinator";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   assistantCitationFromLocation,
@@ -284,6 +290,7 @@ import { useCitedHistory } from "./chat/citationProcedure";
 import type { MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ThreadTimeline } from "./chat/ThreadTimeline";
 import { NativeChildWorkDialog } from "./chat/NativeChildWorkDialog";
+import { PipelineMessageFeedbackDialog } from "./chat/PipelineMessageFeedbackDialog";
 import { PipelineRunView } from "./chat/PipelineRunView";
 import { pipelineStepBreadcrumbTitle } from "@t3tools/client-runtime/pipeline-run-presentation";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
@@ -408,7 +415,10 @@ type ChatViewProps =
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
-      /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
+      /**
+       * A side chat or pipeline coordinator in another thread's right panel; that thread keeps
+       * the keyboard and workspace UI.
+       */
       embedded?: SideChatParentPanel;
       routeKind: "server";
       draftId?: never;
@@ -1053,6 +1063,27 @@ export default function ChatView(props: ChatViewProps) {
     return labels;
   })();
   const activeThreadRef = useActiveThreadRef(activeThread);
+  const coordinatorShell = useQuietThreadShell(
+    pipelineStepId !== null && !embedded ? pipelineParentThreadRef : null,
+  );
+  const coordinatorLocalVisitedAt = useUiStateStore((state) =>
+    pipelineParentThreadRef === null
+      ? undefined
+      : state.threadLastVisitedAtById[scopedThreadKey(pipelineParentThreadRef)],
+  );
+  const coordinatorUnread =
+    coordinatorShell !== null &&
+    hasUnseenCompletion({
+      ...coordinatorShell,
+      lastVisitedAt: resolveThreadLastVisitedAt(
+        coordinatorShell.lastVisitedAt,
+        coordinatorLocalVisitedAt,
+      ),
+    });
+  const openCoordinator = useStableCallback(() => {
+    if (activeThreadRef) openPipelineCoordinator(activeThreadRef);
+  });
+  const [feedbackQuote, setFeedbackQuote] = useState<string | null>(null);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
     activeThreadRef?.environmentId ?? null,
@@ -1101,16 +1132,18 @@ export default function ChatView(props: ChatViewProps) {
   if (anchorRunSettled) {
     setTimelineAnchor({ threadKey: activeThreadKey, messageId: null });
   }
+  // An embedded copy has no right panel; the thread's own page keeps that state.
+  const rightPanelThreadRef = embedded ? null : activeThreadRef;
   const activeRightPanelKind = useRightPanelStore((state) =>
-    selectActiveRightPanel(state.byThreadKey, activeThreadRef),
+    selectActiveRightPanel(state.byThreadKey, rightPanelThreadRef),
   );
   const diffOpen = activeRightPanelKind === "diff";
   const rightPanelState = useRightPanelStore((state) =>
-    selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
+    selectThreadRightPanelState(state.byThreadKey, rightPanelThreadRef),
   );
   const shouldUsePlanSidebarSheet = prefersPlanSidebarSheet && rightPanelState.maximized !== true;
   const activeRightPanelSurface = useRightPanelStore((state) =>
-    selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
+    selectActiveRightPanelSurface(state.byThreadKey, rightPanelThreadRef),
   );
   const activePreviewState = useThreadPreviewState(activeThreadRef);
   const activePreviewServerEpoch = activePreviewState.serverEpoch;
@@ -1792,8 +1825,7 @@ export default function ChatView(props: ChatViewProps) {
   const isGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd) ?? true;
   // Provider-native subagents cannot take messages; approvals and questions go to the top-level parent.
   const showProviderSubagentBar = isProviderSubagent;
-  // A pipeline's parent thread is read-only: its body is the run view, not a conversation.
-  const composerMounted = !showProviderSubagentBar && !isPipelineParent;
+  const composerMounted = !showProviderSubagentBar;
   const providerSubagentModels = selectedProviderEntry?.models ?? EMPTY_PROVIDER_MODELS;
   // Providers can report dated model ids or aliases.
   const providerSubagentModelSlug = selectedProviderEntry
@@ -2198,6 +2230,24 @@ export default function ChatView(props: ChatViewProps) {
     isCoarsePointer ? ignoreComposerFocus : focusComposerStable,
   );
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- an embedded chat focuses its composer only when the user opens its tab
+  useEffect(() => {
+    // Only the coordinator tab answers its open request; side chats are never pipeline parents.
+    if (!activeThread?.id || !embedded || !isPipelineParent) return;
+    let frame: number | null = null;
+    const unsubscribe = subscribeEmbeddedComposerFocus(() => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        focusComposerStable();
+      });
+    });
+    return () => {
+      unsubscribe();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [activeThread?.id, embedded, focusComposerStable, isPipelineParent]);
+
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window focus listener that refocuses the composer after the window regains focus on a fine pointer
   useEffect(() => {
     if (
@@ -2435,6 +2485,7 @@ export default function ChatView(props: ChatViewProps) {
     toggleThreadPanelStable,
     shortcuts: rightPanelShortcuts,
   } = useRightPanelActions({
+    embedded,
     activeThreadRef,
     activeProject,
     activeRightPanelSurface,
@@ -3349,6 +3400,7 @@ export default function ChatView(props: ChatViewProps) {
     <div
       ref={setWorkspaceLayoutElement}
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+      data-embedded-chat={embedded ? "true" : undefined}
     >
       {embedded ? null : (
         <DeviceSetupDialogHost
@@ -3400,6 +3452,8 @@ export default function ChatView(props: ChatViewProps) {
               activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
               activeProject={activeProject ?? null}
               parentThreadLink={headerParentThreadLink}
+              onOpenCoordinator={coordinatorShell === null ? undefined : openCoordinator}
+              coordinatorUnread={coordinatorUnread}
               onOpenThread={onOpenRelatedThreadStable}
               rightPanelOpen={inlineRightPanelOwnsTitleBar}
               onNewThreadInProject={handleNewThreadInActiveProjectStable}
@@ -3454,13 +3508,14 @@ export default function ChatView(props: ChatViewProps) {
               className="relative flex min-h-0 flex-1 flex-col bg-background"
             >
               <WorkspaceMutationIdContext value={workspaceMutationId}>
-                {isPipelineParent && threadPipeline !== null ? (
+                {isPipelineParent && !embedded && threadPipeline !== null ? (
                   <PipelineRunView
                     environmentId={activeThread.environmentId}
                     runId={threadPipeline.runId}
                     cwd={gitCwd ?? undefined}
                   />
-                ) : (
+                ) : null}
+                {
                   <ThreadTimeline
                     pendingApprovals={pendingApprovals}
                     heldApprovalRequestIds={heldApprovalRequestIds}
@@ -3542,6 +3597,9 @@ export default function ChatView(props: ChatViewProps) {
                     onSendAppMessage={sendAppMessageStable}
                     isRevertingCheckpoint={isRevertingCheckpoint}
                     onImageExpand={onExpandTimelineImageStable}
+                    {...(pipelineStepId !== null && !embedded && pipelineStepRun !== undefined
+                      ? { onSendFeedback: setFeedbackQuote }
+                      : {})}
                     onFileOpen={openFileAttachmentStable}
                     onFileDownload={downloadFileAttachmentStable}
                     markdownCwd={gitCwd ?? undefined}
@@ -3564,7 +3622,7 @@ export default function ChatView(props: ChatViewProps) {
                       ? {}
                       : { historyControls: threadHistoryControls })}
                   />
-                )}
+                }
               </WorkspaceMutationIdContext>
 
               {showScrollToBottom && !isThreadFindActive && (
@@ -4084,6 +4142,16 @@ export default function ChatView(props: ChatViewProps) {
         </ChatRightPanel>
       ) : null}
 
+      {feedbackQuote !== null && pipelineStepRun !== undefined && pipelineStepId !== null ? (
+        <PipelineMessageFeedbackDialog
+          environmentId={environmentId}
+          run={pipelineStepRun}
+          sourceStepId={pipelineStepId}
+          stepThreadRef={routeThreadRef}
+          quote={feedbackQuote}
+          onClose={() => setFeedbackQuote(null)}
+        />
+      ) : null}
       <RevertConfirmHost
         threadKey={routeThreadKey}
         checkpoints={serverProjection?.checkpoints}
