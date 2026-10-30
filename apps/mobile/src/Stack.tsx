@@ -71,6 +71,8 @@ import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSh
 import { ThreadAgentsSheet } from "./features/threads/ThreadAgentsSheet";
 import { LinkedThreadSheet } from "./features/threads/LinkedThreadSheet";
 import { ThreadGuestShareSheet } from "./features/threads/ThreadGuestShareSheet";
+import { PipelineCoordinatorRouteScreen } from "./features/threads/PipelineCoordinatorSheet";
+import { PipelineFeedbackSheet } from "./features/threads/PipelineFeedbackSheet";
 import { ThreadBackgroundWorkSheet } from "./features/threads/ThreadBackgroundWorkSheet";
 import { ThreadQueueSheet } from "./features/threads/ThreadQueueControl";
 import {
@@ -851,6 +853,23 @@ const RootStackConfig = createWorkspaceStackNavigator({
     ThreadGuestShare: createNativeStackScreen({
       screen: ThreadGuestShareSheet,
       options: sheetRoute({ detent: 0.5 }),
+    }),
+    PipelineCoordinator: createNativeStackScreen({
+      screen: PipelineCoordinatorRouteScreen,
+      options: {
+        ...HORIZONTAL_FORM_SHEET_OPTIONS,
+        headerShown: false,
+        sheetAllowedDetents: formSheetDetents(0.9),
+        sheetGrabberVisible: true,
+      },
+    }),
+    PipelineFeedback: createNativeStackScreen({
+      screen: PipelineFeedbackSheet,
+      options: {
+        ...HORIZONTAL_FORM_SHEET_OPTIONS,
+        sheetAllowedDetents: formSheetDetents(0.7),
+        sheetGrabberVisible: true,
+      },
     }),
     GitOverview: createNativeStackScreen({
       screen: GitOverviewSheet,

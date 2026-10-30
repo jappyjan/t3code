@@ -314,15 +314,6 @@ export class OrchestratorSubagentThreadReadOnlyError extends Schema.TaggedError<
   }
 }
 
-export class OrchestratorPipelineThreadReadOnlyError extends Schema.TaggedError<OrchestratorPipelineThreadReadOnlyError>()(
-  "OrchestratorPipelineThreadReadOnlyError",
-  { commandId: CommandId, threadId: ThreadId },
-) {
-  override get message(): string {
-    return "This is a pipeline thread; open a step's thread to talk to its agent.";
-  }
-}
-
 export class OrchestratorThreadAboveModeLimitError extends Schema.TaggedError<OrchestratorThreadAboveModeLimitError>()(
   "OrchestratorThreadAboveModeLimitError",
   {
@@ -410,7 +401,6 @@ export const OrchestratorV2Error = Schema.Union([
   OrchestratorCommandPreviouslyRejectedError,
   OrchestratorCommandIdConflictError,
   OrchestratorSubagentThreadReadOnlyError,
-  OrchestratorPipelineThreadReadOnlyError,
   OrchestratorThreadAboveModeLimitError,
   OrchestratorProviderSelectionBusyError,
   OrchestratorRuntimeModeAboveCeilingError,
@@ -7709,8 +7699,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       (yield* projectionStore.getMessageCount(command.threadId).pipe(mapDispatchError(command))) ===
         0 &&
       !hasTitleSetBeforeFirstMessage(projection.thread, command.titleSeed);
+    // A pipeline thread's title names the run, so the coordinator chat never retitles it.
     if (
       !isNativeMaintenanceCommand(command) &&
+      projection.thread.pipeline === undefined &&
       (seedsUntitledThread ||
         (command.createdBy === "user" &&
           // A draft opened by `/compact` is titled after it, so only a chosen title stays here.
@@ -16424,13 +16416,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "message.dispatch": {
         const thread = yield* refuseNativeSubagentMessage(command);
-        // A pipeline's parent thread is a runless progress view; only step threads take messages.
-        if (thread.pipeline !== undefined && thread.pipeline.stepId === null) {
-          return yield* new OrchestratorPipelineThreadReadOnlyError({
-            commandId: command.commandId,
-            threadId: command.threadId,
-          });
-        }
         const guestSend =
           command.guestMessageId === undefined
             ? undefined

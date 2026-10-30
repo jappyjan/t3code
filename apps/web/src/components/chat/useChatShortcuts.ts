@@ -11,6 +11,7 @@ import { isInSideChatPane } from "../../lib/sideChatPane";
 import { getTerminalFocusOwner, type TerminalFocusOwner } from "../../lib/terminalFocus";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { BranchToolbarHandle } from "../BranchToolbar";
+import { isFromEmbeddedChat } from "./backgroundThread";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
 import { composerShortcutCommands } from "./composerShortcuts";
 
@@ -53,6 +54,16 @@ interface ChatShortcutsInput {
   readonly fallback: (command: KeybindingCommand) => ChatShortcutHandler | undefined;
 }
 
+/** Commands aimed at the focused chat's composer or thread; an embedded chat's keys skip them. */
+function targetsFocusedChat(command: KeybindingCommand): boolean {
+  return (
+    command.startsWith("composer.") ||
+    command.startsWith("thread.") ||
+    command === "modelPicker.toggle" ||
+    command === "chat.find"
+  );
+}
+
 /**
  * The chat's window keyboard shortcuts, plus Escape closing thread find.
  * Listeners attach once; the effect events read the latest input, so handlers
@@ -80,9 +91,11 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const terminalFocusOwner = getTerminalFocusOwner();
     if (event.defaultPrevented && terminalFocusOwner === null) return;
     const shortcutContext = input.getShortcutContext(event.target);
+    const fromEmbeddedChat = isFromEmbeddedChat(event);
 
     if (
       !inSideChatPane &&
+      !fromEmbeddedChat &&
       !shortcutContext.terminalFocus &&
       !shortcutContext.modelPickerOpen &&
       shouldTypeToFocusComposer(event) &&
@@ -96,7 +109,13 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const command = resolveChatShortcutCommand(event, keybindings, input.scriptKeybindings, {
       context: shortcutContext,
     });
-    if (!command || (inSideChatPane && !SIDE_CHAT_PANE_COMMANDS.has(command))) return;
+    if (
+      !command ||
+      (inSideChatPane && !SIDE_CHAT_PANE_COMMANDS.has(command)) ||
+      (fromEmbeddedChat && targetsFocusedChat(command))
+    ) {
+      return;
+    }
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??
@@ -120,7 +139,9 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.isComposing ||
       event.keyCode === 229 ||
       isCommandPaletteOpen() ||
-      isInSideChatPane(event.target) !== embedded
+      isInSideChatPane(event.target) !== embedded ||
+      // The page's own chat leaves keys pressed in an embedded chat to it.
+      (!embedded && isFromEmbeddedChat(event))
     )
       return;
     const context = input.getShortcutContext(event.target);

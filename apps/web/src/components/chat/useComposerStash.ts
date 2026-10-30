@@ -67,7 +67,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { BackgroundThreadContext, HiddenThreadContext } from "./backgroundThread";
+import {
+  BackgroundThreadContext,
+  EmbeddedChatContext,
+  HiddenThreadContext,
+  isFromEmbeddedChat,
+} from "./backgroundThread";
 import { isInSideChatPane } from "../../lib/sideChatPane";
 import { useStableCallback } from "../../hooks/useStableCallback";
 
@@ -778,6 +783,7 @@ export function useComposerStash(input: {
   // dialog even when a focused widget (the model picker search) stops the key.
   const embedded = use(BackgroundThreadContext);
   const hiddenThread = use(HiddenThreadContext);
+  const embeddedChat = use(EmbeddedChatContext);
   const readShortcutContext = useStableCallback(() => ({
     terminalOpen: Boolean(
       selectThreadTerminalUiState(
@@ -794,11 +800,17 @@ export function useComposerStash(input: {
       {
         capture: true,
         context: readShortcutContext,
-        // A side chat's composer takes the keys pressed in its pane; the main one takes the rest.
-        when: (event) => isInSideChatPane(event.target) === embedded,
+        // A side chat's composer takes the keys pressed in its pane, the pipeline coordinator's
+        // the keys pressed in it (both are marked embedded); the main one takes the rest.
+        when: (event) => {
+          const inSideChatPane = isInSideChatPane(event.target);
+          if (embeddedChat) return !inSideChatPane && isFromEmbeddedChat(event);
+          if (embedded) return inSideChatPane;
+          return !inSideChatPane && !isFromEmbeddedChat(event);
+        },
       },
     );
-  }, [embedded, hiddenThread, handleStashShortcut, readShortcutContext]);
+  }, [embedded, hiddenThread, embeddedChat, handleStashShortcut, readShortcutContext]);
 
   return {
     stashQueue,

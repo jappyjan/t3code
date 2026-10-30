@@ -55,6 +55,7 @@ import {
 import type * as TaskFolders from "../workspace/TaskFolders.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
+import { pipelineCoordinatorNote } from "../pipelines/pipelineCoordinator.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
 import { canForkBusySourceNatively, isActiveRun } from "./CommandPolicy.ts";
 import { contextBoundaryOrdinal, isScheduledFreshRun } from "./contextBoundary.ts";
@@ -1388,6 +1389,14 @@ export const layer: Layer.Layer<
       ]
         .filter((part) => part !== "")
         .join("\n\n");
+      // The coordinator's role is sent once per provider thread, ahead of the user's first message.
+      const coordinatorNote = pipelineCoordinatorNote({
+        pipeline: projection.thread.pipeline,
+        nativeCommand: Boolean(goalCommand) || isCompactionCommandMessage(providerMessage),
+        providerThreadId: providerThread.id,
+        activeAttemptId: run.activeAttemptId,
+        providerTurns: projection.providerTurns,
+      });
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );
@@ -1537,7 +1546,9 @@ export const layer: Layer.Layer<
             return handoffBudget({
               tokenCap,
               modelContextWindow,
-              userText: restartNote === "" ? userText : `${restartNote}\n\n${userText}`,
+              userText: [coordinatorNote, restartNote, userText]
+                .filter((part) => part !== "")
+                .join("\n\n"),
               attachments: providerMessage.attachments,
               providerThread: budgetProviderThread,
               nativeContextEstimate:
@@ -2252,6 +2263,7 @@ export const layer: Layer.Layer<
         retryHandoff.attachments.length > 0 ||
         sideChatHandoff !== undefined ||
         restartNote !== "" ||
+        coordinatorNote !== "" ||
         noteContinuation;
       // Pending context turns the resume into a prompted turn, which needs no native resume.
       if (
@@ -2490,7 +2502,7 @@ export const layer: Layer.Layer<
             ),
             ...(sideChatContext === "" || sideChatHandoff === undefined ? [] : [sideChatHandoff]),
           ];
-          const context = [delivery.context, sideChatContext, restartNote]
+          const context = [coordinatorNote, delivery.context, sideChatContext, restartNote]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;

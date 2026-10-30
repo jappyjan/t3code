@@ -239,6 +239,7 @@ describe("command permissions", () => {
     WS_METHODS.workflowsCancel,
     WS_METHODS.pipelinesUpsert,
     WS_METHODS.pipelineRunsCancel,
+    WS_METHODS.pipelineRunsRevise,
   ])("uses the target grant for both availability and execution of %s", (method) =>
     Effect.gen(function* () {
       const registry = yield* setup;

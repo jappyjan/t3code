@@ -1,9 +1,9 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import { useEffect, useState } from "react";
 import { expect, it } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
-import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import { isPreviewFocused } from "~/lib/previewFocus";
 import { surfaceShortcutKey } from "~/lib/surfaceShortcutKey";
 import { render } from "../../../test/render";
@@ -19,6 +19,11 @@ const shortcutContext = {
   isDesktop: false,
   modelPickerOpen: false,
 };
+
+const keybindings = compileResolvedKeybindingsConfig([
+  { key: "ctrl+b", command: "rightPanel.toggle" },
+  { key: "ctrl+.", command: "thread.stop" },
+]);
 
 const focusOnMount = (element: HTMLElement | null) => element?.focus();
 
@@ -60,10 +65,12 @@ function Chat(props: {
   finds?: string[];
   scriptKeybindings?: ResolvedKeybindingsConfig;
   scriptsRan?: string[];
+  embeddedChatFocused?: boolean;
+  commandsRun?: string[];
 }) {
   useChatShortcuts({
     enabled: true,
-    keybindings: [ctrl("f", "chat.find")],
+    keybindings: [...keybindings, ctrl("f", "chat.find")],
     scriptKeybindings: props.scriptKeybindings ?? [],
     getShortcutContext: () => shortcutContext,
     threadFindActive: false,
@@ -78,10 +85,21 @@ function Chat(props: {
     },
     branchToolbarRef: { current: null },
     closeThreadFind: () => {},
-    commands: { "chat.find": () => void props.finds?.push("main") },
+    commands: {
+      "chat.find": () => void props.finds?.push("main"),
+      "rightPanel.toggle": () => void props.commandsRun?.push("rightPanel.toggle"),
+      "thread.stop": () => void props.commandsRun?.push("thread.stop"),
+    },
     fallback: (command) =>
       props.scriptsRan ? () => void props.scriptsRan?.push(command) : undefined,
   });
+  if (props.embeddedChatFocused) {
+    return (
+      <div data-embedded-chat="true">
+        <div ref={focusOnMount} tabIndex={0} aria-label="Embedded chat" />
+      </div>
+    );
+  }
   return props.launcher ? <Launcher {...props.launcher} /> : null;
 }
 
@@ -395,6 +413,32 @@ it("leaves keys to a focused video player with controls", async () => {
   (document.activeElement as HTMLElement).blur();
   await userEvent.keyboard("a");
   expect(composerKeys).toEqual(["a"]);
+});
+
+it("leaves typing and the focused chat's commands to an embedded chat", async () => {
+  const composerKeys: string[] = [];
+  const commandsRun: string[] = [];
+  await using _screen = await render(
+    <Chat composerKeys={composerKeys} commandsRun={commandsRun} embeddedChatFocused />,
+    options,
+  );
+
+  await userEvent.keyboard("a{Control>}.{/Control}");
+
+  expect(composerKeys).toEqual([]);
+  expect(commandsRun).toEqual([]);
+});
+
+it("still runs page commands such as the right panel toggle from an embedded chat", async () => {
+  const commandsRun: string[] = [];
+  await using _screen = await render(
+    <Chat composerKeys={[]} commandsRun={commandsRun} embeddedChatFocused />,
+    options,
+  );
+
+  await userEvent.keyboard("{Control>}b{/Control}");
+
+  expect(commandsRun).toEqual(["rightPanel.toggle"]);
 });
 
 it("leaves project-script shortcuts alone inside a keybinding capture field", async () => {

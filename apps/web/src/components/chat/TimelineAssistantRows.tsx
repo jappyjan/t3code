@@ -6,9 +6,10 @@ import { T, useGT, useMessages } from "gt-react";
 import { use, useState } from "react";
 import { type ChatMessage } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
-import { GitForkIcon, ReplyIcon } from "lucide-react";
+import { GitForkIcon, MessageSquareIcon, ReplyIcon } from "lucide-react";
 import { captureAssistantMessageOpening } from "~/lib/assistantTextSelection";
 import { responseContextRecord } from "~/lib/composerContextRecords";
+import { feedbackQuoteExcerpt } from "@t3tools/client-runtime/pipeline-run-presentation";
 import { Button } from "../ui/button";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { HtmlRenderFrame } from "./HtmlRenderFrame";
@@ -237,6 +238,9 @@ function AssistantMessageMeta({
       {!message.streaming && projectedItem ? (
         <AssistantReplyButton message={message} itemId={projectedItem.sourceItemId} />
       ) : null}
+      {ctx.onSendFeedback && !message.streaming && (message.text ?? "").trim() !== "" ? (
+        <AssistantFeedbackButton text={message.text ?? ""} onSendFeedback={ctx.onSendFeedback} />
+      ) : null}
       {!message.streaming && (
         <SharedTooltipTrigger
           render={<p className="text-muted-foreground text-xs tabular-nums" />}
@@ -303,6 +307,33 @@ function AssistantStatusBadge({ status }: { status: string }) {
     <span className="rounded-full border border-border/70 px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
       {status}
     </span>
+  );
+}
+
+function AssistantFeedbackButton({
+  text,
+  onSendFeedback,
+}: {
+  text: string;
+  onSendFeedback: (quote: string) => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            aria-label="Send feedback"
+            onClick={() => onSendFeedback(feedbackQuoteExcerpt(text))}
+          />
+        }
+      >
+        <MessageSquareIcon className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">Send feedback</TooltipPopup>
+    </Tooltip>
   );
 }
 
