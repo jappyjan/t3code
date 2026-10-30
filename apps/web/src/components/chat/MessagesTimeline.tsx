@@ -261,6 +261,7 @@ interface MessagesTimelineProps {
     readonly open?: () => void;
   } | null;
   workflowOpening?: WorkflowOpening | null;
+  onSendFeedback?: (quote: string) => void;
   onForkFromRun?: (input: {
     readonly sourceThreadId: ThreadId;
     readonly runId: RunId;
@@ -364,6 +365,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   parentThreadLink = null,
   workflowOpening = null,
   onForkFromRun,
+  onSendFeedback,
   supportsConversationRollback,
   threadStartCheckpointReady = false,
   availableRevertTurnCounts,
@@ -1043,6 +1045,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     turnItemSource,
     workflowOpening,
     onForkFromRun,
+    onSendFeedback,
     onToggleTurnFold,
     onToggleAttemptFold,
     onToggleWorkGroup,
@@ -1306,6 +1309,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
                 viewport={timelineViewportElement}
                 threadRef={citationThreadRef}
                 onCite={onCiteAssistantText}
+                onSendFeedback={onSendFeedback}
               />
             ) : null}
             <LegendList<MessagesTimelineRow>

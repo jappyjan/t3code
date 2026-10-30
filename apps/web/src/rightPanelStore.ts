@@ -21,6 +21,7 @@ const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "pull-requests",
+  "pipeline-coordinator",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -74,7 +75,8 @@ export type RightPanelSurface =
       url?: string;
       detailTab?: PullRequestDetailTab;
     }
-  | { id: "pull-requests"; kind: "pull-requests" };
+  | { id: "pull-requests"; kind: "pull-requests" }
+  | { id: "pipeline-coordinator"; kind: "pipeline-coordinator" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 14;
@@ -214,6 +216,8 @@ const singletonSurface = (
       return { id: "pull-requests", kind };
     case "device":
       return { id: "device", kind };
+    case "pipeline-coordinator":
+      return { id: "pipeline-coordinator", kind };
   }
 };
 

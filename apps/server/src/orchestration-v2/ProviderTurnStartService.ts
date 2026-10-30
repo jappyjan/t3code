@@ -33,6 +33,7 @@ import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
 import * as EventSink from "./EventSink.ts";
+import { pipelineCoordinatorNote } from "../pipelines/pipelineCoordinator.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
 import {
   DEFAULT_HANDOFF_TOKEN_CAP,
@@ -798,6 +799,14 @@ export const layer: Layer.Layer<
         restartCancelledWork.length === 0
           ? ""
           : restartCancelledBackgroundWorkNote(restartCancelledWork);
+      // The coordinator's role is sent once per provider thread, ahead of the user's first message.
+      const coordinatorNote = pipelineCoordinatorNote({
+        pipeline: projection.thread.pipeline,
+        nativeCommand: Boolean(goalCommand) || isCompactionCommandMessage(message),
+        providerThreadId: providerThread.id,
+        activeAttemptId: run.activeAttemptId,
+        providerTurns: projection.providerTurns,
+      });
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );
@@ -943,7 +952,9 @@ export const layer: Layer.Layer<
             return handoffBudget({
               tokenCap,
               modelContextWindow,
-              userText: restartNote === "" ? userText : `${restartNote}\n\n${userText}`,
+              userText: [coordinatorNote, restartNote, userText]
+                .filter((part) => part !== "")
+                .join("\n\n"),
               attachments: message.attachments,
               providerThread: budgetProviderThread,
               nativeContextEstimate:
@@ -1419,7 +1430,7 @@ export const layer: Layer.Layer<
           });
           if (!(yield* isCurrentAttemptInStatus("running"))) return;
           const start = compact ? session.compactThread! : session.startTurn;
-          const context = [delivery.context, restartNote]
+          const context = [coordinatorNote, delivery.context, restartNote]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
@@ -1472,6 +1483,7 @@ export const layer: Layer.Layer<
         effectiveHandoffs.length === 0 &&
         retryHandoff.length === 0 &&
         restartNote === "" &&
+        coordinatorNote === "" &&
         !noteContinuation
           ? session
           : makeDeliverySession(session, startWithHandoffs);

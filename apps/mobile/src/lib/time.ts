@@ -16,3 +16,16 @@ export function relativeTime(input: string): string {
   const deltaDays = Math.floor(deltaHours / 24);
   return `${deltaDays}d`;
 }
+
+const MESSAGE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+export function formatMessageTime(input: string): string {
+  const timestamp = Date.parse(input);
+  if (Number.isNaN(timestamp)) {
+    return "";
+  }
+  return MESSAGE_TIME_FORMATTER.format(timestamp);
+}

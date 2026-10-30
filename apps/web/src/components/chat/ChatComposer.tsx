@@ -3430,7 +3430,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               ? "Choose a project above to start a thread"
                               : showProviderUnavailable
                                 ? "Enable a provider in Settings to send a message"
-                                : DEFAULT_COMPOSER_PLACEHOLDER
+                                : activeThread?.pipeline?.stepId === null
+                                  ? "Ask the coordinator to check, fix or steer this run…"
+                                  : DEFAULT_COMPOSER_PLACEHOLDER
                     }
                     disabled={
                       projectSelectionRequired ||

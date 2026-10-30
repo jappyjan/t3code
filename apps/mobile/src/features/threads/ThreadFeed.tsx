@@ -146,6 +146,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { FONT_FAMILIES } from "../../lib/fontFamilies";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import { formatMessageTime } from "../../lib/time";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { downloadAndShareAttachment } from "../../lib/attachmentDownload";
 import { hasWideMarkdownBlock } from "../../lib/wideMarkdownBlocks";
@@ -286,18 +287,6 @@ const WIDE_MARKDOWN_BLOCK_OPTIONS = {
   includeOrderedLists: Platform.OS === "android",
 } as const;
 
-const MESSAGE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "numeric",
-  minute: "2-digit",
-});
-function formatMessageTime(input: string): string {
-  const timestamp = Date.parse(input);
-  if (Number.isNaN(timestamp)) {
-    return "";
-  }
-  return MESSAGE_TIME_FORMATTER.format(timestamp);
-}
-
 const TURN_FOLD_HEIGHT = 42;
 const FEED_PADDING_TOP = 12;
 // Rows re-measure within a commit or two of a width change. LegendList also defers imperative
@@ -371,6 +360,8 @@ export interface ThreadFeedProps {
   readonly onEndFollowEnabledChange?: (enabled: boolean) => void;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   readonly onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
+  /** Set on pipeline step threads: assistant messages get a Send feedback button. */
+  readonly onSendFeedback?: (messageText: string) => void;
 }
 
 const THREAD_SHELL_WAIT_MS = 2_000;
@@ -406,6 +397,26 @@ function UserMessageCopyButton(props: {
     >
       {button}
     </Menu>
+  );
+}
+
+function AssistantFeedbackButton(props: {
+  readonly text: string;
+  readonly iconColor: ColorValue;
+  readonly onSendFeedback: (messageText: string) => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Send feedback"
+      onPress={() => {
+        void Haptics.selectionAsync();
+        props.onSendFeedback(props.text);
+      }}
+      className="h-7 w-7 items-center justify-center"
+    >
+      <SymbolView name="text.bubble" size={13} tintColor={props.iconColor} type="monochrome" />
+    </Pressable>
   );
 }
 
@@ -1566,6 +1577,7 @@ function renderFeedEntry(
     ThreadFeedProps,
     | "environmentId"
     | "onUseArtifactTemplate"
+    | "onSendFeedback"
     | "skills"
     | "dispatchingMessageId"
     | "onEditPendingMessage"
@@ -2199,6 +2211,13 @@ function renderFeedEntry(
                 iconColor={iconSubtleColor}
                 projectedItem={message.projectedItem}
                 sourceTitle={props.threadTitle}
+              />
+            ) : null}
+            {props.onSendFeedback ? (
+              <AssistantFeedbackButton
+                text={renderedText}
+                iconColor={iconSubtleColor}
+                onSendFeedback={props.onSendFeedback}
               />
             ) : null}
             <Text className="font-t3-medium text-xs tabular-nums text-foreground-secondary">
@@ -3494,6 +3513,7 @@ export const ThreadFeed = memo(function ThreadFeed({
             dispatchingMessageId: props.dispatchingMessageId,
             onEditPendingMessage: props.onEditPendingMessage,
             onUseArtifactTemplate: props.onUseArtifactTemplate,
+            onSendFeedback: props.onSendFeedback,
             threadId: props.threadId,
             copiedRowId,
             expandedWorkRows,
