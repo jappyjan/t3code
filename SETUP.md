@@ -2,7 +2,7 @@
 
 Set up this machine to run my T3 Code fork desktop app (the same build my MacBook Air runs), with
 a daily scheduled task that keeps it updated. This branch (`fork-tools`) holds the files; the app
-is built from `feat/pipelines`. Work locally on this machine.
+is built from `main` (upstream plus the fork's feature branches, rebuilt by the MacBook Air). Work locally on this machine.
 
 Rules:
 
@@ -37,7 +37,7 @@ Missing tools:
 
 ## 2. Install (after my OK)
 
-1. In `~/code/t3dotgg/t3code`: check out `feat/pipelines`, add `upstream` =
+1. In `~/code/t3dotgg/t3code`: check out `main`, add `upstream` =
    `https://github.com/pingdotgg/t3code.git`, and `cp .env.example .env` (turns on T3 Connect).
 2. Copy the tools from this branch:
    ```bash
