@@ -8,7 +8,7 @@ import { tryOpenExternalUrl } from "../lib/openExternalUrl";
 import { appAtomRegistry } from "../state/atom-registry";
 import { environmentServerConfigsAtom } from "../state/server";
 
-type PullRequestContext = { readonly environmentId: string; readonly projectId: string };
+type PullRequestContext = { readonly environmentId: string; readonly projectId?: string };
 
 // Avoid useRoute so layouts without route context can open any thread's pull requests.
 export function useNavigateToPullRequest(options?: { readonly replace?: boolean }) {
