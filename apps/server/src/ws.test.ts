@@ -693,9 +693,11 @@ it.effect("shell snapshots omit idle children and older settled threads only on 
       parent: string | null,
       activityRunStatus: "running" | null,
       settledDaysAgo: number | null = null,
+      pipeline?: { readonly runId: string; readonly stepId: string | null },
     ) =>
       ({
         id: ThreadId.make(id),
+        ...(pipeline === undefined ? {} : { pipeline }),
         projectId: "project",
         archivedAt: null,
         status: activityRunStatus ?? "completed",
@@ -719,6 +721,8 @@ it.effect("shell snapshots omit idle children and older settled threads only on 
       shell("old", null, null, 30),
       shell("remote-parent", null, null, 40),
       shell("remote-child-parent", "parent", null),
+      shell("old-run", null, null, 30, { runId: "run", stepId: null }),
+      shell("old-run-step", null, null, null, { runId: "run", stepId: "build" }),
     ];
     const firstSnapshot = (input: {
       readonly omitIdleSubagents?: boolean;
@@ -779,17 +783,34 @@ it.effect("shell snapshots omit idle children and older settled threads only on 
     const withoutChildren = yield* firstSnapshot({ omitIdleSubagents: true });
     assert.deepEqual(
       withoutChildren?.threads.map((thread) => thread.id),
-      ["parent", "live", ...recent, "old", "remote-parent", "remote-child-parent"],
+      [
+        "parent",
+        "live",
+        ...recent,
+        "old",
+        "remote-parent",
+        "remote-child-parent",
+        "old-run",
+        "old-run-step",
+      ],
     );
     // A linked environment's clients nest its task under its parent, so that parent stays: an
     // older settled thread or an idle subagent.
     const withoutOld = yield* firstSnapshot({ omitIdleSubagents: true, omitOlderSettled: true });
     assert.deepEqual(
       withoutOld?.threads.map((thread) => thread.id),
-      ["parent", "live", ...recent, "remote-parent", "remote-child-parent"],
+      [
+        "parent",
+        "live",
+        ...recent,
+        "remote-parent",
+        "remote-child-parent",
+        "old-run",
+        "old-run-step",
+      ],
     );
     assert.deepEqual(withoutOld?.olderSettled?.counts, [
-      { projectId: ProjectId.make("project"), count: 2 },
+      { projectId: ProjectId.make("project"), count: 3 },
     ]);
   }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
 );
