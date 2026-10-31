@@ -10,7 +10,7 @@ export interface LinearSearch {
   milestone?: string;
   issue?: string;
   q?: string;
-  /** Omitted = me. `any` = anyone, otherwise a user id. */
+  /** Omitted = the view's default ({@link defaultLinearAssignee}). `any` = anyone, else a user id. */
   assignee?: string;
   /** Workflow state ids. Named `states`: `state` already means open/closed on /pull-requests. */
   states?: Array<string>;
@@ -26,11 +26,32 @@ export interface LinearSearch {
 
 export type LinearLevel = "workspace" | "team" | "project" | "milestone";
 
+/** Priority filter choices in Linear's order; 0 ("No priority") sorts last there too. */
+export const LINEAR_PRIORITY_OPTIONS: ReadonlyArray<{
+  readonly value: LinearPriority;
+  readonly label: string;
+}> = [
+  { value: 1, label: "Urgent" },
+  { value: 2, label: "High" },
+  { value: 3, label: "Medium" },
+  { value: 4, label: "Low" },
+  { value: 0, label: "No priority" },
+];
+
 /** T3-only saved view: issues that have at least one linked chat or pipeline run. */
 export const T3_ACTIVITY_VIEW = "t3-activity";
 export const NO_MILESTONE_ID = "none";
 export const LINEAR_ASSIGNEE_ANYONE = "any";
 export const DEFAULT_LINEAR_GROUP: LinearGroupBy = "state";
+
+/** "Has T3 activity" is about any issue T3 touched, so it is not limited to mine. */
+export function defaultLinearAssignee(view: string | undefined): string {
+  return view === T3_ACTIVITY_VIEW ? LINEAR_ASSIGNEE_ANYONE : "me";
+}
+
+export function linearAssignee(search: Pick<LinearSearch, "assignee" | "view">): string {
+  return search.assignee ?? defaultLinearAssignee(search.view);
+}
 
 const MAX_LIST_VALUES = 20;
 const PRIORITIES: ReadonlyArray<LinearPriority> = [0, 1, 2, 3, 4];
@@ -42,7 +63,11 @@ function cleanString(raw: unknown, max = 200): string | undefined {
 }
 
 function cleanList(raw: unknown): Array<string> | undefined {
-  const values = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  const values = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string" || typeof raw === "number"
+      ? [raw]
+      : [];
   const seen = new Set<string>();
   for (const value of values) {
     const clean = cleanString(typeof value === "number" ? String(value) : value);
@@ -50,6 +75,31 @@ function cleanList(raw: unknown): Array<string> | undefined {
     if (seen.size >= MAX_LIST_VALUES) break;
   }
   return seen.size === 0 ? undefined : [...seen];
+}
+
+const SEARCH_KEYS = [
+  "team",
+  "project",
+  "milestone",
+  "issue",
+  "q",
+  "assignee",
+  "states",
+  "priority",
+  "labelIds",
+  "cycle",
+  "view",
+  "group",
+  "showCompleted",
+] as const satisfies ReadonlyArray<keyof LinearSearch>;
+
+/**
+ * Route validator. The parent layout has no validator, so its raw params are merged under the
+ * result; every key we own is set explicitly so a hand-edited value cannot leak past parsing.
+ */
+export function validateLinearRouteSearch(raw: Record<string, unknown>): LinearSearch {
+  const parsed = parseLinearSearch(raw);
+  return Object.fromEntries(SEARCH_KEYS.map((key) => [key, parsed[key]])) as LinearSearch;
 }
 
 /** Validates untrusted router search into a normalized {@link LinearSearch}. */
@@ -68,18 +118,22 @@ export function parseLinearSearch(raw: Record<string, unknown>): LinearSearch {
   const project = team === undefined ? undefined : cleanString(raw.project);
   const milestone = project === undefined ? undefined : cleanString(raw.milestone);
   const assignee = cleanString(raw.assignee);
+  const view = cleanString(raw.view);
   return {
     ...(team === undefined ? {} : { team }),
     ...(project === undefined ? {} : { project }),
     ...(milestone === undefined ? {} : { milestone }),
     ...(cleanString(raw.issue) === undefined ? {} : { issue: cleanString(raw.issue)! }),
     ...(cleanString(raw.q) === undefined ? {} : { q: cleanString(raw.q)! }),
-    ...(assignee === undefined || assignee === "me" ? {} : { assignee }),
+    // `me` is spelled out only where it is not the default; `any` stays so it survives view switches.
+    ...(assignee === undefined || (assignee === "me" && defaultLinearAssignee(view) === "me")
+      ? {}
+      : { assignee }),
     ...(states === undefined ? {} : { states }),
     ...(priorities.length === 0 ? {} : { priority: [...new Set(priorities)] }),
     ...(labelIds === undefined ? {} : { labelIds }),
     ...(cleanString(raw.cycle) === undefined ? {} : { cycle: cleanString(raw.cycle)! }),
-    ...(cleanString(raw.view) === undefined ? {} : { view: cleanString(raw.view)! }),
+    ...(view === undefined ? {} : { view }),
     ...(group === undefined || group === DEFAULT_LINEAR_GROUP ? {} : { group }),
     ...(raw.showCompleted === true || raw.showCompleted === "true" ? { showCompleted: true } : {}),
   };
@@ -204,7 +258,7 @@ export function linearIssueFilter(
 ): LinearIssueFilter {
   const t3View = search.view === T3_ACTIVITY_VIEW;
   const customView = search.view !== undefined && !t3View ? search.view : undefined;
-  const assignee = search.assignee ?? "me";
+  const assignee = linearAssignee(search);
   return {
     ...(search.team === undefined ? {} : { teamId: search.team }),
     ...(search.project === undefined ? {} : { projectId: search.project }),

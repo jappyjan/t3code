@@ -19,22 +19,37 @@ const LINEAR_IDLE_TTL_MS = 30_000;
  * Keeps the previous answer on screen while a re-read is in flight or has failed
  * (stale-while-revalidate); a Linear outage must not blank the page.
  */
-function keepPrevious<Target, A, E>(
+export function keepPrevious<Target, A, E>(
   family: (target: Target) => Atom.Atom<AsyncResult.AsyncResult<A, E>>,
 ): (target: Target) => Atom.Atom<AsyncResult.AsyncResult<A, E>> {
   const wrapped = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<A, E>>) =>
-    Atom.readable((get) => {
-      const result = get(source);
-      if (result._tag === "Success" && !result.waiting) return result;
-      const previous = get.self<AsyncResult.AsyncResult<A, E>>();
-      const value = Option.flatMap(previous, AsyncResult.value);
-      if (Option.isNone(value)) return result;
-      return result._tag === "Failure"
-        ? AsyncResult.failureWithPrevious(result.cause, { previous, waiting: result.waiting })
-        : AsyncResult.success<A, E>(value.value, result);
-    }),
+    Atom.readable(
+      (get) => {
+        const result = get(source);
+        if (result._tag === "Success" && !result.waiting) return result;
+        const previous = get.self<AsyncResult.AsyncResult<A, E>>();
+        const value = Option.flatMap(previous, AsyncResult.value);
+        if (Option.isNone(value)) return result;
+        return result._tag === "Failure"
+          ? AsyncResult.failureWithPrevious(result.cause, { previous, waiting: result.waiting })
+          : AsyncResult.success<A, E>(value.value, result);
+      },
+      // Without this a refresh only re-derives the wrapper and never re-runs the query.
+      (refresh) => refresh(source),
+    ),
   );
   return (target) => wrapped(family(target));
+}
+
+/** Changes on every server push and poll tick; queries refresh only when this value changes. */
+export function linearRefreshSignal(
+  refreshes: Atom.Atom<AsyncResult.AsyncResult<number, unknown>>,
+  pollTick: Atom.Atom<number>,
+): Atom.Atom<string> {
+  return Atom.readable((get) => {
+    const revision = Option.getOrElse(AsyncResult.value(get(refreshes)), () => 0);
+    return `${revision}:${get(pollTick)}`;
+  });
 }
 
 /**
@@ -59,10 +74,9 @@ export function createLinearEnvironmentAtoms<R, E>(
    */
   const pollTick = Atom.make(0).pipe(Atom.withLabel("environment-data:linear:poll-tick"));
   const triggers = Atom.family((environmentId: EnvironmentId) =>
-    Atom.readable((get) => {
-      get(refreshes({ environmentId, input: {} }));
-      return get(pollTick);
-    }).pipe(Atom.withLabel(`environment-data:linear:trigger:${environmentId}`)),
+    linearRefreshSignal(refreshes({ environmentId, input: {} }), pollTick).pipe(
+      Atom.withLabel(`environment-data:linear:trigger:${environmentId}`),
+    ),
   );
   const refreshTrigger = ({ environmentId }: { readonly environmentId: EnvironmentId }) =>
     triggers(environmentId);
@@ -78,8 +92,8 @@ export function createLinearEnvironmentAtoms<R, E>(
   );
   const refreshStatus = (
     registry: AtomRegistry.AtomRegistry,
-    target: Parameters<typeof status>[0],
-  ) => registry.refresh(status(target));
+    { environmentId }: { readonly environmentId: EnvironmentId },
+  ) => registry.refresh(status({ environmentId, input: {} }));
 
   return {
     refreshes,
@@ -100,6 +114,7 @@ export function createLinearEnvironmentAtoms<R, E>(
         tag: WS_METHODS.linearTeamMetadata,
         staleTimeMs: 5 * 60_000,
         idleTtlMs: LINEAR_IDLE_TTL_MS,
+        refreshTrigger,
       }),
     ),
     projects: keepPrevious(
@@ -153,6 +168,7 @@ export function createLinearEnvironmentAtoms<R, E>(
         tag: WS_METHODS.linearViews,
         staleTimeMs: 5 * 60_000,
         idleTtlMs: LINEAR_IDLE_TTL_MS,
+        refreshTrigger,
       }),
     ),
     search: keepPrevious(

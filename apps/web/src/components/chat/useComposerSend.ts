@@ -14,7 +14,7 @@ import {
   withMessageContext,
   makeThreadErrorSetter,
 } from "../ChatView.logic";
-import { linearWriteBackOf } from "../linear/linearLaunch.logic";
+import { linearChatLaunchRecord } from "@t3tools/client-runtime/linear/launch-plan";
 import { recordLinearLaunch } from "../linear/recordLinearLaunch";
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import {
@@ -1343,7 +1343,9 @@ export function useComposerSend(input: ComposerSendInput) {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
                       // A launch from a Linear issue names its branch so Linear links the PR.
-                      ...(isLocalDraftThread && draftThread?.linearIssue
+                      ...(isLocalDraftThread &&
+                      draftThread?.linearIssue &&
+                      linearIssueIdAtSend !== null
                         ? { branch: draftThread.linearIssue.branchName }
                         : {}),
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
@@ -1416,18 +1418,14 @@ export function useComposerSend(input: ComposerSendInput) {
           draftThread?.linearIssue &&
           draftThread.linearIssue.issueId === linearIssueIdAtSend
         ) {
-          void recordLinearLaunch({
-            environmentId,
-            issueId: draftThread.linearIssue.issueId,
-            identifier: draftThread.linearIssue.identifier,
-            target: {
-              kind: "thread",
-              targetId: threadIdForSend,
+          void recordLinearLaunch(
+            linearChatLaunchRecord({
+              environmentId,
+              draftIssue: draftThread.linearIssue,
               threadId: threadIdForSend,
               title,
-            },
-            writeBack: linearWriteBackOf(draftThread.linearIssue),
-          });
+            }),
+          );
         }
         setKeepFullHistory(routeThreadKey, false);
         clearUsageLimitsFor(routeThreadKey);

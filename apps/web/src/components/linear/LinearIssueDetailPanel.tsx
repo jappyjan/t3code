@@ -27,8 +27,17 @@ import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { RelativeTime } from "../RelativeTime";
 import { Button } from "../ui/button";
 import { ButtonGroup } from "../ui/group";
-import { Menu, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import {
+  Menu,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
 import { Skeleton } from "../ui/skeleton";
+import { toastManager } from "../ui/toast";
 import { LinearActivityPill } from "./LinearActivityPill";
 import {
   LinearAvatar,
@@ -38,12 +47,12 @@ import {
   LinearStateIcon,
   LinearTeamBadge,
 } from "./linearIcons";
+import { formatProgressPercent } from "@t3tools/client-runtime/linear/issue-list";
 import {
   activityStatusLabel,
-  formatProgressPercent,
   pickActivityPill,
   stepTone,
-} from "./linearIssueList.logic";
+} from "@t3tools/client-runtime/linear/activity";
 import { useLinearLaunchActions } from "./linearLaunchTypes";
 import {
   useLinearActivity,
@@ -53,14 +62,26 @@ import {
 } from "./useLinearData";
 import { buildThreadRouteParams } from "../../threadRoutes";
 
+const COPY_TOASTS = {
+  onCopy: (label: string) => toastManager.add({ type: "success", title: `${label} copied` }),
+  onError: (_error: Error, label: string) =>
+    toastManager.add({ type: "error", title: `Failed to copy ${label.toLowerCase()}` }),
+};
+
 const TONE_CLASS = {
   ok: "bg-success",
-  running: "bg-info animate-pulse",
+  running: "bg-info",
   failed: "bg-destructive",
   idle: "bg-border",
 } as const;
 
-function SectionHeader({ children, count }: { children: React.ReactNode; count?: number }) {
+function SectionHeader({
+  children,
+  count,
+}: {
+  children: React.ReactNode;
+  count?: number | undefined;
+}) {
   return (
     <h3 className="flex h-6 items-center gap-1.5 text-xs font-medium text-muted-foreground">
       {children}
@@ -229,29 +250,28 @@ function LaunchControls({ issueId }: { issueId: string }) {
           <ChevronDownIcon aria-hidden className="size-3 text-muted-foreground/70" />
         </MenuTrigger>
         <MenuPopup align="start" side="bottom" className="min-w-60">
-          <MenuGroupLabel>Run pipeline</MenuGroupLabel>
-          {pipelines.length === 0 ? (
-            <MenuItem disabled>No pipelines yet</MenuItem>
-          ) : (
-            pipelines.map((pipeline) => (
-              <MenuItem
-                key={pipeline.id}
-                onClick={() => launch?.openPipelineDialog(issueId, pipeline.id)}
-              >
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate">{pipeline.name}</span>
-                  <span className="truncate text-2xs text-muted-foreground">
-                    {pipeline.steps.map((step) => step.name).join(" → ")}
+          <MenuGroup>
+            <MenuGroupLabel>Run pipeline</MenuGroupLabel>
+            {pipelines.length === 0 ? (
+              <MenuItem disabled>No pipelines yet</MenuItem>
+            ) : (
+              pipelines.map((pipeline) => (
+                <MenuItem
+                  key={pipeline.id}
+                  onClick={() => launch?.openPipeline(issueId, pipeline.id)}
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{pipeline.name}</span>
+                    <span className="truncate text-2xs text-muted-foreground">
+                      {pipeline.steps.map((step) => step.name).join(" → ")}
+                    </span>
                   </span>
-                </span>
-              </MenuItem>
-            ))
-          )}
+                </MenuItem>
+              ))
+            )}
+          </MenuGroup>
           {pipelines.length > 0 ? <MenuSeparator /> : null}
-          <MenuItem
-            disabled={pipelines.length === 0}
-            onClick={() => launch?.openPipelineDialog(issueId)}
-          >
+          <MenuItem disabled={pipelines.length === 0} onClick={() => launch?.openPipeline(issueId)}>
             Choose in dialog…
           </MenuItem>
         </MenuPopup>
@@ -273,10 +293,13 @@ function DetailBody({
   const navigate = useNavigate();
   const environmentId = useLinearEnvironmentId();
   const openPullRequest = useOpenPrLink();
-  const activity = useLinearActivity().byIssueId.get(issue.id);
-  const { copyToClipboard, isCopied } = useCopyToClipboard({
+  const activityQuery = useLinearActivity();
+  const activityLoaded = activityQuery.data !== null;
+  const activity = activityQuery.byIssueId.get(issue.id);
+  const { copyToClipboard, isCopied } = useCopyToClipboard<string>({
     target: "branch name",
     timeout: 1600,
+    onError: COPY_TOASTS.onError,
   });
   const pill = pickActivityPill(issue, activity);
   const items = activity?.items ?? [];
@@ -320,7 +343,7 @@ function DetailBody({
         <Button
           variant="ghost-muted"
           size="micro"
-          onClick={() => copyToClipboard(issue.branchName, undefined)}
+          onClick={() => copyToClipboard(issue.branchName, "Branch name")}
         >
           {isCopied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
           {isCopied ? "Copied" : "Copy branch name"}
@@ -393,6 +416,11 @@ function DetailBody({
             ))}
           </div>
         </section>
+      ) : detail.subIssuesFailed ? (
+        <section className="flex flex-col gap-1.5">
+          <SectionHeader>Sub-issues</SectionHeader>
+          <p className="m-0 text-xs text-muted-foreground">Couldn't load sub-issues.</p>
+        </section>
       ) : null}
 
       {issue.linkedPullRequests.length > 0 ? (
@@ -436,13 +464,19 @@ function DetailBody({
       ) : null}
 
       <section className="flex flex-col gap-1.5">
-        <SectionHeader count={items.length}>
+        <SectionHeader count={activityLoaded ? items.length : undefined}>
           <span className="rounded border border-border bg-muted px-1 text-3xs font-bold tracking-wide text-foreground/85">
             T3
           </span>
           T3 activity
         </SectionHeader>
-        {items.length === 0 ? (
+        {!activityLoaded ? (
+          activityQuery.error === null ? (
+            <Skeleton className="h-12 w-full" shape="card" />
+          ) : (
+            <p className="m-0 text-xs text-muted-foreground">Couldn&apos;t load T3 activity.</p>
+          )
+        ) : items.length === 0 ? (
           <p className="m-0 text-xs text-muted-foreground">
             No chats or pipeline runs started from this issue yet.
           </p>
@@ -494,7 +528,11 @@ export function LinearIssueDetailPanel({
   const query = useLinearIssueDetail(issueId);
   // The issue switched but its answer has not landed: never show the previous issue's body.
   const detail = query.data?.issue.id === issueId ? query.data : null;
-  const { copyToClipboard } = useCopyToClipboard({ target: "issue link", timeout: 0 });
+  const { copyToClipboard } = useCopyToClipboard<string>({
+    target: "issue details",
+    timeout: 0,
+    ...COPY_TOASTS,
+  });
   const issue = detail?.issue;
   return (
     <aside
@@ -536,10 +574,10 @@ export function LinearIssueDetailPanel({
             <MoreHorizontalIcon aria-hidden />
           </MenuTrigger>
           <MenuPopup align="end" side="bottom">
-            <MenuItem onClick={() => issue && copyToClipboard(issue.url, undefined)}>
+            <MenuItem onClick={() => issue && copyToClipboard(issue.url, "Issue link")}>
               Copy issue link
             </MenuItem>
-            <MenuItem onClick={() => issue && copyToClipboard(issue.identifier, undefined)}>
+            <MenuItem onClick={() => issue && copyToClipboard(issue.identifier, "Identifier")}>
               Copy identifier
             </MenuItem>
           </MenuPopup>

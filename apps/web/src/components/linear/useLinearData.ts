@@ -14,8 +14,11 @@ import { linearEnvironment } from "../../state/linear";
 import { serverEnvironment } from "../../state/server";
 import { useEnvironmentQuery, type EnvironmentQueryView } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { resolveLinearDegradation, type LinearDegradation } from "./linearDegradation";
-import { indexActivityByIssueId } from "./linearIssueList.logic";
+import {
+  resolveLinearDegradation,
+  type LinearDegradation,
+} from "@t3tools/client-runtime/linear/degradation";
+import { indexActivityByIssueId } from "@t3tools/client-runtime/linear/activity";
 
 /** Linear is read through the primary environment only. */
 export const useLinearEnvironmentId = usePrimaryEnvironmentId;
@@ -133,21 +136,32 @@ function bumpLinearPollTick() {
   appAtomRegistry.update(linearEnvironment.pollTick, (tick) => tick + 1);
 }
 
+const RETURN_REFRESH_MIN_GAP_MS = 15_000;
+
 /** Re-reads Linear every 60s while the page is visible and when the window regains focus. */
 export function useLinearPolling(enabled: boolean) {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- timers and window listeners that bump the shared poll tick while the Linear page is mounted
   useEffect(() => {
     if (!enabled) return;
+    let lastBumpAt = Date.now();
+    const bump = () => {
+      lastBumpAt = Date.now();
+      bumpLinearPollTick();
+    };
     const refreshIfVisible = () => {
-      if (document.visibilityState === "visible") bumpLinearPollTick();
+      if (document.visibilityState === "visible") bump();
+    };
+    // Focus and visibilitychange both fire on one return, and app switching refocuses often.
+    const refreshOnReturn = () => {
+      if (Date.now() - lastBumpAt >= RETURN_REFRESH_MIN_GAP_MS) refreshIfVisible();
     };
     const interval = window.setInterval(refreshIfVisible, LINEAR_POLL_INTERVAL_MS);
-    window.addEventListener("focus", refreshIfVisible);
-    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("focus", refreshIfVisible);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
     };
   }, [enabled]);
 }
@@ -164,12 +178,9 @@ export function useLinearCommands() {
     environmentId === null ? Promise.resolve(null) : run(environmentId);
   return {
     environmentId,
-    refresh: () =>
-      withEnvironment((id) =>
-        refresh({ environmentId: id, input: {} }).finally(bumpLinearPollTick),
-      ),
-    resync: () =>
-      withEnvironment((id) => resync({ environmentId: id, input: {} }).finally(bumpLinearPollTick)),
+    // The server pushes a refresh after both, which re-reads every mounted query.
+    refresh: () => withEnvironment((id) => refresh({ environmentId: id, input: {} })),
+    resync: () => withEnvironment((id) => resync({ environmentId: id, input: {} })),
     connect: (apiKey: string) =>
       withEnvironment((id) => connect({ environmentId: id, input: { apiKey } })),
     disconnect: () => withEnvironment((id) => disconnect({ environmentId: id, input: {} })),

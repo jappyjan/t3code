@@ -29,18 +29,14 @@ import {
 } from "./LinearLevels";
 import { LinearMilestoneView } from "./LinearMilestoneView";
 import { LinearLaunchProvider } from "./useLinearLaunch";
-import { classifyLinearFailure } from "./linearDegradation";
+import { classifyLinearFailure } from "@t3tools/client-runtime/linear/degradation";
 import { LinearGlyph } from "./linearIcons";
 import {
-  recentActivityIssueIds,
+  jumpBackInIssueIds,
+  orderJumpBackInIssues,
   runningCountByTeam,
-  topLevelIssues,
-} from "./linearIssueList.logic";
-import {
-  linearIssueJumpTargets,
-  matchLinearJumpTargets,
-  type LinearJumpTarget,
-} from "./linearJump";
+} from "@t3tools/client-runtime/linear/activity";
+import { buildLinearJumpTargets, type LinearJumpTarget } from "@t3tools/client-runtime/linear/jump";
 import {
   buildLinearBreadcrumb,
   buildLinearNewIssueUrl,
@@ -51,7 +47,7 @@ import {
   type LinearScope,
   type LinearSearch,
   type LinearSearchPatch,
-} from "./linearSearch";
+} from "@t3tools/client-runtime/linear/search";
 import {
   useLinearActivity,
   useLinearDegradation,
@@ -134,8 +130,7 @@ function LinearConnected({
   const activity = useLinearActivity();
   const projects = useLinearProjects(search.team, level !== "workspace");
   const milestones = useLinearMilestones(search.project);
-  const jumpBackInIds =
-    level === "workspace" ? recentActivityIssueIds(activity.issues) : EMPTY_LIST;
+  const jumpBackInIds = level === "workspace" ? jumpBackInIssueIds(activity.issues) : EMPTY_LIST;
   const jumpBackIn = useLinearIssues(
     jumpBackInIds.length === 0
       ? null
@@ -218,24 +213,13 @@ function LinearConnected({
     onSelect: selectIssue,
   };
 
-  const buildJumpTargets = (): ReadonlyArray<LinearJumpTarget> => {
-    if (jumpTerm.trim() === "") return [];
-    const projectScopes = new Map<string, LinearScope>();
-    for (const entry of [...(allProjects.data ?? EMPTY_LIST), ...(projects.data ?? EMPTY_LIST)]) {
-      const teamId = entry.teamIds[0] ?? search.team;
-      if (teamId !== undefined) projectScopes.set(entry.id, { team: teamId, project: entry.id });
-    }
-    return [
-      ...matchLinearJumpTargets(jumpTerm, {
-        teams: status.teams,
-        projects: allProjects.data ?? EMPTY_LIST,
-        milestones: milestones.data ?? EMPTY_LIST,
-        projectScopes,
-      }),
-      ...linearIssueJumpTargets(jumpIssues.data ?? EMPTY_LIST),
-    ];
-  };
-  const jumpTargets = buildJumpTargets();
+  const jumpTargets = buildLinearJumpTargets(jumpTerm, {
+    teams: status.teams,
+    projects: [...(allProjects.data ?? EMPTY_LIST), ...(projects.data ?? EMPTY_LIST)],
+    milestones: milestones.data ?? EMPTY_LIST,
+    issues: jumpIssues.data ?? EMPTY_LIST,
+    fallbackTeamId: search.team,
+  });
   const jump = (target: LinearJumpTarget) =>
     onNavigate(
       patchLinearSearch(withLinearScope(search, target.scope), {
@@ -251,14 +235,10 @@ function LinearConnected({
   const showPageBanner = degradation !== null && level !== "milestone";
 
   const newIssueUrl = buildLinearNewIssueUrl(status.organization?.urlKey ?? null, team?.key);
-  const jumpBackInIssues = (() => {
-    const order = new Map(
-      activity.issues.map((entry) => [entry.issueId, Date.parse(entry.latestActivityAt)]),
-    );
-    return topLevelIssues(jumpBackIn.data?.issues ?? EMPTY_LIST).toSorted(
-      (a, b) => (order.get(b.id) ?? 0) - (order.get(a.id) ?? 0),
-    );
-  })();
+  const jumpBackInIssues = orderJumpBackInIssues(
+    jumpBackIn.data?.issues ?? EMPTY_LIST,
+    activity.issues,
+  );
 
   return (
     <>

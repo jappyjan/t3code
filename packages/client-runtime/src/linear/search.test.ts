@@ -11,8 +11,9 @@ import {
   linearParentScope,
   parseLinearSearch,
   patchLinearSearch,
+  validateLinearRouteSearch,
   withLinearScope,
-} from "./linearSearch";
+} from "./search.ts";
 
 describe("parseLinearSearch", () => {
   it("drops garbage, defaults, and orphaned deeper levels", () => {
@@ -28,6 +29,10 @@ describe("parseLinearSearch", () => {
         showCompleted: "true",
       }),
     ).toEqual({ priority: [1, 2], states: ["s1"], showCompleted: true });
+    expect(parseLinearSearch({ view: T3_ACTIVITY_VIEW, assignee: "me" })).toEqual({
+      view: T3_ACTIVITY_VIEW,
+      assignee: "me",
+    });
   });
 
   it("keeps a full drill-down and filters", () => {
@@ -54,6 +59,20 @@ describe("parseLinearSearch", () => {
       view: T3_ACTIVITY_VIEW,
       labelIds: ["a", "b"],
     });
+  });
+});
+
+describe("validateLinearRouteSearch", () => {
+  it("unsets rejected keys so raw params merged from the parent route cannot leak", () => {
+    const search = validateLinearRouteSearch({ team: "t", priority: "abc", states: true });
+    expect(search).toMatchObject({ team: "t" });
+    expect(search.priority).toBeUndefined();
+    expect(search.states).toBeUndefined();
+    expect("priority" in search).toBe(true);
+  });
+
+  it("accepts a single hand-typed priority", () => {
+    expect(validateLinearRouteSearch({ priority: 3 }).priority).toEqual([3]);
   });
 });
 
@@ -163,10 +182,13 @@ describe("linearIssueFilter", () => {
     ).toEqual({ teamId: "t", viewId: "v1" });
   });
 
-  it("turns the T3 view into an issue id restriction", () => {
+  it("turns the T3 view into an issue id restriction for any assignee unless one is picked", () => {
     expect(
       linearIssueFilter({ team: "t", view: T3_ACTIVITY_VIEW }, { activityIssueIds: ["a", "b"] }),
-    ).toEqual({ teamId: "t", assignee: "me", issueIds: ["a", "b"] });
+    ).toEqual({ teamId: "t", issueIds: ["a", "b"] });
+    expect(
+      linearIssueFilter({ view: T3_ACTIVITY_VIEW, assignee: "me" }, { activityIssueIds: ["a"] }),
+    ).toEqual({ assignee: "me", issueIds: ["a"] });
   });
 });
 

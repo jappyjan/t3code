@@ -1,9 +1,4 @@
-import type {
-  LinearCustomView,
-  LinearPriority,
-  LinearTeamMetadata,
-  LinearViewer,
-} from "@t3tools/contracts";
+import type { LinearCustomView, LinearTeamMetadata, LinearViewer } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
   CircleDotIcon,
@@ -32,21 +27,17 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { LinearAvatar, LinearPriorityIcon, LinearStateIcon } from "./linearIcons";
 import {
   LINEAR_ASSIGNEE_ANYONE,
+  LINEAR_PRIORITY_OPTIONS,
   T3_ACTIVITY_VIEW,
   DEFAULT_LINEAR_GROUP,
+  defaultLinearAssignee,
+  linearAssignee,
   type LinearGroupBy,
   type LinearSearch,
   type LinearSearchPatch,
-} from "./linearSearch";
+} from "@t3tools/client-runtime/linear/search";
 
 const SEARCH_COMMIT_DELAY_MS = 250;
-const PRIORITY_OPTIONS: ReadonlyArray<{ value: LinearPriority; label: string }> = [
-  { value: 1, label: "Urgent" },
-  { value: 2, label: "High" },
-  { value: 3, label: "Medium" },
-  { value: 4, label: "Low" },
-  { value: 0, label: "No priority" },
-];
 
 function FilterPill({
   icon,
@@ -142,6 +133,7 @@ function SingleFilter({
   options,
   value,
   fallbackLabel,
+  active,
   disabled,
   onChange,
 }: {
@@ -150,13 +142,14 @@ function SingleFilter({
   options: ReadonlyArray<FilterOption<string>>;
   value: string;
   fallbackLabel?: string | undefined;
+  active: boolean;
   disabled?: boolean | undefined;
   onChange: (next: string) => void;
 }) {
   const current = options.find((option) => option.value === value)?.label ?? fallbackLabel;
   return (
     <Menu>
-      <FilterPill icon={icon} label={label} value={current} active={false} disabled={disabled} />
+      <FilterPill icon={icon} label={label} value={current} active={active} disabled={disabled} />
       <MenuPopup align="start" side="bottom" className="max-h-80">
         <MenuRadioGroup value={value} onValueChange={onChange}>
           {options.map((option) => (
@@ -296,7 +289,8 @@ export function LinearFilters({
 }) {
   // A custom view carries its own filter, so the controls it would override stand aside.
   const viewLocksFilters = search.view !== undefined && search.view !== T3_ACTIVITY_VIEW;
-  const assignee = search.assignee ?? "me";
+  const assignee = linearAssignee(search);
+  const defaultAssignee = defaultLinearAssignee(search.view);
   const assigneeOptions: ReadonlyArray<FilterOption<string>> = [
     {
       value: "me",
@@ -353,8 +347,11 @@ export function LinearFilters({
           options={assigneeOptions}
           value={assignee}
           fallbackLabel="Someone"
+          active={assignee !== defaultAssignee}
           disabled={viewLocksFilters}
-          onChange={(next) => onSearchChange({ assignee: next === "me" ? undefined : next })}
+          onChange={(next) =>
+            onSearchChange({ assignee: next === defaultAssignee ? undefined : next })
+          }
         />
         <MultiFilter
           icon={<CircleDotIcon aria-hidden />}
@@ -371,7 +368,7 @@ export function LinearFilters({
         <MultiFilter
           icon={<LayersIcon aria-hidden />}
           label="Priority"
-          options={PRIORITY_OPTIONS.map((option) => ({
+          options={LINEAR_PRIORITY_OPTIONS.map((option) => ({
             value: option.value,
             label: option.label,
             icon: <LinearPriorityIcon priority={option.value} />,
@@ -409,9 +406,13 @@ export function LinearFilters({
             })),
           ]}
           value={search.cycle ?? ""}
+          active={search.cycle !== undefined}
           disabled={viewLocksFilters || (metadata?.cycles.length ?? 0) === 0}
           onChange={(cycle) => onSearchChange({ cycle: cycle === "" ? undefined : cycle })}
         />
+        {viewLocksFilters ? (
+          <span className="text-xs text-muted-foreground">Filters come from the saved view</span>
+        ) : null}
       </div>
     </div>
   );

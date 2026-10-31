@@ -31,6 +31,10 @@ import type {
 } from "@t3tools/client-runtime/state/shell";
 import { draftModelPickMatchesThread } from "@t3tools/shared/model";
 
+import {
+  attachedLinearDraftIssue,
+  LinearDraftIssue,
+} from "@t3tools/client-runtime/linear/launch-plan";
 import { writeFileAtomically } from "../lib/atomic-file";
 import { createComposerContextHistory, referencedComposerContext } from "../lib/composerContext";
 import { isQueuedEditDraftKey } from "./queued-edit-draft-key";
@@ -361,6 +365,8 @@ export class ComposerDraftPersistenceError extends Schema.TaggedError<ComposerDr
 export interface ComposerDraft {
   readonly text: string;
   readonly context?: OrchestrationMessageContext;
+  /** Set on a draft started from a Linear issue until it is sent. */
+  readonly linearIssue?: LinearDraftIssue;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly importedShareIds?: ReadonlyArray<string>;
   readonly modelSelection?: ModelSelection;
@@ -399,7 +405,12 @@ export interface ComposerDraftWorkspaceSelection {
 
 export type ComposerDraftSettingsUpdate = Pick<
   ComposerDraft,
-  "modelSelection" | "runtimeMode" | "interactionMode" | "workspaceSelection" | "project"
+  | "modelSelection"
+  | "runtimeMode"
+  | "interactionMode"
+  | "workspaceSelection"
+  | "project"
+  | "linearIssue"
 >;
 
 const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
@@ -426,6 +437,7 @@ const PersistedComposerContextSchema = Schema.Struct({
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
   context: Schema.optional(PersistedComposerContextSchema),
+  linearIssue: Schema.optional(LinearDraftIssue),
   attachments: Schema.Array(DraftComposerAttachmentSchema),
   importedShareIds: Schema.optional(Schema.Array(Schema.String)),
   modelSelection: Schema.optional(ModelSelectionSchema),
@@ -1568,6 +1580,7 @@ export function clearComposerDraftContentState(
   const {
     importedShareIds: _importedShareIds,
     context: _context,
+    linearIssue: _linearIssue,
     modelSelection,
     workspaceSelection,
     project: _project,
@@ -1889,7 +1902,11 @@ export function retargetNewTaskDraft(
     ) {
       return current;
     }
-    const { workspaceSelection: _workspaceSelection, ...retained } = normalizeDraft(existing);
+    const {
+      workspaceSelection: _workspaceSelection,
+      linearIssue,
+      ...retained
+    } = normalizeDraft(existing);
     // Keep bytes across environment moves but drop server-specific upload stamps.
     const attachments = retained.attachments.map((attachment) =>
       attachment.uploadEnvironmentId !== undefined &&
@@ -1901,6 +1918,10 @@ export function retargetNewTaskDraft(
       ...current,
       [draftKey]: {
         ...retained,
+        // A Linear launch is linked and written back through the environment that holds the key.
+        ...(linearIssue !== undefined && stamp?.environmentId === project.environmentId
+          ? { linearIssue }
+          : {}),
         attachments,
         project: {
           environmentId: project.environmentId,
@@ -2031,6 +2052,19 @@ const composerDraftSettingsAtom = Atom.family((draftKey: string) =>
   ),
 );
 const EMPTY_DRAFT_SETTINGS_ATOM = Atom.make(EMPTY_DRAFT_SETTINGS);
+
+const composerDraftLinearIssueAtom = Atom.family((draftKey: string) =>
+  Atom.make((get) => {
+    const draft = get(composerDraftAtom(draftKey));
+    return attachedLinearDraftIssue(draft.linearIssue, draft.context?.records ?? []);
+  }),
+);
+const NO_LINEAR_ISSUE_ATOM = Atom.make<LinearDraftIssue | null>(null);
+
+/** The draft's Linear launch while its issue chip is attached, without re-rendering per keystroke. */
+export function useComposerDraftLinearIssue(draftKey: string | null): LinearDraftIssue | null {
+  return useAtomValue(draftKey ? composerDraftLinearIssueAtom(draftKey) : NO_LINEAR_ISSUE_ATOM);
+}
 
 export function useComposerDraftSettings(draftKey: string | null): ComposerDraftSettings {
   const settings = useAtomValue(

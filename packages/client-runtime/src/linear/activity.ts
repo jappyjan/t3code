@@ -1,6 +1,6 @@
-import type { LinearIssue, LinearIssueActivity, LinearStateType } from "@t3tools/contracts";
+import type { LinearIssue, LinearIssueActivity } from "@t3tools/contracts";
 
-import { NO_MILESTONE_ID, type LinearGroupBy } from "./linearSearch";
+import { topLevelIssues } from "./issueList.ts";
 
 export type LinearActivityPillKind = "pipeline-failed" | "pipeline-running" | "pr-opened" | "chats";
 
@@ -48,6 +48,17 @@ export function indexActivityByIssueId(
   return new Map(issues.map((entry) => [entry.issueId, entry]));
 }
 
+/** Thread id -> issue identifier ("ATT-615") for every thread or pipeline-run parent thread linked to an issue. */
+export function threadIdentifiersFromActivity(
+  issues: ReadonlyArray<LinearIssueActivity>,
+): ReadonlyMap<string, string> {
+  const identifiers = new Map<string, string>();
+  for (const issue of issues) {
+    for (const item of issue.items) identifiers.set(item.link.threadId, issue.issueIdentifier);
+  }
+  return identifiers;
+}
+
 /** Running T3 items per team, for the workspace-level team cards. */
 export function runningCountByTeam(
   issues: ReadonlyArray<LinearIssueActivity>,
@@ -62,91 +73,32 @@ export function runningCountByTeam(
 
 const MAX_JUMP_BACK_IN = 20;
 
-/** "Jump back in": the issues with the most recent T3 activity first, capped. */
-export function recentActivityIssueIds(
+/**
+ * "Jump back in" issue ids: the ones with the most recent T3 activity, capped. Sorted by id so
+ * new activity that only reorders them keeps the same issues query.
+ */
+export function jumpBackInIssueIds(
   issues: ReadonlyArray<LinearIssueActivity>,
   limit = MAX_JUMP_BACK_IN,
 ): ReadonlyArray<string> {
   return [...issues]
-    .toSorted((a, b) => Date.parse(b.latestActivityAt) - Date.parse(a.latestActivityAt))
+    .sort((a, b) => Date.parse(b.latestActivityAt) - Date.parse(a.latestActivityAt))
     .slice(0, limit)
-    .map((entry) => entry.issueId);
+    .map((entry) => entry.issueId)
+    .sort();
 }
 
-/** Issues whose parent is in the same list render nested under it instead of twice. */
-export function topLevelIssues(issues: ReadonlyArray<LinearIssue>): ReadonlyArray<LinearIssue> {
-  const ids = new Set(issues.map((issue) => issue.id));
-  return issues.filter((issue) => issue.parent === null || !ids.has(issue.parent.id));
-}
-
-const STATE_TYPE_RANK: Record<LinearStateType, number> = {
-  started: 0,
-  unstarted: 1,
-  triage: 2,
-  backlog: 3,
-  completed: 4,
-  canceled: 5,
-};
-
-export interface LinearIssueGroup {
-  readonly key: string;
-  readonly label: string;
-  readonly stateType: LinearStateType | null;
-  readonly issues: ReadonlyArray<LinearIssue>;
-}
-
-/** Workflow position per state id, when the team's metadata is loaded; orders within a type. */
-export type LinearStatePositions = ReadonlyMap<string, number>;
-
-export function groupLinearIssues(
+/** The fetched "Jump back in" issues, most recent T3 activity first; sub-issues of listed parents nest. */
+export function orderJumpBackInIssues(
   issues: ReadonlyArray<LinearIssue>,
-  groupBy: LinearGroupBy,
-  statePositions: LinearStatePositions = new Map(),
-): ReadonlyArray<LinearIssueGroup> {
-  if (groupBy === "none") {
-    return issues.length === 0 ? [] : [{ key: "all", label: "Issues", stateType: null, issues }];
-  }
-  const groups = new Map<
-    string,
-    { group: LinearIssueGroup; issues: Array<LinearIssue>; order: number }
-  >();
-  for (const issue of issues) {
-    let key: string;
-    let label: string;
-    let stateType: LinearStateType | null = null;
-    let order: number;
-    if (groupBy === "state") {
-      key = issue.state.id;
-      label = issue.state.name;
-      stateType = issue.state.type;
-      const position = statePositions.get(issue.state.id) ?? 0;
-      // Later workflow steps lead among started states ("In Review" above "In Progress").
-      order =
-        STATE_TYPE_RANK[issue.state.type] * 1_000 +
-        (issue.state.type === "started" ? -position : position);
-    } else {
-      key = issue.milestone?.id ?? NO_MILESTONE_ID;
-      label = issue.milestone?.name ?? "No milestone";
-      order = issue.milestone === null ? Number.MAX_SAFE_INTEGER : 0;
-    }
-    const existing = groups.get(key);
-    if (existing) existing.issues.push(issue);
-    else {
-      const list = [issue];
-      groups.set(key, {
-        group: { key, label, stateType, issues: list },
-        issues: list,
-        order,
-      });
-    }
-  }
-  return [...groups.values()]
-    .toSorted((a, b) => a.order - b.order || a.group.label.localeCompare(b.group.label))
-    .map((entry) => entry.group);
-}
-
-export function formatProgressPercent(progress: number): number {
-  return Math.round(Math.max(0, Math.min(1, progress)) * 100);
+  activity: ReadonlyArray<LinearIssueActivity>,
+): ReadonlyArray<LinearIssue> {
+  const latest = new Map(
+    activity.map((entry) => [entry.issueId, Date.parse(entry.latestActivityAt)]),
+  );
+  return [...topLevelIssues(issues)].sort(
+    (a, b) => (latest.get(b.id) ?? 0) - (latest.get(a.id) ?? 0),
+  );
 }
 
 export type LinearStepTone = "ok" | "running" | "failed" | "idle";

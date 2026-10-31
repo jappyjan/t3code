@@ -2,7 +2,7 @@ import { CheckIcon, MessageSquareIcon, XIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
 
-import type { LinearActivityPill as Pill } from "./linearIssueList.logic";
+import type { LinearActivityPill as Pill } from "@t3tools/client-runtime/linear/activity";
 
 const KIND_CLASS: Record<Pill["kind"], string> = {
   "pipeline-failed": "border-destructive/35 bg-destructive/8 text-destructive-foreground",
@@ -16,7 +16,7 @@ function PillGlyph({ kind }: { kind: Pill["kind"] }) {
     case "pipeline-failed":
       return <XIcon aria-hidden className="size-3" />;
     case "pipeline-running":
-      return <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-current" />;
+      return <span aria-hidden className="size-1.5 rounded-full bg-current" />;
     case "pr-opened":
       return <CheckIcon aria-hidden className="size-3" />;
     case "chats":

@@ -15,6 +15,7 @@ import {
   buildLinearIssueMarkdown,
   buildLinearIssuePrompt,
   formatTokenEstimate,
+  linearIssueExtrasSummary,
   linearIssueIncludeCounts,
   resolveLinearMapping,
   resolveLinearMoveTarget,
@@ -59,6 +60,7 @@ const makeDetail = (overrides: Partial<LinearIssueDetail> = {}): LinearIssueDeta
     }),
     makeIssue({ id: "s-2", identifier: "ATT-614", title: "Port auth" }),
   ],
+  subIssuesFailed: false,
   comments: [
     {
       id: "c1",
@@ -223,29 +225,57 @@ describe("linearIssueIncludeCounts", () => {
   });
 });
 
+describe("linearIssueExtrasSummary", () => {
+  it("counts sub-issues and comments in singular or plural, and is null without either", () => {
+    expect(linearIssueExtrasSummary({ subIssues: [{}, {}], comments: [{}] })).toBe(
+      "+ 2 sub-issues, 1 comment",
+    );
+    expect(linearIssueExtrasSummary({ subIssues: [{}], comments: [{}, {}] })).toBe(
+      "+ 1 sub-issue, 2 comments",
+    );
+    expect(linearIssueExtrasSummary({ subIssues: [], comments: [] })).toBeNull();
+  });
+});
+
 describe("buildLinearIssueMarkdown", () => {
   const all = { subIssues: true, comments: true, linkedPrs: true };
+  const withPullRequest = makeDetail({
+    issue: makeIssue({
+      linkedPullRequests: [
+        {
+          repository: "acme/app",
+          number: 7,
+          state: "open",
+          url: "https://github.com/acme/app/pull/7",
+        },
+      ],
+    }),
+  });
 
   it("renders heading, meta, description, sub-issues and comments", () => {
     const markdown = buildLinearIssueMarkdown(makeDetail(), all);
     expect(markdown).toContain("# ATT-612 · Server-side RFID APDU handshake");
     expect(markdown).toContain("Attraccess · RFID Gateway · Pilot · High · Todo");
-    expect(markdown).toContain("Branch: jan/att-612-rfid");
+    expect(markdown).toContain("\n- Branch: jan/att-612-rfid");
     expect(markdown).toContain("Move the auth out of the reader.");
     expect(markdown).toContain("- [x] ATT-613 Define schema");
     expect(markdown).toContain("- [ ] ATT-614 Port auth");
     expect(markdown).toContain("**Sam** · 2026-01-02T00:00:00.000Z");
     expect(markdown).not.toContain("Linked pull requests");
+    expect(buildLinearIssueMarkdown(withPullRequest, all)).toContain(
+      "## Linked pull requests\n\n- acme/app#7 (open) https://github.com/acme/app/pull/7",
+    );
   });
 
   it("leaves out sections that are switched off", () => {
-    const markdown = buildLinearIssueMarkdown(makeDetail(), {
+    const markdown = buildLinearIssueMarkdown(withPullRequest, {
       subIssues: false,
       comments: false,
       linkedPrs: false,
     });
     expect(markdown).not.toContain("## Sub-issues");
     expect(markdown).not.toContain("## Comments");
+    expect(markdown).not.toContain("## Linked pull requests");
   });
 
   it("truncates to the provider input limit with a note", () => {

@@ -1736,6 +1736,16 @@ describe("mobile composer drafts", () => {
   });
 
   it("hydrates selector state even when the message content is empty", () => {
+    // Drafts saved before Linear issues carried a team have no teamId.
+    const linearIssue = {
+      issueId: "issue-1",
+      identifier: "ATT-612",
+      branchName: "jan/att-612-fix",
+      mappedProjectId: null,
+      moveTo: { id: "state-started", name: "In Progress" },
+      moveEnabled: true,
+      commentEnabled: false,
+    };
     const hydrated = Object.entries(
       decodePersistedComposerState({
         schemaVersion: 1,
@@ -1743,6 +1753,7 @@ describe("mobile composer drafts", () => {
           "new-task:environment-1:project-1": {
             text: "",
             attachments: [],
+            linearIssue,
             modelSelection: {
               instanceId: "codex",
               model: "gpt-5.4",
@@ -1766,6 +1777,7 @@ describe("mobile composer drafts", () => {
     expect(draft).toEqual({
       text: "",
       attachments: [],
+      linearIssue,
       modelSelection: {
         instanceId: "codex",
         model: "gpt-5.4",
@@ -1907,6 +1919,15 @@ describe("mobile composer drafts", () => {
         ...getComposerDraftSnapshot(key),
         runtimeMode: "approval-required",
         workspaceSelection: { mode: "worktree", branch: "feature/a", worktreePath: null },
+        linearIssue: {
+          issueId: "issue-1",
+          identifier: "ATT-612",
+          branchName: "ada/att-612",
+          mappedProjectId: null,
+          moveTo: null,
+          moveEnabled: false,
+          commentEnabled: true,
+        },
       },
     });
     const createdAt = getComposerDraftSnapshot(key).project?.createdAt;
@@ -1918,6 +1939,7 @@ describe("mobile composer drafts", () => {
     expect(moved.runtimeMode).toBe("approval-required");
 
     expect(moved.workspaceSelection).toBeUndefined();
+    expect(moved.linearIssue).toBeUndefined();
     expect(moved.project).toEqual({ ...to, createdAt });
     expect(findNewTaskDraftKeys(appAtomRegistry.get(composerDraftsAtom), from)).toEqual([]);
     expect(findNewTaskDraftKeys(appAtomRegistry.get(composerDraftsAtom), to)).toEqual([key]);
@@ -2077,6 +2099,15 @@ describe("mobile composer drafts", () => {
       text: "send this",
       attachments: [],
       importedShareIds: ["share-1"],
+      linearIssue: {
+        issueId: "issue-1",
+        identifier: "ATT-612",
+        branchName: "jan/att-612",
+        mappedProjectId: null,
+        moveTo: null,
+        moveEnabled: false,
+        commentEnabled: true,
+      },
       modelSelection: {
         instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5.4",
@@ -2089,6 +2120,7 @@ describe("mobile composer drafts", () => {
       },
     };
 
+    // A sent draft no longer belongs to its issue.
     expect(clearComposerDraftContentState({ [draftKey]: draft }, draftKey)).toEqual({
       [draftKey]: {
         modelSelection: draft.modelSelection,

@@ -1,66 +1,32 @@
-import type {
-  EnvironmentId,
-  LinearLaunchTarget,
-  LinearRecordLaunchInput,
-} from "@t3tools/contracts";
-import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import type { RecordLinearLaunchInput } from "@t3tools/client-runtime/linear/launch-plan";
+import { recordLinearLaunch as recordLaunch } from "@t3tools/client-runtime/linear/record-launch";
 
+import { configuredHostedAppUrl } from "../../hostedPairing";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { readPrimaryEnvironmentId } from "../../state/environments";
 import { linearEnvironment } from "../../state/linear";
 import { toastManager } from "../ui/toast";
-import { linearThreadUrl } from "./linearLaunch.logic";
 
-/**
- * Links a launch that actually happened to its issue and runs the write-backs. Never throws and
- * never blocks the launch: a failure is a warning toast, and the launch stands unlinked.
- */
-export async function recordLinearLaunch(input: {
-  readonly environmentId: EnvironmentId;
-  readonly issueId: string;
-  readonly identifier: string;
-  readonly target: LinearLaunchTarget;
-  readonly writeBack: LinearRecordLaunchInput["writeBack"];
-}): Promise<void> {
+/** Web adapter: warns with a toast and never blocks the launch it records. */
+export async function recordLinearLaunch(input: RecordLinearLaunchInput): Promise<void> {
   // Linear is served by the primary environment only.
   if (readPrimaryEnvironmentId() !== input.environmentId) return;
-  const warn = (description: string) =>
+  const warning = await recordLaunch(
+    {
+      registry: appAtomRegistry,
+      recordLaunch: linearEnvironment.recordLaunch,
+      // The desktop app's custom scheme can't be opened from Linear.
+      threadOrigin: /^https?:$/u.test(window.location.protocol)
+        ? window.location.origin
+        : configuredHostedAppUrl(),
+    },
+    input,
+  );
+  if (warning !== null) {
     toastManager.add({
       type: "warning",
-      title: `Couldn't update ${input.identifier} in Linear`,
-      description,
+      title: `Could not update ${input.identifier} in Linear`,
+      description: warning,
     });
-  try {
-    const result = await runAtomCommand(
-      appAtomRegistry,
-      linearEnvironment.recordLaunch,
-      {
-        environmentId: input.environmentId,
-        input: {
-          issueId: input.issueId,
-          target: input.target,
-          writeBack: input.writeBack,
-          threadUrl: linearThreadUrl({
-            origin: window.location.origin,
-            environmentId: input.environmentId,
-            threadId: input.target.threadId,
-          }),
-        },
-      },
-      { label: "linear record launch", reportFailure: false, reportDefect: false },
-    );
-    if (result._tag === "Failure") {
-      const failure = squashAtomCommandFailure(result);
-      warn(
-        failure instanceof Error && failure.message.length > 0
-          ? failure.message
-          : "The launch started, but the issue was not linked.",
-      );
-      return;
-    }
-    const [first] = result.value.warnings;
-    if (first) warn(first.message);
-  } catch {
-    warn("The launch started, but the issue was not linked.");
   }
 }

@@ -6,9 +6,13 @@ import { cn } from "~/lib/utils";
 import { LinearIssueList } from "./LinearIssueList";
 import type { LinearIssueRowContext } from "./LinearIssueRow";
 import { LinearMilestoneIcon, LinearTeamBadge } from "./linearIcons";
-import { formatProgressPercent } from "./linearIssueList.logic";
-import { formatLinearTargetDate } from "./linearJump";
-import { NO_MILESTONE_ID } from "./linearSearch";
+import {
+  formatLinearIssueCount,
+  formatProgressPercent,
+  listLinearMilestones,
+} from "@t3tools/client-runtime/linear/issue-list";
+import { formatLinearTargetDate } from "@t3tools/client-runtime/linear/jump";
+import { NO_MILESTONE_ID } from "@t3tools/client-runtime/linear/search";
 import type { LinearIssue } from "@t3tools/contracts";
 
 function ProgressBar({ progress, className }: { progress: number; className?: string }) {
@@ -32,10 +36,12 @@ function ProgressBar({ progress, className }: { progress: number; className?: st
 export function LinearProgressSummary({
   progress,
   issueCount,
+  issueCountCapped,
   targetDate,
 }: {
   progress: number;
   issueCount: number;
+  issueCountCapped: boolean;
   targetDate: string | null;
 }) {
   const target = formatLinearTargetDate(targetDate);
@@ -44,9 +50,7 @@ export function LinearProgressSummary({
       <ProgressBar progress={progress} />
       <span className="tabular-nums">{formatProgressPercent(progress)}%</span>
       <span aria-hidden>·</span>
-      <span className="tabular-nums">
-        {issueCount} {issueCount === 1 ? "issue" : "issues"}
-      </span>
+      <span className="tabular-nums">{formatLinearIssueCount(issueCount, issueCountCapped)}</span>
       {target ? (
         <>
           <span aria-hidden>·</span>
@@ -103,7 +107,7 @@ export function LinearTeamCards({
               </span>
               {running > 0 ? (
                 <span className="inline-flex items-center gap-1 rounded-full border border-info/35 bg-info/9 px-1.5 text-info-foreground">
-                  <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-current" />
+                  <span aria-hidden className="size-1.5 rounded-full bg-current" />
                   <span className="tabular-nums">{running}</span> running
                 </span>
               ) : null}
@@ -185,10 +189,7 @@ export function LinearMilestoneList({
   onToggleCompleted: () => void;
   onOpenMilestone: (milestoneId: string) => void;
 }) {
-  const completedCount = milestones.filter((milestone) => milestone.completed).length;
-  const visible = milestones
-    .filter((milestone) => showCompleted || !milestone.completed)
-    .toSorted((a, b) => a.sortOrder - b.sortOrder);
+  const { visible, completedCount } = listLinearMilestones(milestones, showCompleted);
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -216,7 +217,7 @@ export function LinearMilestoneList({
                 {formatProgressPercent(milestone.progress)}%
               </span>
               <span className="hidden w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums sm:inline">
-                {milestone.issueCount} {milestone.issueCount === 1 ? "issue" : "issues"}
+                {formatLinearIssueCount(milestone.issueCount, milestone.issueCountCapped)}
               </span>
               <span className="hidden w-14 shrink-0 text-right text-xs text-muted-foreground sm:inline">
                 {target ?? ""}

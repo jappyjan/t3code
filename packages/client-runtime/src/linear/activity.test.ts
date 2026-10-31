@@ -2,13 +2,13 @@ import type { LinearIssue, LinearIssueActivity } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  groupLinearIssues,
   pickActivityPill,
-  recentActivityIssueIds,
+  jumpBackInIssueIds,
+  orderJumpBackInIssues,
   runningCountByTeam,
   stepTone,
-  topLevelIssues,
-} from "./linearIssueList.logic";
+  threadIdentifiersFromActivity,
+} from "./activity.ts";
 
 function issue(
   id: string,
@@ -108,17 +108,36 @@ describe("activity summaries", () => {
     expect(counts.has("t2")).toBe(false);
   });
 
-  it("orders recent activity newest first and caps", () => {
+  it("picks the most recent issues for Jump back in, sorting ids so reorders keep the query", () => {
+    const recent = [
+      activity({ issueId: "old", latestActivityAt: "2026-01-01T00:00:00.000Z" }),
+      activity({ issueId: "new", latestActivityAt: "2026-03-01T00:00:00.000Z" }),
+      activity({ issueId: "mid", latestActivityAt: "2026-02-01T00:00:00.000Z" }),
+    ];
+    expect(jumpBackInIssueIds(recent, 2)).toEqual(["mid", "new"]);
+    const reordered = recent.map((entry) =>
+      entry.issueId === "mid" ? { ...entry, latestActivityAt: "2026-04-01T00:00:00.000Z" } : entry,
+    );
+    expect(jumpBackInIssueIds(reordered, 2)).toEqual(["mid", "new"]);
     expect(
-      recentActivityIssueIds(
-        [
-          activity({ issueId: "old", latestActivityAt: "2026-01-01T00:00:00.000Z" }),
-          activity({ issueId: "new", latestActivityAt: "2026-03-01T00:00:00.000Z" }),
-          activity({ issueId: "mid", latestActivityAt: "2026-02-01T00:00:00.000Z" }),
-        ],
-        2,
+      orderJumpBackInIssues([issue("old"), issue("mid"), issue("new")], reordered).map(
+        (entry) => entry.id,
       ),
-    ).toEqual(["new", "mid"]);
+    ).toEqual(["mid", "new", "old"]);
+  });
+
+  it("maps every linked thread, pipeline parents included, to its issue identifier", () => {
+    const item = (threadId: string) =>
+      ({ link: { threadId } }) as LinearIssueActivity["items"][number];
+    const identifiers = threadIdentifiersFromActivity([
+      activity({ issueIdentifier: "ATT-1", items: [item("t1"), item("t2")] }),
+      activity({ issueId: "b", issueIdentifier: "ATT-2", items: [item("t3")] }),
+    ]);
+    expect([...identifiers]).toEqual([
+      ["t1", "ATT-1"],
+      ["t2", "ATT-1"],
+      ["t3", "ATT-2"],
+    ]);
   });
 
   it("maps step statuses to tones", () => {
@@ -129,65 +148,5 @@ describe("activity summaries", () => {
       "idle",
       "idle",
     ]);
-  });
-});
-
-describe("topLevelIssues", () => {
-  it("nests sub-issues whose parent is listed", () => {
-    const list = [
-      issue("p"),
-      issue("c", { parent: { id: "p", identifier: "P" } }),
-      issue("orphan", { parent: { id: "elsewhere", identifier: "X" } }),
-    ];
-    expect(topLevelIssues(list).map((entry) => entry.id)).toEqual(["p", "orphan"]);
-  });
-});
-
-describe("groupLinearIssues", () => {
-  const review = { id: "s-review", name: "In Review", type: "started", color: "#0f0" } as const;
-  const progress = {
-    id: "s-progress",
-    name: "In Progress",
-    type: "started",
-    color: "#ff0",
-  } as const;
-  const todo = { id: "s-todo", name: "Todo", type: "unstarted", color: "#fff" } as const;
-  const done = { id: "s-done", name: "Done", type: "completed", color: "#00f" } as const;
-
-  it("groups by state in workflow order, later started steps first", () => {
-    const groups = groupLinearIssues(
-      [
-        issue("a", { state: todo }),
-        issue("b", { state: done }),
-        issue("c", { state: progress }),
-        issue("d", { state: review }),
-      ],
-      "state",
-      new Map([
-        ["s-progress", 2],
-        ["s-review", 3],
-        ["s-todo", 1],
-        ["s-done", 4],
-      ]),
-    );
-    expect(groups.map((group) => group.label)).toEqual([
-      "In Review",
-      "In Progress",
-      "Todo",
-      "Done",
-    ]);
-  });
-
-  it("groups by milestone with the unassigned bucket last", () => {
-    const groups = groupLinearIssues(
-      [issue("a"), issue("b", { milestone: { id: "m", name: "v1" } })],
-      "milestone",
-    );
-    expect(groups.map((group) => group.label)).toEqual(["v1", "No milestone"]);
-  });
-
-  it("returns one flat group for none and nothing for no issues", () => {
-    expect(groupLinearIssues([issue("a"), issue("b")], "none")).toHaveLength(1);
-    expect(groupLinearIssues([], "none")).toEqual([]);
   });
 });

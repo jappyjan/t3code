@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { LinearPage } from "../components/linear/LinearPage";
-import { parseLinearSearch, type LinearSearch } from "../components/linear/linearSearch";
+import { validateLinearRouteSearch } from "@t3tools/client-runtime/linear/search";
 
 export const Route = createFileRoute("/_chat/linear")({
-  validateSearch: (raw: Record<string, unknown>): LinearSearch => parseLinearSearch(raw),
+  validateSearch: validateLinearRouteSearch,
   component: LinearPage,
 });

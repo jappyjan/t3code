@@ -1,15 +1,22 @@
 import { type ComposerThreadTarget, useComposerDraftStore } from "../../composerDraftStore";
 import { cn } from "../../lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { linearMoveHint } from "./linearLaunch.logic";
+import {
+  attachedLinearDraftIssue,
+  linearMoveHint,
+} from "@t3tools/client-runtime/linear/launch-plan";
 
 function HintToggle({
   label,
+  shortLabel,
   enabled,
+  shrink = false,
   onToggle,
 }: {
   readonly label: string;
+  readonly shortLabel: string;
   readonly enabled: boolean;
+  readonly shrink?: boolean;
   readonly onToggle: () => void;
 }) {
   return (
@@ -23,12 +30,14 @@ function HintToggle({
             onClick={onToggle}
             className={cn(
               "truncate rounded-sm px-0.5 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              shrink ? "min-w-0 shrink" : "shrink-0",
               !enabled && "line-through opacity-60",
             )}
           />
         }
       >
-        {label}
+        <span className="max-sm:hidden">{label}</span>
+        <span className="sm:hidden">{shortLabel}</span>
       </TooltipTrigger>
       <TooltipPopup side="top">{enabled ? "Turn off" : "Turn on"} for this launch</TooltipPopup>
     </Tooltip>
@@ -40,8 +49,12 @@ function HintToggle({
  * Linear. Each part toggles for this launch only; the saved defaults live in Linear settings.
  */
 export function LinearLaunchHint({ draftTarget }: { readonly draftTarget: ComposerThreadTarget }) {
-  const launch = useComposerDraftStore(
-    (state) => state.getDraftThread(draftTarget)?.linearIssue ?? null,
+  // Removing the issue chip opts out of the launch, so the hint goes with it.
+  const launch = useComposerDraftStore((state) =>
+    attachedLinearDraftIssue(
+      state.getDraftThread(draftTarget)?.linearIssue,
+      state.getComposerDraft(draftTarget)?.linearContexts ?? [],
+    ),
   );
   const setDraftLinearIssue = useComposerDraftStore((state) => state.setDraftLinearIssue);
   if (launch === null) return null;
@@ -49,22 +62,27 @@ export function LinearLaunchHint({ draftTarget }: { readonly draftTarget: Compos
   return (
     <div
       data-chat-composer-linear-hint="true"
-      className="hidden min-w-0 shrink items-center gap-1 text-xs text-muted-foreground sm:flex"
+      className="flex min-w-0 max-w-80 shrink items-center gap-1 overflow-hidden text-xs text-muted-foreground"
     >
-      {moveLabel !== null ? (
+      {moveLabel !== null && launch.moveTo ? (
         <>
           <HintToggle
             label={moveLabel}
+            shortLabel={`→ ${launch.moveTo.name}`}
             enabled={launch.moveEnabled}
+            shrink
             onToggle={() =>
               setDraftLinearIssue(draftTarget, { ...launch, moveEnabled: !launch.moveEnabled })
             }
           />
-          <span aria-hidden>·</span>
+          <span aria-hidden className="shrink-0">
+            ·
+          </span>
         </>
       ) : null}
       <HintToggle
         label="comments link"
+        shortLabel="comment"
         enabled={launch.commentEnabled}
         onToggle={() =>
           setDraftLinearIssue(draftTarget, { ...launch, commentEnabled: !launch.commentEnabled })
