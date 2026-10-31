@@ -1951,7 +1951,7 @@ function ComposerPromptEditorTiptapInner(
     return () => {
       // Capture focus before the keyed editor's DOM is removed. A hiding Suspense boundary may
       // already have destroyed the editor, which leaves no view to read.
-      restoreFocusRef.current = editor.isInitialized && editor.view.hasFocus();
+      restoreFocusRef.current = !editor.isDestroyed && editor.view.hasFocus();
     };
   }, [editor, restoreFocusRef]);
 
