@@ -9,6 +9,7 @@ import {
   getThreadListV2RowAppearance,
 } from "./thread-list-v2-row-appearance";
 import { RowPressable } from "../../components/ui/RowPressable";
+import { LinearThreadIdentifier } from "../linear/LinearThreadIdentifier";
 import { CustomSnoozeSheet } from "./CustomSnoozeSheet";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { threadArrangementOpenAtom } from "../../state/thread-order";
@@ -539,7 +540,11 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
               tintColorClassName="accent-adaptive-amber-700-300"
               type="monochrome"
             />
-            <Text className="text-xs text-adaptive-amber-700-300">Draft</Text>
+            <Text className="text-xs text-adaptive-amber-700-300">
+              {pendingTask.draft.linearIssue
+                ? `Draft · from ${pendingTask.draft.linearIssue.identifier}`
+                : "Draft"}
+            </Text>
           </View>
         ) : (
           <Text
@@ -1385,6 +1390,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : (
           <View className="flex-1" />
         )}
+        <LinearThreadIdentifier
+          environmentId={thread.environmentId}
+          threadId={thread.id}
+          className={
+            selected
+              ? selectedThreadRowColors.mutedForegroundClassName
+              : rowAppearance.tertiaryForegroundClassName
+          }
+        />
         {pr ? (
           <Pressable
             // Padding cancelled by negative margin grows the touch target into
@@ -1595,21 +1609,32 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               </Text>
             </View>
           ) : (
-            <Text
-              className={cn(
-                "text-sm tabular-nums",
-                selected
-                  ? selectedThreadRowColors.mutedForegroundClassName
-                  : snoozedRow
-                    ? rowAppearance.mutedForegroundClassName
-                    : rowAppearance.tertiaryForegroundClassName,
-              )}
-              style={{ fontFamily: MONO_FONT }}
-            >
-              {snoozedRow && props.snoozeWakeLabelText !== undefined
-                ? props.snoozeWakeLabelText
-                : timeLabel}
-            </Text>
+            <>
+              <LinearThreadIdentifier
+                environmentId={thread.environmentId}
+                threadId={thread.id}
+                className={
+                  selected
+                    ? selectedThreadRowColors.mutedForegroundClassName
+                    : rowAppearance.tertiaryForegroundClassName
+                }
+              />
+              <Text
+                className={cn(
+                  "text-sm tabular-nums",
+                  selected
+                    ? selectedThreadRowColors.mutedForegroundClassName
+                    : snoozedRow
+                      ? rowAppearance.mutedForegroundClassName
+                      : rowAppearance.tertiaryForegroundClassName,
+                )}
+                style={{ fontFamily: MONO_FONT }}
+              >
+                {snoozedRow && props.snoozeWakeLabelText !== undefined
+                  ? props.snoozeWakeLabelText
+                  : timeLabel}
+              </Text>
+            </>
           )}
         </View>
       </RowPressable>
