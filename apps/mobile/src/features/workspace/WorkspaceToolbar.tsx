@@ -11,6 +11,7 @@ import { KeyboardStickyView, useKeyboardState } from "react-native-keyboard-cont
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
+import { NAVIGATION_TAB_ICONS } from "./navigation-tabs";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { useHardwareBack } from "../../lib/backHandler";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
@@ -18,11 +19,11 @@ import { WorkspaceDock } from "./WorkspaceDock";
 import { WorkspaceSearchField } from "./WorkspaceSearchField";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { WORKSPACE_TOOLBAR, type WorkspaceTab } from "./workspace-tabs-state";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 const TABS: ReadonlyArray<{ id: WorkspaceTab; label: string; icon: AppSymbolName }> = [
-  { id: "threads", label: "Threads", icon: "text.bubble" },
-  { id: "pullRequests", label: "PRs", icon: PullRequestGlyph.pullRequest },
+  { id: "threads", label: "Threads", icon: NAVIGATION_TAB_ICONS.threads },
+  { id: "pullRequests", label: "PRs", icon: NAVIGATION_TAB_ICONS.pullRequests },
+  { id: "linear", label: "Linear", icon: NAVIGATION_TAB_ICONS.linear },
 ];
 
 function ToolbarButton(props: {
@@ -61,7 +62,7 @@ export function WorkspaceToolbar(props: {
   const focusSearch = () => {
     if (!workspace) return false;
     const tab = workspace.state.selectedTab;
-    if (tab !== "threads" && tab !== "pullRequests") return false;
+    if (tab !== "threads" && tab !== "pullRequests" && tab !== "linear") return false;
     workspace.dispatch({ type: "scroll", tab, offset: workspace.getScrollOffset(tab) });
     workspace.dispatch({ type: "search" });
     setFocusRequest((request) => request + 1);
