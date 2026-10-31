@@ -28,7 +28,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { WorkspaceTabsProvider, useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { WorkspaceNativeTabs } from "../workspace/WorkspaceNativeTabs.ios";
-import { workspaceUsesColumns } from "../workspace/workspace-tabs-state";
+import { workspaceHidesDockOnPush, workspaceUsesColumns } from "../workspace/workspace-tabs-state";
 import { isSettingsRoute, settingsOpenIn } from "../settings/settings-navigation";
 import { workspaceRoutesOf } from "./workspace-overlay-routes";
 import { setNativelyPoppingWorkspaceRoute } from "../workspace/workspace-detail-selection";
@@ -515,7 +515,7 @@ function WorkspaceStackView(props: ViewProps & { readonly nativeColumns: boolean
     render: () => (
       <WorkspaceNativeTabs
         hidden={
-          !workspacePage &&
+          workspaceHidesDockOnPush(workspace.state.selectedTab, workspace.settingsOpen) &&
           projection.detail.length > 0 &&
           !primaryVisible &&
           !layout.usesSplitView &&
