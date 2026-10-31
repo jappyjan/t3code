@@ -12,6 +12,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2TurnItem,
   type OrchestrationV2AppThread,
+  PipelineRunId,
   ProjectId,
   ProviderInstanceId,
   ProviderThreadId,
@@ -87,7 +88,7 @@ function makeParentThread(): OrchestrationV2AppThread {
   };
 }
 
-it("resets a subagent child's snooze, title job and remote delegation but keeps its workspace", () => {
+it("resets a subagent child's snooze, title job, remote delegation and pipeline but keeps its workspace", () => {
   const parentThread: OrchestrationV2AppThread = {
     ...makeParentThread(),
     titleRegeneration: { requestId: CommandId.make("command:parent-title"), startedAt: snoozedAt },
@@ -96,6 +97,7 @@ it("resets a subagent child's snooze, title job and remote delegation but keeps 
       threadId: ThreadId.make("linked-parent"),
       title: "Linked parent",
     },
+    pipeline: { runId: PipelineRunId.make("pipeline-run:subagent-parent"), stepId: "build" },
   };
   const childProviderThreadId = ProviderThreadId.make("provider-thread:subagent-awake-child");
   const parentNodeId = NodeId.make("node:subagent-parent");
@@ -116,6 +118,7 @@ it("resets a subagent child's snooze, title job and remote delegation but keeps 
   assert.isNull(childThread.snoozedAt);
   assert.isNull(childThread.titleRegeneration);
   assert.isUndefined(childThread.delegatedFrom);
+  assert.isUndefined(childThread.pipeline);
   assert.equal(childThread.projectId, parentThread.projectId);
   assert.equal(childThread.runtimeMode, parentThread.runtimeMode);
   assert.equal(childThread.interactionMode, parentThread.interactionMode);
