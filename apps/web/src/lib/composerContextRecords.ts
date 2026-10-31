@@ -14,6 +14,7 @@ import type {
   FileContextRecord,
   ImageContextRecord,
   KnownComposerContextRecord,
+  LinearIssueContextRecord,
   MessageId,
   OrchestrationMessageContext,
   PreviewAnnotationContextRecord,
@@ -162,6 +163,11 @@ export function environmentContextReference(
   record: EnvironmentContextRecord,
 ): ComposerContextReference {
   return { kind: "environment", contextId: record.contextId, label: record.label };
+}
+
+/** One chip per issue: launching from the same issue twice reuses it. */
+export function linearContextReference(record: LinearIssueContextRecord): ComposerContextReference {
+  return { kind: "linear-issue", contextId: record.contextId, label: record.label };
 }
 
 export function environmentContextRecord(
@@ -318,6 +324,7 @@ export function buildMessageContext(input: {
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
+  linearContexts?: ReadonlyArray<LinearIssueContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   const screenshotAttachmentIds = new Set(
@@ -330,6 +337,7 @@ export function buildMessageContext(input: {
     ...input.reviewComments.map(reviewCommentContextRecord),
     ...(input.threadContexts ?? []),
     ...(input.environmentContexts ?? []),
+    ...(input.linearContexts ?? []),
     ...input.previewAnnotations.map((annotation) =>
       previewAnnotationContextRecord(annotation, {
         screenshotContextId: screenshotAttachmentIds.has(annotation.id) ? annotation.id : undefined,
