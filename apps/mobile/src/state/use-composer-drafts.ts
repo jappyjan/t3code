@@ -32,7 +32,10 @@ import type {
 } from "@t3tools/client-runtime/state/shell";
 import { draftModelPickMatchesThread } from "@t3tools/shared/model";
 
-import { LinearDraftIssue } from "@t3tools/client-runtime/linear/launch-plan";
+import {
+  attachedLinearDraftIssue,
+  LinearDraftIssue,
+} from "@t3tools/client-runtime/linear/launch-plan";
 import { writeFileAtomically } from "../lib/atomic-file";
 import { createComposerContextHistory, referencedComposerContext } from "../lib/composerContext";
 import { isQueuedEditDraftKey } from "./queued-edit-draft-key";
@@ -1951,20 +1954,6 @@ export function removeComposerDraftsForEnvironment(
   );
 }
 
-export function setComposerDraftLinearIssue(
-  draftKey: string,
-  linearIssue: LinearDraftIssue | null,
-): void {
-  updateComposerDrafts((current) => {
-    const { linearIssue: _previous, ...rest } = normalizeDraft(current[draftKey]);
-    return withComposerDraft(
-      current,
-      draftKey,
-      linearIssue === null ? rest : { ...rest, linearIssue },
-    );
-  });
-}
-
 export function createNewTaskDraft(project: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
@@ -1997,7 +1986,7 @@ export function retargetNewTaskDraft(
     ) {
       return current;
     }
-    const { workspaceSelection, ...retained } = normalizeDraft(existing);
+    const { workspaceSelection, linearIssue, ...retained } = normalizeDraft(existing);
     // The PR checkout is recreated on the target machine, so only the old local path is dropped.
     const keptWorkspaceSelection =
       options?.keepPullRequestWorkspace && workspaceSelection?.pullRequestReference !== undefined
@@ -2015,6 +2004,10 @@ export function retargetNewTaskDraft(
       [draftKey]: {
         ...retained,
         ...(keptWorkspaceSelection ? { workspaceSelection: keptWorkspaceSelection } : {}),
+        // A Linear launch is linked and written back through the environment that holds the key.
+        ...(linearIssue !== undefined && stamp?.environmentId === project.environmentId
+          ? { linearIssue }
+          : {}),
         attachments,
         project: {
           environmentId: project.environmentId,
@@ -2158,6 +2151,19 @@ const composerDraftSettingsAtom = Atom.family((draftKey: string) =>
   ),
 );
 const EMPTY_DRAFT_SETTINGS_ATOM = Atom.make(EMPTY_DRAFT_SETTINGS);
+
+const composerDraftLinearIssueAtom = Atom.family((draftKey: string) =>
+  Atom.make((get) => {
+    const draft = get(composerDraftAtom(draftKey));
+    return attachedLinearDraftIssue(draft.linearIssue, draft.context?.records ?? []);
+  }),
+);
+const NO_LINEAR_ISSUE_ATOM = Atom.make<LinearDraftIssue | null>(null);
+
+/** The draft's Linear launch while its issue chip is attached, without re-rendering per keystroke. */
+export function useComposerDraftLinearIssue(draftKey: string | null): LinearDraftIssue | null {
+  return useAtomValue(draftKey ? composerDraftLinearIssueAtom(draftKey) : NO_LINEAR_ISSUE_ATOM);
+}
 
 export function useComposerDraftSettings(draftKey: string | null): ComposerDraftSettings {
   const settings = useAtomValue(

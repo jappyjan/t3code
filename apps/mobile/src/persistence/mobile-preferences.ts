@@ -134,6 +134,8 @@ export interface Preferences {
   readonly threadListFilters?: ThreadListFilters;
   readonly pullRequestListFilters?: PullRequestListPreferences;
   readonly workspaceSelections?: WorkspaceSelections;
+  /** The pipeline last started from a Linear issue, for the sheet's "Last used". */
+  readonly linearLastPipelineId?: string;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -218,6 +220,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
     workspaceSelections?: WorkspaceSelections;
+    linearLastPipelineId?: string;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -373,6 +376,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (isWorkspaceSelections(parsed.workspaceSelections)) {
     preferences.workspaceSelections = parsed.workspaceSelections;
+  }
+  if (typeof parsed.linearLastPipelineId === "string") {
+    preferences.linearLastPipelineId = parsed.linearLastPipelineId;
   }
   return preferences;
 }
