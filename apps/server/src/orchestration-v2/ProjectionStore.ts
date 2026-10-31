@@ -84,6 +84,7 @@ import {
   ThreadId,
   TurnItemId,
   NodeId,
+  PipelineRunId,
   ProjectId,
   ProviderInstanceId,
 } from "@t3tools/contracts";
@@ -513,6 +514,7 @@ export interface ActiveShellIndexEntry extends Pick<
   | "pinnedAt"
   | "pinOrderKey"
   | "snoozedUntil"
+  | "pipeline"
 > {
   /** False only when no run, request, work item, or watch can make the shell live. */
   readonly mayBeLive: boolean;
@@ -9494,6 +9496,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         readonly pinned_at: string | null;
         readonly pin_order_key: string | null;
         readonly snoozed_until: string | null;
+        readonly pipeline_run_id: string | null;
+        readonly pipeline_step_id: string | null;
         readonly may_be_live: number;
         readonly has_remote_tasks: number;
       }>`
@@ -9509,6 +9513,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           ${indexedField("$.pinnedAt")} AS pinned_at,
           ${indexedField("$.pinOrderKey")} AS pin_order_key,
           ${indexedField("$.snoozedUntil")} AS snoozed_until,
+          ${indexedField("$.pipeline.runId")} AS pipeline_run_id,
+          ${indexedField("$.pipeline.stepId")} AS pipeline_step_id,
           -- A superset of isLiveSubagentShell: the sources of its run status, pending request,
           -- and pending background work. Each source is one list for the whole read, found
           -- through its partial index, so finished threads cost no lookups.
@@ -9573,6 +9579,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         pinnedAt: row.pinned_at === null ? null : DateTime.makeUnsafe(row.pinned_at),
         pinOrderKey: row.pin_order_key,
         snoozedUntil: row.snoozed_until === null ? null : DateTime.makeUnsafe(row.snoozed_until),
+        ...(row.pipeline_run_id === null
+          ? {}
+          : {
+              pipeline: {
+                runId: PipelineRunId.make(row.pipeline_run_id),
+                stepId: row.pipeline_step_id,
+              },
+            }),
         mayBeLive: row.may_be_live === 1,
         hasRemoteTasks: row.has_remote_tasks === 1,
       }));
