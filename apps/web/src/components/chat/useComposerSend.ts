@@ -15,6 +15,8 @@ import {
   withMessageContext,
   makeThreadErrorSetter,
 } from "../ChatView.logic";
+import { linearWriteBackOf } from "../linear/linearLaunch.logic";
+import { recordLinearLaunch } from "../linear/recordLinearLaunch";
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import {
   AuthOrchestrationOperateScope,
@@ -597,6 +599,7 @@ export function useComposerSend(input: ComposerSendInput) {
       reviewComments: composerReviewComments,
       threadContexts: composerThreadContexts,
       environmentContexts: composerEnvironmentContexts,
+      linearContexts: composerLinearContexts,
       selectedProvider: ctxSelectedProvider,
       selectedModel: ctxSelectedModel,
       selectedProviderModels: ctxSelectedProviderModels,
@@ -664,6 +667,7 @@ export function useComposerSend(input: ComposerSendInput) {
           threadContexts: composerThreadContexts,
           environmentContexts: composerEnvironmentContexts,
           replyTo,
+          linearContexts: composerLinearContexts,
         },
         setThreadError,
       );
@@ -682,7 +686,8 @@ export function useComposerSend(input: ComposerSendInput) {
         composerPreviewAnnotations.length +
         composerReviewComments.length +
         composerThreadContexts.length +
-        composerEnvironmentContexts.length,
+        composerEnvironmentContexts.length +
+        composerLinearContexts.length,
     });
     const feedbackCommand =
       selectedPipelineId === null &&
@@ -693,7 +698,8 @@ export function useComposerSend(input: ComposerSendInput) {
       composerPreviewAnnotations.length === 0 &&
       composerReviewComments.length === 0 &&
       composerThreadContexts.length === 0 &&
-      composerEnvironmentContexts.length === 0
+      composerEnvironmentContexts.length === 0 &&
+      composerLinearContexts.length === 0
         ? parseCodexFeedbackCommand(trimmed)
         : null;
     if (feedbackCommand && multipleModelSelections === null) {
@@ -750,7 +756,8 @@ export function useComposerSend(input: ComposerSendInput) {
       composerReviewComments.length === 0 &&
       composerThreadContexts.length === 0 &&
       composerEnvironmentContexts.length === 0 &&
-      replyTo === null;
+      replyTo === null &&
+      composerLinearContexts.length === 0;
     if (freshSessionAvailable && composerHoldsOnlyText && isClearComposerCommand(trimmed)) {
       armFreshSession(routeThreadKey);
       promptRef.current = "";
@@ -798,7 +805,13 @@ export function useComposerSend(input: ComposerSendInput) {
       threadContexts: composerThreadContexts,
       environmentContexts: composerEnvironmentContexts,
       replyTo,
+      linearContexts: composerLinearContexts,
     });
+    // A launch is recorded only while its issue is still attached; removing the chip opts out.
+    const linearIssueIdAtSend =
+      sendSnapshot.linearContexts.find(
+        (record) => record.issueId === draftThread?.linearIssue?.issueId,
+      )?.issueId ?? null;
     const {
       files: composerFilesSnapshot,
       attachments: composerAttachmentsSnapshot,
@@ -807,6 +820,7 @@ export function useComposerSend(input: ComposerSendInput) {
       reviewComments: composerReviewCommentsSnapshot,
       threadContexts: composerThreadContextsSnapshot,
       environmentContexts: composerEnvironmentContextsSnapshot,
+      linearContexts: composerLinearContextsSnapshot,
       messageText: messageTextForSend,
     } = sendSnapshot;
     const {
@@ -844,7 +858,8 @@ export function useComposerSend(input: ComposerSendInput) {
           composerPreviewAnnotationsSnapshot.length > 0 ||
           composerReviewCommentsSnapshot.length > 0 ||
           composerThreadContextsSnapshot.length > 0 ||
-          composerEnvironmentContextsSnapshot.length > 0,
+          composerEnvironmentContextsSnapshot.length > 0 ||
+          composerLinearContextsSnapshot.length > 0,
         supportsAttachments: pipelineAttachmentsSupported,
       });
       if (pipelineBlock !== null) {
@@ -863,6 +878,7 @@ export function useComposerSend(input: ComposerSendInput) {
         threadContexts: composerThreadContextsSnapshot,
         environmentContexts: composerEnvironmentContextsSnapshot,
         replyTo,
+        linearContexts: composerLinearContextsSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,
@@ -1366,6 +1382,10 @@ export function useComposerSend(input: ComposerSendInput) {
                     prepareWorktree: {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
+                      // A launch from a Linear issue names its branch so Linear links the PR.
+                      ...(isLocalDraftThread && draftThread?.linearIssue
+                        ? { branch: draftThread.linearIssue.branchName }
+                        : {}),
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
                     },
                     runSetupScript: true,
@@ -1443,6 +1463,25 @@ export function useComposerSend(input: ComposerSendInput) {
             scopeThreadRef(environmentId, threadIdForSend),
             checkoutPullRequestUrl,
           );
+        }
+        // The thread now exists, so a draft started from a Linear issue links to it.
+        if (
+          isLocalDraftThread &&
+          draftThread?.linearIssue &&
+          draftThread.linearIssue.issueId === linearIssueIdAtSend
+        ) {
+          void recordLinearLaunch({
+            environmentId,
+            issueId: draftThread.linearIssue.issueId,
+            identifier: draftThread.linearIssue.identifier,
+            target: {
+              kind: "thread",
+              targetId: threadIdForSend,
+              threadId: threadIdForSend,
+              title,
+            },
+            writeBack: linearWriteBackOf(draftThread.linearIssue),
+          });
         }
         setKeepFullHistory(routeThreadKey, false);
         if (freshArm !== undefined) disarmFreshSession(routeThreadKey, freshArm);

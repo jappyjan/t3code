@@ -405,6 +405,8 @@ export function applyServerSettingsPatch(
     textGenerators: textGeneratorsPatch,
     secretProviders: secretProvidersPatch,
     sourceControlHosts: sourceControlHostsPatch,
+    // Shallow merge: deepMerge would merge `mappings` entries instead of replacing the array.
+    linear: linearPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
     usageModelAliases: usageModelAliasesPatch,
     // Entry replacement: deepMerge would keep keys the client meant to clear.
@@ -588,6 +590,7 @@ export function applyServerSettingsPatch(
           },
         }
       : {}),
+    ...(linearPatch !== undefined ? { linear: { ...current.linear, ...linearPatch } } : {}),
     ...(projectSettingsOverridesPatch !== undefined
       ? {
           projectSettingsOverrides: Object.fromEntries(

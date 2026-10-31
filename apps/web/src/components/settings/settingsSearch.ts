@@ -37,6 +37,7 @@ export type SettingsPath =
   | "/settings/connections"
   | "/settings/access"
   | "/settings/secrets"
+  | "/settings/linear"
   | "/settings/maintenance"
   | "/settings/labs"
   | "/settings/about"
@@ -113,6 +114,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/connections": msg("Environments"),
   "/settings/access": msg("Sharing & access"),
   "/settings/secrets": msg("Secrets"),
+  "/settings/linear": msg("Linear"),
   "/settings/maintenance": msg("Maintenance"),
   "/settings/labs": msg("Labs"),
   "/settings/about": msg("About"),
@@ -154,6 +156,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     heading: msg("Code"),
     paths: ["/settings/projects", "/settings/source-control", "/settings/worktrees"],
   },
+  { heading: "Integrations", paths: ["/settings/linear"] },
   {
     heading: msg("Connections"),
     paths: [
@@ -1366,6 +1369,26 @@ export const SETTINGS_SEARCH_ITEMS = [
     secretsFeatureOnly: true,
   },
   {
+    id: "linear",
+    title: "Linear",
+    to: "/settings/linear",
+    searchTerms: ["issues tracker workspace api key connect integration"],
+  },
+  {
+    id: "linear-mapping",
+    title: "Linear project mapping",
+    to: "/settings/linear",
+    searchTerms: ["team project base branch ask each time map issues t3 project"],
+  },
+  {
+    id: "linear-launch",
+    title: "When launching from a Linear issue",
+    to: "/settings/linear",
+    searchTerms: [
+      "move issue state in progress comment link thread default workspace worktree local include sub-issues comments linked pull requests",
+    ],
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1396,6 +1419,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/connections": "connections",
   "/settings/access": "connections",
   "/settings/secrets": null,
+  "/settings/linear": null,
   "/settings/scheduled-tasks": null,
   "/settings/pipelines": null,
   "/settings/maintenance": null,

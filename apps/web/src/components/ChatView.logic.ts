@@ -39,6 +39,7 @@ import {
   type ThreadContextRecord,
   type EnvironmentContextRecord,
   type ResponseContextRecord,
+  type LinearIssueContextRecord,
   type ThreadId,
   type ThreadLinkedPullRequest,
   type RunId,
@@ -1253,6 +1254,7 @@ export interface ComposerSendContents {
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
   /** The response the message replies to. `prompt` already leads with its reference. */
   readonly replyTo: ResponseContextRecord | null;
+  readonly linearContexts: ReadonlyArray<LinearIssueContextRecord>;
 }
 
 /**
@@ -1287,6 +1289,7 @@ export function snapshotComposerSend(contents: ComposerSendContents) {
     draftText: contents.replyTo
       ? removeInlineContextReference(messageText, contents.replyTo.contextId).prompt.trimStart()
       : messageText,
+    linearContexts: [...contents.linearContexts],
   };
 }
 

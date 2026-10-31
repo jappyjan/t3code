@@ -62,6 +62,8 @@ import {
 import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchItems";
 import { handleSettingsSectionKeyDown } from "./settingsSectionNavigation";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
+import { LinearGlyph } from "../linear/linearIcons";
+import { Badge } from "../ui/badge";
 
 const SnapShotIcon = createLucideIcon("snap-shot", [
   [
@@ -86,6 +88,11 @@ const T3ConnectSidebarAvatar = lazy(() =>
   })),
 );
 
+const LinearIcon: ComponentType<{ className?: string }> = LinearGlyph;
+
+/** Sections added recently; they carry a NEW badge until the next cleanup. */
+const NEW_SETTINGS_SECTIONS: ReadonlySet<SettingsPath> = new Set(["/settings/linear"]);
+
 const SETTINGS_SECTION_ICONS: Readonly<
   Record<SettingsPath, ComponentType<{ className?: string }>>
 > = {
@@ -109,6 +116,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/connections": ServerIcon,
   "/settings/access": ShieldCheckIcon,
   "/settings/secrets": KeyRoundIcon,
+  "/settings/linear": LinearIcon,
   "/settings/maintenance": WrenchIcon,
   "/settings/labs": FlaskConicalIcon,
   "/settings/about": InfoIcon,
@@ -417,6 +425,15 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                                   >
                                     {m(SETTINGS_SECTION_LABELS[to])}
                                   </span>
+                                  {NEW_SETTINGS_SECTIONS.has(to) ? (
+                                    <Badge
+                                      variant="info"
+                                      size="sm"
+                                      className="ms-auto max-md:hidden"
+                                    >
+                                      NEW
+                                    </Badge>
+                                  ) : null}
                                 </SidebarMenuButton>
                               </SidebarMenuItem>
                             );

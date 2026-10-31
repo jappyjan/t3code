@@ -22,6 +22,7 @@ import {
 } from "../../lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown from "../ChatMarkdown";
+import { LinearIssueContextChip } from "../LinearIssueContextChip";
 import { EnvironmentContextChip } from "../EnvironmentContextChip";
 import { ThreadContextChip } from "../ThreadContextChip";
 import { ResponseReplyCard } from "./AssistantCitationChip";
@@ -335,6 +336,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             leading={context.reference.leading ?? false}
             trailing={context.reference.trailing ?? false}
           />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "linear-issue",
+      canRender: (record) => record.kind === "linear-issue",
+      render: (record, context) =>
+        record.kind === "linear-issue" ? (
+          <LinearIssueContextChip record={record} copyMarkdown={context.copyMarkdown} />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),
