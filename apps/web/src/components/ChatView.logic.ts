@@ -41,6 +41,7 @@ import {
   type ScopedThreadRef,
   type ThreadContextRecord,
   type EnvironmentContextRecord,
+  type LinearIssueContextRecord,
   type ThreadId,
   type ThreadLinkedPullRequest,
   type RunId,
@@ -1178,6 +1179,7 @@ export interface PlanFollowUpComposerSnapshot {
   readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
+  readonly linearContexts: ReadonlyArray<LinearIssueContextRecord>;
 }
 
 // A draft typed while the send was in flight is newer and stays. Composer refs and the cursor
@@ -1193,6 +1195,7 @@ export function restorePlanFollowUpComposer(input: {
   readonly writePreviewAnnotations: (annotations: ReadonlyArray<PreviewAnnotationPayload>) => void;
   readonly writeThreadContexts: (records: ReadonlyArray<ThreadContextRecord>) => void;
   readonly writeEnvironmentContexts: (records: ReadonlyArray<EnvironmentContextRecord>) => void;
+  readonly writeLinearContexts: (records: ReadonlyArray<LinearIssueContextRecord>) => void;
   readonly resetCursor: (options: {
     cursor: number;
     prompt: string;
@@ -1207,6 +1210,7 @@ export function restorePlanFollowUpComposer(input: {
   input.writePreviewAnnotations(input.snapshot.previewAnnotations);
   input.writeThreadContexts(input.snapshot.threadContexts);
   input.writeEnvironmentContexts(input.snapshot.environmentContexts);
+  input.writeLinearContexts(input.snapshot.linearContexts);
   if (!input.routeIsCurrent) return;
   input.resetCursor({
     cursor: collapseExpandedComposerCursor(input.snapshot.prompt, input.snapshot.prompt.length),
@@ -1368,6 +1372,7 @@ export interface ComposerSendContents {
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
+  readonly linearContexts: ReadonlyArray<LinearIssueContextRecord>;
 }
 
 /**
@@ -1388,6 +1393,7 @@ export function snapshotComposerSend(contents: ComposerSendContents) {
     reviewComments: [...contents.reviewComments],
     threadContexts: [...contents.threadContexts],
     environmentContexts: [...contents.environmentContexts],
+    linearContexts: [...contents.linearContexts],
     messageText: contents.terminalContexts
       .filter((context) => !terminalContexts.includes(context))
       .reduce(
