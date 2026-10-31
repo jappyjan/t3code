@@ -2078,6 +2078,15 @@ describe("mobile composer drafts", () => {
       text: "send this",
       attachments: [],
       importedShareIds: ["share-1"],
+      linearIssue: {
+        issueId: "issue-1",
+        identifier: "ATT-612",
+        branchName: "jan/att-612",
+        mappedProjectId: null,
+        moveTo: null,
+        moveEnabled: false,
+        commentEnabled: true,
+      },
       modelSelection: {
         instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5.4",
@@ -2090,6 +2099,7 @@ describe("mobile composer drafts", () => {
       },
     };
 
+    // A sent draft no longer belongs to its issue.
     expect(clearComposerDraftContentState({ [draftKey]: draft }, draftKey)).toEqual({
       [draftKey]: {
         modelSelection: draft.modelSelection,
