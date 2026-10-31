@@ -26,6 +26,7 @@ import { HomeRouteScreen } from "../home/HomeRouteScreen";
 import { dispatchHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { WorkspaceConnectionTitle } from "../home/WorkspaceConnectionTitle";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import { LinearTabScreen } from "../linear/LinearTabScreen";
 import { PullRequestsScreen } from "../pull-requests/PullRequestsScreen";
 import {
   WorkspaceTabsContext,
@@ -168,11 +169,17 @@ function WorkspaceRootContent() {
             title="T3 Code"
             titleContent={renderHeaderTitle()}
             actions={[
-              ...(state.selectedTab === "threads" || state.selectedTab === "pullRequests"
+              ...(state.selectedTab === "threads" ||
+              state.selectedTab === "pullRequests" ||
+              state.selectedTab === "linear"
                 ? [
                     {
                       accessibilityLabel:
-                        state.selectedTab === "threads" ? "Search threads" : "Search pull requests",
+                        state.selectedTab === "threads"
+                          ? "Search threads"
+                          : state.selectedTab === "linear"
+                            ? "Search issues"
+                            : "Search pull requests",
                       icon: "magnifyingglass" as const,
                       onPress: () => {
                         dispatchHardwareKeyboardCommand("focusSearch");
@@ -197,6 +204,8 @@ function WorkspaceRootContent() {
             <HomeRouteScreen />
           ) : state.selectedTab === "pullRequests" ? (
             <PullRequestsScreen />
+          ) : state.selectedTab === "linear" ? (
+            <LinearTabScreen />
           ) : (
             <WorkspaceExtraTab tab={state.selectedTab} />
           )}
@@ -208,7 +217,9 @@ function WorkspaceRootContent() {
         {enabled.length === 0 && !settingsOpen ? null : (
             settingsOpen
               ? Platform.OS === "ios"
-              : state.selectedTab === "threads" || state.selectedTab === "pullRequests"
+              : state.selectedTab === "threads" ||
+                state.selectedTab === "pullRequests" ||
+                state.selectedTab === "linear"
           ) ? (
           <WorkspaceToolbar sidebar={sidebarNavigation} onNewTask={startNewTask} />
         ) : (

@@ -5,6 +5,7 @@ import { threadHeaderAppearance } from "./thread-header-appearance";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { useComposerAttachmentActions } from "../../state/use-composer-attachment-actions";
 import { useWorkspaceBackNavigation } from "../workspace/useAndroidWorkspaceNavigation";
+import { LinearDraftProjectHint, LinearWriteBackRow } from "../linear/LinearDraftControls";
 import { submittedThreadParams } from "./thread-route-state";
 import { ThreadScreenBinding, ThreadScreenFallback } from "./ThreadScreenHost";
 import { draftThreadShell } from "./draft-thread-shell";
@@ -960,6 +961,7 @@ export function NewTaskDraftScreen(props: {
         </View>
       </View>
 
+      <LinearDraftProjectHint draftKey={flow.draftKey} projectId={String(selectedProject.id)} />
       {environmentControl}
       {shareUnavailableNotice}
     </View>
@@ -1147,6 +1149,7 @@ export function NewTaskDraftScreen(props: {
                   />
                 </View>
               ) : null}
+              <LinearWriteBackRow draftKey={flow.draftKey} />
               {flow.canChooseWorkspace ? workspaceControls : null}
             </View>
           ),

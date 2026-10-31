@@ -68,6 +68,16 @@ import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSh
 import { ThreadAgentsSheet } from "./features/threads/ThreadAgentsSheet";
 import { PipelineCoordinatorRouteScreen } from "./features/threads/PipelineCoordinatorSheet";
 import { PipelineFeedbackSheet } from "./features/threads/PipelineFeedbackSheet";
+import { LinearIssueRouteScreen } from "./features/linear/LinearIssueRouteScreen";
+import {
+  LinearMilestoneScreen,
+  LinearProjectScreen,
+  LinearTeamScreen,
+} from "./features/linear/LinearLevelScreens";
+import { LinearWorkspaceLinkScreen } from "./features/linear/LinearWorkspaceLinkScreen";
+import { LINEAR_LINK_PATHS } from "./features/linear/linearRoutes";
+import { LinearPipelineSheet } from "./features/linear/LinearPipelineSheet";
+import { LinearProjectPickerSheet } from "./features/linear/LinearProjectPickerSheet";
 import { ThreadBackgroundWorkSheet } from "./features/threads/ThreadBackgroundWorkSheet";
 import { ThreadQueueSheet } from "./features/threads/ThreadQueueControl";
 import {
@@ -758,6 +768,31 @@ const RootStackConfig = createWorkspaceStackNavigator({
         sheetGrabberVisible: true,
       },
     }),
+    LinearWorkspace: createNativeStackScreen({
+      screen: LinearWorkspaceLinkScreen,
+      linking: LINEAR_LINK_PATHS.LinearWorkspace,
+      options: { headerShown: false },
+    }),
+    LinearTeam: createNativeStackScreen({
+      screen: LinearTeamScreen,
+      linking: LINEAR_LINK_PATHS.LinearTeam,
+      options: DETAIL_HEADER_OPTIONS,
+    }),
+    LinearProject: createNativeStackScreen({
+      screen: LinearProjectScreen,
+      linking: LINEAR_LINK_PATHS.LinearProject,
+      options: DETAIL_HEADER_OPTIONS,
+    }),
+    LinearMilestone: createNativeStackScreen({
+      screen: LinearMilestoneScreen,
+      linking: LINEAR_LINK_PATHS.LinearMilestone,
+      options: DETAIL_HEADER_OPTIONS,
+    }),
+    LinearIssue: createNativeStackScreen({
+      screen: LinearIssueRouteScreen,
+      linking: LINEAR_LINK_PATHS.LinearIssue,
+      options: DETAIL_HEADER_OPTIONS,
+    }),
     Thread: createNativeStackScreen({
       screen: ThreadRouteScreen,
       linking: { path: "threads/:environmentId?/:threadId?", alias: ["new/draft"] },
@@ -962,6 +997,22 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: {
         ...HORIZONTAL_FORM_SHEET_OPTIONS,
         sheetAllowedDetents: formSheetDetents(0.7),
+        sheetGrabberVisible: true,
+      },
+    }),
+    LinearProjectPicker: createNativeStackScreen({
+      screen: LinearProjectPickerSheet,
+      options: {
+        ...HORIZONTAL_FORM_SHEET_OPTIONS,
+        sheetAllowedDetents: formSheetDetents(0.6),
+        sheetGrabberVisible: true,
+      },
+    }),
+    LinearPipeline: createNativeStackScreen({
+      screen: LinearPipelineSheet,
+      options: {
+        ...HORIZONTAL_FORM_SHEET_OPTIONS,
+        sheetAllowedDetents: formSheetDetents(0.9),
         sheetGrabberVisible: true,
       },
     }),
