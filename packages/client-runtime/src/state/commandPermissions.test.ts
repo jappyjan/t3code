@@ -175,25 +175,29 @@ describe("command permissions", () => {
     }),
   );
 
-  it.effect.each([WS_METHODS.serverCheckOtlpEndpoint, WS_METHODS.serverCheckSecretSource])(
-    "requires the destination settings grant for %s",
-    (method) =>
-      Effect.gen(function* () {
-        const registry = yield* setup;
-        const check = createCommandPermissions(runtime, method);
-        registry.set(sessions(env), AsyncResult.success(grant(true)));
-        expect(registry.get(check.permissionAtom(env))).toBe(false);
-        registry.set(
-          sessions(env),
-          AsyncResult.success({
-            ...grant(false),
-            scopes: [AuthSettingsWriteScope],
-            permissions: [AuthSettingsWriteScope],
-          }),
-        );
-        expect(registry.get(check.permissionAtom(env))).toBe(true);
-        yield* check.authorize(registry, env);
-      }),
+  it.effect.each([
+    WS_METHODS.serverCheckOtlpEndpoint,
+    WS_METHODS.serverCheckSecretSource,
+    WS_METHODS.linearConnect,
+    WS_METHODS.linearDisconnect,
+    WS_METHODS.linearResync,
+  ])("requires the destination settings grant for %s", (method) =>
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const check = createCommandPermissions(runtime, method);
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(registry.get(check.permissionAtom(env))).toBe(false);
+      registry.set(
+        sessions(env),
+        AsyncResult.success({
+          ...grant(false),
+          scopes: [AuthSettingsWriteScope],
+          permissions: [AuthSettingsWriteScope],
+        }),
+      );
+      expect(registry.get(check.permissionAtom(env))).toBe(true);
+      yield* check.authorize(registry, env);
+    }),
   );
 
   it.effect.each([
@@ -201,6 +205,7 @@ describe("command permissions", () => {
     WS_METHODS.pipelinesUpsert,
     WS_METHODS.pipelineRunsCancel,
     WS_METHODS.pipelineRunsRevise,
+    WS_METHODS.linearRecordLaunch,
     ORCHESTRATION_V2_WS_METHODS.stopWorkflow,
   ])("uses the target grant for both availability and execution of %s", (method) =>
     Effect.gen(function* () {
