@@ -2495,7 +2495,6 @@ export default function ChatView(props: ChatViewProps) {
     pullRequestPanelTarget,
     threadPanelPresentation,
     isServerThread,
-    embedded,
     isGitRepo,
     browserAvailable,
     canOperatePreview,
