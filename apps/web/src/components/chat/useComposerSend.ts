@@ -1481,6 +1481,8 @@ export function useComposerSend(input: ComposerSendInput) {
             environmentId,
             issueId: draftThread.linearIssue.issueId,
             identifier: draftThread.linearIssue.identifier,
+            teamId: draftThread.linearIssue.teamId,
+            projectId: draftThread.linearIssue.projectId,
             target: {
               kind: "thread",
               targetId: threadIdForSend,
