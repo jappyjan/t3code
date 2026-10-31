@@ -39,6 +39,9 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as NodePtyAdapter from "./terminal/NodePtyAdapter.ts";
 import * as PullRequestHttp from "./pullRequest/http.ts";
 import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
+import * as LinearLinkStore from "./linear/LinearLinkStore.ts";
+import * as LinearPipelineCommentReactor from "./linear/LinearPipelineCommentReactor.ts";
+import * as LinearService from "./linear/LinearService.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as SqlitePersistence from "./persistence/Sqlite.ts";
 import * as PullRequestFilesViewed from "./persistence/PullRequestFilesViewed.ts";
@@ -580,7 +583,15 @@ const layerProviderInstallationRefresh = Layer.effectDiscard(
   }),
 );
 
+// Server-lifetime: caches, backoff and the comment reactor are shared by every WebSocket client.
+const layerLinear = LinearPipelineCommentReactor.layer.pipe(
+  Layer.provideMerge(LinearService.layer),
+  Layer.provideMerge(LinearLinkStore.layer),
+  Layer.provide(ProjectionStoreV2.layer),
+);
+
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+  layerLinear,
   AgentAwarenessRelay.layer,
   HeldHooksWaker.layer,
   layerThreadSettlementWorker,

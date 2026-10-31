@@ -245,6 +245,7 @@ import { ComposerHandleContext, useComposerHandleContext } from "../composerHand
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { buildSidebarProjectPickerEntries } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { LinearGlyph } from "./linear/linearIcons";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
@@ -1590,6 +1591,17 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:linear",
+    searchTerms: ["linear", "issues", "tickets", "projects", "milestones", "cycles", "tasks"],
+    title: "Open Linear",
+    icon: <LinearGlyph className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/linear", search: {} });
+    },
+  });
 
   actionItems.push({
     kind: "action",

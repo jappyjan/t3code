@@ -26,6 +26,7 @@ import type {
   PreviewAnnotationPayload,
   ThreadContextRecord,
   EnvironmentContextRecord,
+  LinearIssueContextRecord,
   ProviderInteractionMode,
   ResolvedKeybindingsConfig,
   RuntimeMode,
@@ -262,6 +263,7 @@ import { useStableCallback } from "../../hooks/useStableCallback";
 import type { PipelineId } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { LinearLaunchHint } from "../linear/LinearLaunchHint";
 import { ComposerPipelinePicker } from "./ComposerPipelinePicker";
 import { draftPipelineSelectionAtom } from "./chatViewSend";
 import { PIPELINE_TEXT_ONLY_HINT } from "./composerSend.logic";
@@ -337,6 +339,7 @@ export interface ChatComposerHandle {
     reviewComments: ReviewCommentContext[];
     threadContexts: ThreadContextRecord[];
     environmentContexts: EnvironmentContextRecord[];
+    linearContexts: LinearIssueContextRecord[];
     selectedPromptEffort: string | null;
     selectedModelSelection: ModelSelection;
     multipleModelSelections: ReadonlyArray<ModelSelection> | null;
@@ -710,6 +713,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerReviewComments = composerDraft.reviewComments;
   const composerThreadContexts = attachmentDraft.threadContexts;
   const composerEnvironmentContexts = composerDraft.environmentContexts;
+  const composerLinearContexts = composerDraft.linearContexts;
   const {
     pendingSnapShotAnimations,
     pendingSnapShotIds,
@@ -761,6 +765,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     previewAnnotations: composerPreviewAnnotations,
     threadContexts: composerThreadContexts,
     environmentContexts: composerEnvironmentContexts,
+    linearContexts: composerLinearContexts,
     images: composerImages,
     files: composerFiles,
     uploadsByImageId,
@@ -1317,6 +1322,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const setComposerDraftEnvironmentContexts = useComposerDraftStore(
     (store) => store.setEnvironmentContexts,
   );
+  const setComposerDraftLinearContexts = useComposerDraftStore((store) => store.setLinearContexts);
   const buildContextClipboardFragment = (contextIds: ReadonlyArray<string>): string | null => {
     const wanted = new Set(contextIds);
     const copiedFiles = new Map<string, File>();
@@ -1334,6 +1340,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         .map(terminalContextRecord),
       ...composerThreadContexts.filter((record) => wanted.has(record.contextId)),
       ...composerEnvironmentContexts.filter((record) => wanted.has(record.contextId)),
+      ...composerLinearContexts.filter((record) => wanted.has(record.contextId)),
       ...composerReviewComments
         .filter((c) => wanted.has(reviewCommentContextId(c.id)))
         .map(reviewCommentContextRecord),
@@ -1705,6 +1712,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       restoredEnvironments.length > 0
     ) {
       setComposerDraftEnvironmentContexts(composerDraftTarget, nextEnvironments);
+    }
+
+    const liveLinearIds = new Set<string>(composerLinearContexts.map((record) => record.contextId));
+    const restoredLinear = [...referenced].flatMap((contextId) => {
+      if (liveLinearIds.has(contextId)) return [];
+      const record = retained.linear.get(contextId);
+      return record ? [record] : [];
+    });
+    const nextLinear = [
+      ...composerLinearContexts.filter((record) => referenced.has(record.contextId)),
+      ...restoredLinear,
+    ];
+    for (const record of composerLinearContexts) {
+      if (!referenced.has(record.contextId)) retained.linear.set(record.contextId, record);
+    }
+    if (nextLinear.length !== composerLinearContexts.length || restoredLinear.length > 0) {
+      setComposerDraftLinearContexts(composerDraftTarget, nextLinear);
     }
 
     for (const comment of composerReviewComments) {
@@ -2999,6 +3023,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         reviewComments: composerReviewComments,
         threadContexts: composerThreadContexts,
         environmentContexts: composerEnvironmentContexts,
+        linearContexts: composerLinearContexts,
         selectedPromptEffort,
         selectedModelSelection,
         multipleModelSelections:
@@ -3057,6 +3082,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerReviewComments,
       composerThreadContexts,
       composerEnvironmentContexts,
+      composerLinearContexts,
       focusComposer,
       environmentId,
       primaryEnvironmentId,
@@ -3503,6 +3529,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   >
                     {composerControls}
                   </div>
+                  <LinearLaunchHint draftTarget={composerDraftTarget} />
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
