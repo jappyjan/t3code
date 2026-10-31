@@ -1058,7 +1058,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   );
   const rowAccessibilityLabel = [
     thread.title,
+    providerNameLabel || null,
     props.hasQueuedMessages ? "messages queued to send" : null,
+    isRegeneratingTitle ? "regenerating title" : null,
     pipelineProgress
       ? `${countFinishedPipelineSegments(pipelineProgress)} of ${pipelineProgress.length} steps done`
       : null,
