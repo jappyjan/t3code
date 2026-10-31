@@ -101,7 +101,15 @@ function WorkspaceRootContent() {
   const { state } = workspace;
   // Settings is a workspace tab too; its list takes the place of the selected tab's.
   const settingsOpen = workspace.settingsOpen;
-  const linearOrganization = useLinearStatus(useLinearEnvironmentId()).data?.organization?.name;
+  const linearHeader =
+    Platform.OS === "ios" &&
+    !sidebarNavigation &&
+    !settingsOpen &&
+    enabled.length > 0 &&
+    state.selectedTab === "linear";
+  const linearEnvironmentId = useLinearEnvironmentId();
+  const linearOrganization = useLinearStatus(linearHeader ? linearEnvironmentId : null).data
+    ?.organization?.name;
   const renderHeaderTitle = () => (
     <WorkspaceRootTitle
       columnWidth={width}
@@ -141,7 +149,6 @@ function WorkspaceRootContent() {
               width,
               sidebarNavigation,
               enabled.length,
-              linearOrganization,
             ]}
             options={{
               title: settingsOpen
@@ -167,12 +174,7 @@ function WorkspaceRootContent() {
                   ? renderHeaderTitle
                   : undefined,
               unstable_headerSubtitle:
-                !sidebarNavigation &&
-                !settingsOpen &&
-                state.selectedTab === "linear" &&
-                linearOrganization
-                  ? `${linearOrganization} workspace`
-                  : undefined,
+                linearHeader && linearOrganization ? `${linearOrganization} workspace` : undefined,
             }}
           />
         ) : (
