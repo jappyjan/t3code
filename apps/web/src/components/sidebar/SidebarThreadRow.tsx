@@ -1,4 +1,7 @@
+import { useAtomValue } from "@effect/atom-react";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
+import { linearThreadIdentifiersAtom } from "../../state/linear";
+import { LinearThreadIdentifier } from "../linear/LinearThreadIdentifier";
 import { ThreadTerminalStatusButton } from "../ThreadStatusIndicators";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
@@ -872,6 +875,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
+  const linearIdentifier = useAtomValue(
+    linearThreadIdentifiersAtom,
+    (identifiers) => identifiers.get(thread.id) ?? null,
+  );
   const stepGroupId = useId();
   const pipelineStepProps = props.pipelineSteps;
   const pipelineStepGroup =
@@ -1599,6 +1606,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {multiline ? titleLineIcons : null}
               {pinIndicator}
               {multiline ? null : terminalStatusIcon}
+              {/* The status slot below carries ml-auto, so the identifier sits right beside it. */}
+              <LinearThreadIdentifier identifier={linearIdentifier} />
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
@@ -1944,6 +1953,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 </span>
               ) : null}
               {titleLineIcons}
+              <LinearThreadIdentifier identifier={linearIdentifier} className="ml-auto" />
             </div>
             {metaLine}
             {pipelineProgress("mt-1")}
