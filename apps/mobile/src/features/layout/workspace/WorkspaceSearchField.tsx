@@ -20,7 +20,12 @@ export function WorkspaceSearchField({
 }) {
   const inputStyle = useResolveClassNames("text-foreground font-sans text-base");
   const placeholderStyle = useResolveClassNames("text-foreground-muted");
-  const label = props.tab === "pullRequests" ? "Search pull requests" : "Search threads";
+  const label =
+    props.tab === "pullRequests"
+      ? "Search pull requests"
+      : props.tab === "linear"
+        ? "Search issues"
+        : "Search threads";
   return (
     <GlassSurface
       className="min-w-0 flex-1"
@@ -41,7 +46,7 @@ export function WorkspaceSearchField({
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
-          maxLength={props.tab === "pullRequests" ? 200 : undefined}
+          maxLength={props.tab === "pullRequests" || props.tab === "linear" ? 200 : undefined}
           style={[inputStyle, { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 0 }]}
         />
         {props.query ? (
