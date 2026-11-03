@@ -957,6 +957,12 @@ export function useComposerSend(input: ComposerSendInput) {
         setThreadError(threadIdForSend, pipelineBlock);
         return;
       }
+      const pipelineRepositories = baseBranchForWorktree
+        ? await readLaunchRepositories(
+            activeProject,
+            worktreeRepositorySelectionKey(draftId, scopeThreadRef(environmentId, threadIdForSend)),
+          )
+        : undefined;
       const workspaceStrategy = draftWorkspaceStrategy(
         { branch: activeThreadBranch, worktreePath: activeThread.worktreePath },
         baseBranchForWorktree
@@ -964,6 +970,7 @@ export function useComposerSend(input: ComposerSendInput) {
               projectCwd: activeProject.workspaceRoot,
               baseBranch: baseBranchForWorktree,
               ...(startFromOrigin ? { startFromOrigin: true } : {}),
+              ...(pipelineRepositories ? { repositories: pipelineRepositories } : {}),
             }
           : undefined,
       );
