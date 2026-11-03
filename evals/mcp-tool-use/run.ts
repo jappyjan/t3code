@@ -33,7 +33,10 @@ import * as McpSchema from "effect/ai/McpSchema";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import { pipelineCoordinatorNote } from "../../apps/server/src/pipelines/pipelineCoordinator.ts";
-import { pipelineHandoffInstructions } from "../../apps/server/src/pipelines/pipelineTemplate.ts";
+import {
+  pipelineEscalationMessage,
+  pipelineHandoffInstructions,
+} from "../../apps/server/src/pipelines/pipelineTemplate.ts";
 import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
@@ -248,12 +251,19 @@ export const McpToolUseCase = Schema.Struct({
     role: Schema.Literals(["top", "delegated-child", "native-subagent"]),
     /** Runs only on this harness, for cases whose right answer depends on it. */
     harness: Schema.optional(Schema.Literals(["claude", "codex"])),
-    /** The thread is this step of a pipeline run: T3 appends its handoff instructions to `prompt`. */
+    /**
+     * The thread is this step of a pipeline run: T3 appends its handoff instructions to the step's
+     * first prompt, the first user prior turn or else `prompt`.
+     */
     pipelineStep: Schema.optional(
       Schema.Struct({ number: Schema.Number, count: Schema.Number, name: Schema.String }),
     ),
     /** The thread is a run's coordinator chat: T3 puts the coordinator's instructions ahead of `prompt`. */
     pipelineCoordinatorRunId: Schema.optional(Schema.String),
+    /** `prompt` is a request this step handed to the coordinator, posted in T3's own words. */
+    pipelineEscalation: Schema.optional(
+      Schema.Struct({ stepName: Schema.String, stepLink: Schema.String, reason: Schema.String }),
+    ),
     /** The Linked environments beta is on, so T3 lists its link tools. */
     linkedEnvironments: Schema.optional(Schema.Boolean),
     /** delegate_task `role` for a delegated child. T3 builds the child's first message from it. */
@@ -898,6 +908,15 @@ export const buildMessages = (sample: Sample) => {
   const reminders = base.reminders.toSpliced(base.gitStatusAt, 0, reminder(gitStatus(testCase)));
   push("user", ...reminders, ...notes.flatMap((note) => (note ? [reminder(note)] : [])));
   const toolSearch = findTool(base, "ToolSearch")?.name ?? "ToolSearch";
+  const { pipelineStep, pipelineCoordinatorRunId, pipelineEscalation } = testCase.setup;
+  let stepInstructions =
+    pipelineStep === undefined
+      ? undefined
+      : pipelineHandoffInstructions({
+          stepNumber: pipelineStep.number,
+          stepCount: pipelineStep.count,
+          stepName: pipelineStep.name,
+        });
   let nextId = 0;
   for (const turn of priorTurns) {
     const calls = (turn.toolCalls ?? []).map((call) => {
@@ -928,9 +947,11 @@ export const buildMessages = (sample: Sample) => {
           : (sample.priorResults.get(prior) ?? result);
       push("user", toolResult(id, replayed));
     }
-    if (turn.text) push(turn.role, text(turn.text));
+    if (turn.text && turn.role === "user" && stepInstructions !== undefined) {
+      push("user", text(`${turn.text}\n\n${stepInstructions}`));
+      stepInstructions = undefined;
+    } else if (turn.text) push(turn.role, text(turn.text));
   }
-  const { pipelineStep, pipelineCoordinatorRunId } = testCase.setup;
   const pipelinePrompt = [
     pipelineCoordinatorRunId === undefined
       ? ""
@@ -941,14 +962,10 @@ export const buildMessages = (sample: Sample) => {
           activeAttemptId: null,
           providerTurns: [],
         }),
-    testCase.prompt,
-    pipelineStep === undefined
-      ? ""
-      : pipelineHandoffInstructions({
-          stepNumber: pipelineStep.number,
-          stepCount: pipelineStep.count,
-          stepName: pipelineStep.name,
-        }),
+    pipelineEscalation === undefined
+      ? testCase.prompt
+      : pipelineEscalationMessage({ ...pipelineEscalation, request: testCase.prompt }),
+    stepInstructions ?? "",
   ]
     .filter((part) => part !== "")
     .join("\n\n");
