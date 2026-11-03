@@ -17,6 +17,7 @@ import {
   type OrchestrationV2TurnItem,
   type PipelineError,
   type PipelineRun,
+  resolvePipelineStepCompaction,
   OrchestratorMcpFailure,
   type OrchestratorMcpCapabilitiesInput,
   type OrchestratorMcpCapabilitiesResult,
@@ -2908,13 +2909,14 @@ const make = Effect.gen(function* () {
         pipelines: all.map((pipeline) => ({
           pipelineId: pipeline.id,
           name: pipeline.name,
-          steps: pipeline.steps.map((step) => ({
+          steps: pipeline.steps.map((step, index) => ({
             stepId: step.id,
             name: step.name,
             providerInstanceId: step.modelSelection.instanceId,
             model: step.modelSelection.model,
             runtimeMode: step.runtimeMode,
             pauseBefore: step.pauseBefore,
+            compactAfterHandoff: resolvePipelineStepCompaction(pipeline.steps, index),
           })),
         })),
       };

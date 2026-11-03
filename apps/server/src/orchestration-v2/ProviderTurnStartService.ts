@@ -1148,6 +1148,7 @@ export const layer: Layer.Layer<
         run,
         checkpointScope,
         sourceOrdinalWithinScope,
+        message: providerMessage,
       });
       const brokenNativeThread = providerThread.status === "error";
       // Opened without the broken native id, a session that was not live starts fresh.

@@ -4,6 +4,7 @@ import {
   isDelegatedAppThread,
   isOrchestrationV2WorkActive,
   CommandId,
+  idleCompactionOf,
   type EventId,
   type ModelSelection,
   type NodeId,
@@ -695,7 +696,10 @@ export interface RunExecutionServiceV2StartRootRunInput {
 type RunBaselineInput = Pick<
   RunExecutionServiceV2StartRootRunInput,
   "appThread" | "run" | "checkpointScope"
-> & { readonly sourceOrdinalWithinScope?: number | undefined };
+> & {
+  readonly sourceOrdinalWithinScope?: number | undefined;
+  readonly message?: Parameters<typeof idleCompactionOf>[0];
+};
 
 export interface RunExecutionServiceV2Shape {
   readonly startRootRun: (
@@ -1103,7 +1107,13 @@ export const layer: Layer.Layer<
       input: RunBaselineInput,
     ) {
       // Side chats share the parent's worktree; a snapshot would capture the parent's edits.
-      if (input.appThread.lineage.sideChat === true) return;
+      // So does a server compaction, which can run while another thread edits the worktree.
+      if (
+        input.appThread.lineage.sideChat === true ||
+        (input.message !== undefined && idleCompactionOf(input.message) !== undefined)
+      ) {
+        return;
+      }
       yield* checkpointService
         .captureBaseline({
           scope: input.checkpointScope,
@@ -1176,7 +1186,8 @@ export const layer: Layer.Layer<
                   .responseStreamingMode,
             ),
           );
-          yield* input.baseline ?? captureRunBaseline(input);
+          yield* input.baseline ??
+            captureRunBaseline({ ...input, message: { role: "user", ...input.message } });
           if (
             input.shouldStartProviderTurn !== undefined &&
             !(yield* input.shouldStartProviderTurn())
