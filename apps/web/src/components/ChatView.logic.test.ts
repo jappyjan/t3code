@@ -1163,6 +1163,7 @@ describe("restorePlanFollowUpComposer", () => {
         reviewComments: [],
         previewAnnotations: [],
         threadContexts: [],
+        linearContexts: [],
       },
       draftHasUserContent: composer.draft.trim().length > 0,
       routeIsCurrent,
@@ -1177,6 +1178,7 @@ describe("restorePlanFollowUpComposer", () => {
       writePreviewAnnotations: () => undefined,
       writeThreadContexts: () => undefined,
       writeEnvironmentContexts: () => undefined,
+      writeLinearContexts: () => undefined,
       resetCursor: ({ prompt }) => {
         composer.cursor = prompt;
       },
