@@ -74,8 +74,22 @@ export function pipelineStepAwaitsHandoff(
   );
 }
 
-/** `feedingActive`: the step before a still-pending current step is still working. */
-export function pipelineRunStatusLabel(run: PipelineRun, feedingActive = false): string {
+/** Whether a thread's agent has a pull request watch running, from the shell clients already hold. */
+export function threadWatchesPullRequest(
+  shell: { readonly pullRequests?: ReadonlyArray<{ readonly watch?: unknown }> | undefined } | null,
+): boolean {
+  return shell?.pullRequests?.some((link) => link.watch !== undefined) ?? false;
+}
+
+/**
+ * `feedingActive`: the step before a still-pending current step is still working.
+ * `waitingOnPullRequest`: the current step's thread watches a pull request.
+ */
+export function pipelineRunStatusLabel(
+  run: PipelineRun,
+  feedingActive = false,
+  waitingOnPullRequest = false,
+): string {
   const name = stepName(run, run.currentStepIndex);
   switch (run.status) {
     case "running": {
@@ -88,7 +102,9 @@ export function pipelineRunStatusLabel(run: PipelineRun, feedingActive = false):
         case "awaiting_continue":
           return `Paused before ${name}`;
         case "awaiting_handoff":
-          return `${name} ended without handing off`;
+          return waitingOnPullRequest
+            ? `${name} is waiting on a pull request`
+            : `${name} ended without handing off`;
         case "step_failed":
           return `Step ${name} failed`;
         case "step_stopped":
@@ -106,14 +122,17 @@ export function pipelineRunStatusLabel(run: PipelineRun, feedingActive = false):
 }
 
 /** The run's state without a step name, for headers that already show the current step. */
-export function pipelineRunStateLabel(run: Pick<PipelineRun, "status" | "pauseReason">): string {
+export function pipelineRunStateLabel(
+  run: Pick<PipelineRun, "status" | "pauseReason">,
+  waitingOnPullRequest = false,
+): string {
   switch (run.status) {
     case "running":
       return "Running";
     case "paused":
       switch (run.pauseReason) {
         case "awaiting_handoff":
-          return "No handoff";
+          return waitingOnPullRequest ? "Waiting on pull request" : "No handoff";
         case "step_failed":
           return "Failed";
         case "step_stopped":
@@ -327,4 +346,13 @@ export function createPipelineEscalationWatcher() {
     }
     return escalated;
   };
+}
+
+/** A paused run's step is not stuck when its thread is watching a pull request. */
+export function pipelineRunNeedsAttention(
+  run: Pick<PipelineRun, "status" | "pauseReason">,
+  waitingOnPullRequest: boolean,
+): boolean {
+  if (run.status !== "paused") return false;
+  return !(run.pauseReason === "awaiting_handoff" && waitingOnPullRequest);
 }

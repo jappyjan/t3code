@@ -18,6 +18,8 @@ import {
   pipelineStepAwaitsHandoff,
   pipelineStepBreadcrumbTitle,
   pipelineStepPosition,
+  pipelineRunNeedsAttention,
+  threadWatchesPullRequest,
 } from "./pipelineRunPresentation.ts";
 
 const NAMES = ["Plan", "Implement", "Review"] as const;
@@ -285,6 +287,25 @@ describe("missing handoff", () => {
       true,
       false,
     ]);
+  });
+
+  it("reads a step that watches its pull request as waiting, not as needing attention", () => {
+    const run = makeRun({
+      status: "paused",
+      pauseReason: "awaiting_handoff",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "running", "pending"],
+    });
+    expect(pipelineRunStatusLabel(run, false, true)).toBe("Implement is waiting on a pull request");
+    expect(pipelineRunStateLabel(run, true)).toBe("Waiting on pull request");
+    expect(pipelineRunNeedsAttention(run, true)).toBe(false);
+    expect(pipelineRunNeedsAttention(run, false)).toBe(true);
+    expect(pipelineRunNeedsAttention({ ...run, pauseReason: "step_failed" }, true)).toBe(true);
+    expect(threadWatchesPullRequest({ pullRequests: [{}, { watch: { startedAt: "now" } }] })).toBe(
+      true,
+    );
+    expect(threadWatchesPullRequest({ pullRequests: [{}] })).toBe(false);
+    expect(threadWatchesPullRequest(null)).toBe(false);
   });
 });
 

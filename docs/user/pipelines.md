@@ -9,7 +9,9 @@ Pipelines need a T3 Code server that supports them. Update an older server befor
 ## Set up a pipeline
 
 Define pipelines in **Settings → Pipelines**. Choose **New pipeline** and start from **Blank** or
-from the **Feature delivery** template, a full feature-delivery flow from requirements to review.
+from the **Feature delivery** template, a full feature-delivery flow from requirements to merge and
+follow-through. Its last step waits until you start it, then merges the pull request and does the
+post-merge work.
 T3 Code adds it once. If you delete it, it stays deleted, and you can recreate it from the
 template. While you have not edited it, it is updated to the latest template when T3 Code
 updates. Once you edit it, it is yours and stays as you left it.
@@ -70,6 +72,10 @@ If a step's agent ends its turn without handing off, for example with a question
 and the step shows **No handoff**. Answer in the step's thread; when the agent then hands off, the
 run continues on its own. **Continue with last message** moves on with the thread's latest answer
 instead.
+
+A step that waits on checks, reviews or a merge watches its pull request and ends its turn; the run
+then shows it as waiting on the pull request instead of **No handoff**. The watch ends when the
+step hands off or stops being the run's current step.
 
 - **Refine before continuing.** When a run is paused, before a step or after a failure, keep
   chatting in the previous step's thread. **Continue** then passes that thread's latest answer on.

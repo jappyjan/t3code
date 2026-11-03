@@ -54,6 +54,7 @@ import * as ThreadManagementService from "../orchestration-v2/ThreadManagementSe
 import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingErrors.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { forkParked } from "../serverActivation.ts";
+import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import * as PipelineStore from "./PipelineStore.ts";
 import { compactStepThread, latestRunIsCompaction } from "./PipelineStepCompaction.ts";
 import {
@@ -258,29 +259,58 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     );
   });
 
+  /**
+   * A step may watch its pull request while it waits, but only while it is the run's active step:
+   * a watch left behind would hold the finished step on the Working shelf and wake it later.
+   */
+  const unwatchStepPullRequests = (run: PipelineRun, threadId: ThreadId) =>
+    bestEffort(
+      "Could not end pipeline step pull request watches",
+      Effect.gen(function* () {
+        const shell = yield* threads.getThreadShell(threadId);
+        if (shell === null) return;
+        for (const link of threadPullRequestsOf(shell)) {
+          if (link.watch === undefined) continue;
+          yield* threads.dispatch({
+            type: "thread.pull-request.watch",
+            commandId: commandIdFor(run.id, "unwatch", threadId, link.number, link.watch.startedAt),
+            threadId,
+            host: link.host,
+            repository: link.repository,
+            number: link.number,
+            watching: false,
+          });
+        }
+      }),
+    );
+
   const stopThread = (
     run: PipelineRun,
     step: PipelineRunStep,
     threadId: ThreadId,
     action: "cancel" | "retry" | "skip" | "rerun" | "revise" | "superseded",
   ) =>
-    bestEffort(
-      "Could not stop pipeline step thread",
-      threads.dispatch({
-        type: "thread.stop",
-        commandId: commandIdFor(run.id, action, step.stepId, step.attempt),
-        threadId,
-        reason:
-          action === "cancel"
-            ? "The pipeline run was stopped."
-            : action === "rerun"
-              ? "The pipeline was rerun from an earlier step."
-              : action === "revise"
-                ? "An earlier step of the pipeline was revised."
-                : action === "superseded"
-                  ? "The pipeline run moved on while this step's message was sent."
-                  : `The pipeline step was ${action === "retry" ? "retried" : "skipped"}.`,
-      }),
+    unwatchStepPullRequests(run, threadId).pipe(
+      Effect.andThen(
+        bestEffort(
+          "Could not stop pipeline step thread",
+          threads.dispatch({
+            type: "thread.stop",
+            commandId: commandIdFor(run.id, action, step.stepId, step.attempt),
+            threadId,
+            reason:
+              action === "cancel"
+                ? "The pipeline run was stopped."
+                : action === "rerun"
+                  ? "The pipeline was rerun from an earlier step."
+                  : action === "revise"
+                    ? "An earlier step of the pipeline was revised."
+                    : action === "superseded"
+                      ? "The pipeline run moved on while this step's message was sent."
+                      : `The pipeline step was ${action === "retry" ? "retried" : "skipped"}.`,
+          }),
+        ),
+      ),
     );
 
   const stopActiveChild = (run: PipelineRun) => {
@@ -868,6 +898,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
           ]);
         });
         if (applied && advanced) {
+          yield* unwatchStepPullRequests(run, childThreadId);
           yield* syncParentWorkspace(run, cursor, childThreadId, attempt, "done");
         }
         return;
@@ -1250,6 +1281,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
           yield* store.updateRunWithSteps(run.id, advancePatch(run, now), [
             { index: step.index, patch: { status: "completed", error: null, completedAt: now } },
           ]);
+          if (step.childThreadId !== null) yield* unwatchStepPullRequests(run, step.childThreadId);
         } else if (
           step?.status === "failed" ||
           step?.status === "stopped" ||

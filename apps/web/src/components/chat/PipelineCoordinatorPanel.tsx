@@ -1,5 +1,9 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { pipelineRunStateLabel, stepName } from "@t3tools/client-runtime/pipeline-run-presentation";
+import {
+  pipelineRunStateLabel,
+  stepName,
+  threadWatchesPullRequest,
+} from "@t3tools/client-runtime/pipeline-run-presentation";
 import { pipelineProgressSegments } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { PipelineRun, PipelineRunSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -50,7 +54,8 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
   const { environmentId, threadId } = props.stepThreadRef;
   const navigate = useNavigate();
   const composerRef = useRef<ChatComposerHandle | null>(null);
-  const runId = useQuietThreadShell(props.stepThreadRef)?.pipeline?.runId ?? null;
+  const stepShell = useQuietThreadShell(props.stepThreadRef);
+  const runId = stepShell?.pipeline?.runId ?? null;
   const query = useEnvironmentQuery(
     runId === null ? null : serverEnvironment.pipelineRunLive({ environmentId, input: { runId } }),
   );
@@ -96,7 +101,11 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
             }
           >
             Step {currentIndex + 1}/{run.steps.length} · {stepName(run, currentIndex)} ·{" "}
-            {pipelineRunStateLabel(run)}
+            {pipelineRunStateLabel(
+              run,
+              run.steps[currentIndex]?.childThreadId === threadId &&
+                threadWatchesPullRequest(stepShell),
+            )}
           </TooltipTrigger>
           <TooltipPopup side="left">Open the run's main page</TooltipPopup>
         </Tooltip>

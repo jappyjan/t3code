@@ -6,6 +6,7 @@ import {
   pipelineRevisionAuthorLabel,
   pipelineRunStatusLabel,
   pipelineStepAwaitsHandoff,
+  threadWatchesPullRequest,
   stepName,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
 import {
@@ -403,10 +404,18 @@ function useRunStatusLabel(environmentId: EnvironmentId, run: PipelineRun | null
   const shell = useQuietThreadShell(
     feeding === null ? null : scopeThreadRef(environmentId, feeding.childThreadId),
   );
+  const awaitingChildId =
+    run !== null && pipelineStepAwaitsHandoff(run, run.currentStepIndex)
+      ? (run.steps[run.currentStepIndex]?.childThreadId ?? null)
+      : null;
+  const awaitingShell = useQuietThreadShell(
+    awaitingChildId === null ? null : scopeThreadRef(environmentId, awaitingChildId),
+  );
   if (run === null) return null;
   return pipelineRunStatusLabel(
     run,
     feeding !== null && pipelineChildLiveState(shell) === "working",
+    threadWatchesPullRequest(awaitingShell),
   );
 }
 
@@ -441,6 +450,7 @@ function PipelineStepRow(props: {
     step,
     liveState,
     pipelineStepAwaitsHandoff(run, step.index),
+    threadWatchesPullRequest(shell),
   );
   const childThreadId = step.childThreadId;
 
