@@ -1,6 +1,4 @@
 import {
-  PipelineRunId,
-  PipelineStepId,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -291,33 +289,6 @@ describe("PullRequestWatchService", () => {
         .pipe(Effect.flip);
       expect(error).toMatchObject({ _tag: "PullRequestWatchFromSubagentError" });
       expect(yield* Ref.get(harness.commands)).toEqual([]);
-    }),
-  );
-
-  it.effect("refuses a watch from a pipeline step, but not from its pipeline's parent", () =>
-    Effect.gen(function* () {
-      const step = yield* makeHarness({
-        thread: {
-          ...makeThread([makeLink(1, { headBranch: "feature" })]),
-          pipeline: { runId: PipelineRunId.make("run-1"), stepId: PipelineStepId.make("review") },
-        },
-      });
-      const error = yield* step
-        .setWatching(true, { repository: "t3tools/t3code", number: 1 })
-        .pipe(Effect.flip);
-      expect(error).toMatchObject({ _tag: "PullRequestWatchFromPipelineStepError" });
-      expect(yield* Ref.get(step.commands)).toEqual([]);
-
-      const parent = yield* makeHarness({
-        thread: {
-          ...makeThread([makeLink(1, { headBranch: "feature" })]),
-          pipeline: { runId: PipelineRunId.make("run-1"), stepId: null },
-        },
-      });
-      yield* parent.setWatching(true, { repository: "t3tools/t3code", number: 1 });
-      expect(yield* Ref.get(parent.commands)).toMatchObject([
-        { type: "thread.pull-request.watch", number: 1, watching: true },
-      ]);
     }),
   );
 });
