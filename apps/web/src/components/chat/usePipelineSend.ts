@@ -69,7 +69,7 @@ export function usePipelineSend(input: PipelineSendInput) {
     /** The draft's prompt when sent; a draft edited since is left alone. */
     readonly promptAtSend: string;
     readonly workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy;
-  }) => {
+  }): Promise<boolean> => {
     const attempt = (pipelineStartRef.current = nextPipelineStartAttempt(
       pipelineStartRef.current,
       { pipelineId, projectId, input: text, workspace: workspaceStrategy },
@@ -100,7 +100,7 @@ export function usePipelineSend(input: PipelineSendInput) {
           description: message,
         }),
       );
-      return;
+      return false;
     }
     pipelineStartRef.current = null;
     const parentRef = scopeThreadRef(environmentId, result.value.run.parentThreadId);
@@ -133,5 +133,6 @@ export function usePipelineSend(input: PipelineSendInput) {
         }),
       );
     }
+    return true;
   };
 }
