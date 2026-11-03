@@ -71,8 +71,15 @@ export const layer: Layer.Layer<
       readonly scopeId: CheckpointScopeId;
     }) {
       const context = yield* projections.getCheckpointCaptureContext(input.threadId, input);
-      const { run, rootNode, scope, providerThread, preservedCheckpointOrdinals, sideChat } =
-        context;
+      const {
+        run,
+        rootNode,
+        scope,
+        providerThread,
+        preservedCheckpointOrdinals,
+        sideChat,
+        serverCompaction,
+      } = context;
       // Stopped runs remain terminal; their checkpoint is the next message's rollback point.
       const stopped = run?.status === "interrupted" || run?.status === "cancelled";
 
@@ -122,7 +129,7 @@ export const layer: Layer.Layer<
       // The tracked Git folders the thread reaches now. One added since the turn began has no
       // baseline, so its first checkpoint lists no files; one removed is simply not captured.
       const repositoryScopes =
-        sideChat || context.thread === undefined
+        sideChat || serverCompaction || context.thread === undefined
           ? []
           : yield* checkpoints.repositoryScopes({ rootScope: scope, ...context.thread });
       const nested =
@@ -147,7 +154,7 @@ export const layer: Layer.Layer<
           ordinalWithinScope: run.ordinal,
           appRunOrdinal: run.ordinal,
           capturedAt,
-          forceMissing: sideChat,
+          forceMissing: sideChat || serverCompaction,
           ...excluded(scope),
         });
         return { threadStartCheckpoint, baselineCheckpoint, checkpoint };
