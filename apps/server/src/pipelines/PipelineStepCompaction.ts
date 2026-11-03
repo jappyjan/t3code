@@ -29,6 +29,7 @@ export type PipelineCompactionRecords = Pick<
   | "providerTurns"
   | "runtimeRequests"
   | "turnItems"
+  | "contextTransfers"
 >;
 
 /**
@@ -45,6 +46,7 @@ export function pipelineCompactionTarget(
     providerTurns,
     runtimeRequests,
     turnItems,
+    contextTransfers,
   }: PipelineCompactionRecords,
   environment: { readonly providerCanCompact: boolean; readonly instanceEnabled: boolean },
 ): { readonly runId: (typeof runs)[number]["id"] } | null {
@@ -60,6 +62,13 @@ export function pipelineCompactionTarget(
   if (message === undefined || isCompactionCommandMessage(message)) return null;
   if (
     runtimeRequests.some((request) => request.status === "pending") ||
+    // A pending merge-back belongs to the next real message; compaction would swallow it.
+    contextTransfers.some(
+      (transfer) =>
+        transfer.type === "merge_back" &&
+        transfer.targetThreadId === thread.id &&
+        transfer.status === "pending",
+    ) ||
     // Background work reports into the next turn; compaction would swallow it.
     derivePendingBackgroundWork({
       latestRun,
@@ -101,6 +110,30 @@ export interface PipelineStepCompactionDeps {
 }
 
 /**
+ * Whether the thread's latest run is a `/compact`, whose result is a summary, not the step's answer.
+ */
+export const latestRunIsCompaction = Effect.fn("PipelineStepCompaction.latestRunIsCompaction")(
+  function* (
+    threads: Pick<ThreadManagementService.ThreadManagementServiceShape, "getProjectThreadRecords">,
+    target: { readonly projectId: ProjectId; readonly threadId: ThreadId },
+  ) {
+    const { runs } = yield* threads.getProjectThreadRecords(target, ["runs"], {
+      runStatuses: [],
+      includeLatestRun: true,
+    });
+    const latestRun = runs.reduce<(typeof runs)[number] | null>(
+      (latest, run) => (latest === null || run.ordinal > latest.ordinal ? run : latest),
+      null,
+    );
+    if (latestRun === null) return false;
+    const { messages } = yield* threads.getProjectThreadRecords(target, ["messages"], {
+      messageIds: [latestRun.userMessageId],
+    });
+    return messages.some(isCompactionCommandMessage);
+  },
+);
+
+/**
  * Sends a server `/compact` into a finished step's thread without waiting for it. One id per
  * `key`, so a replayed driver sends nothing twice while a later relaunch may compact again. Never
  * fails: the pipeline must not notice a compaction that was refused.
@@ -117,7 +150,14 @@ export const compactStepThread = Effect.fn("PipelineStepCompaction.compact")(
     if (activeProviderThreadId === null) return;
     const records = yield* deps.threads.getProjectThreadRecords(
       target,
-      ["runs", "providerThreads", "providerTurns", "runtimeRequests", "turnItems"],
+      [
+        "runs",
+        "providerThreads",
+        "providerTurns",
+        "runtimeRequests",
+        "turnItems",
+        "contextTransfers",
+      ],
       {
         turnItemStatuses: ["pending", "running", "waiting"],
         runStatuses: ["preparing", "starting", "running", "rolled_back"],
@@ -126,6 +166,7 @@ export const compactStepThread = Effect.fn("PipelineStepCompaction.compact")(
         providerTurnThreadIds: [activeProviderThreadId],
         latestProviderTurnUsageOnly: true,
         runtimeRequestStatuses: ["pending"],
+        contextTransferStatuses: ["pending"],
       },
     );
     const latestRun = records.runs.reduce<(typeof records.runs)[number] | null>(
@@ -134,7 +175,7 @@ export const compactStepThread = Effect.fn("PipelineStepCompaction.compact")(
     );
     if (latestRun === null) return;
     const { messages } = yield* deps.threads.getProjectThreadRecords(target, ["messages"], {
-      messageRunIds: [latestRun.id],
+      messageIds: [latestRun.userMessageId],
     });
     const decision = pipelineCompactionTarget(
       { ...records, messages },
@@ -156,8 +197,8 @@ export const compactStepThread = Effect.fn("PipelineStepCompaction.compact")(
       attachments: [],
       createdBy: "agent",
       creationSource: "server",
-      // The existing marker keeps notifications, unread state and labels quiet, and makes idle
-      // compaction skip a thread whose latest run is already a compaction.
+      // The marker keeps notifications, unread state and labels quiet, and skips the turn's
+      // checkpoint so it cannot claim the next step's edits in a shared worktree.
       idleCompaction: "beforeCacheExpires",
       dispatchMode: { type: "start_immediately" },
     });

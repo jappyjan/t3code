@@ -840,6 +840,7 @@ function PipelineStepEditor({
         <Switch
           id={`${idPrefix}-pause`}
           checked={step.pauseBefore}
+          disabled={disabled}
           onCheckedChange={(pauseBefore) => onChange({ pauseBefore })}
         />
       </div>
@@ -848,13 +849,15 @@ function PipelineStepEditor({
         <div className="min-w-0 space-y-1">
           <Label htmlFor={`${idPrefix}-compact`}>Compact after handoff</Label>
           <p className="text-sm text-muted-foreground">
-            Compacts this step's thread once the next step has started, so coming back to it later
-            reads a summary. On by default, except for the last step.
+            {index === count - 1
+              ? "Compacts this step's thread when the run completes."
+              : "Compacts this step's thread once the next step starts, so returning to it costs less."}
           </p>
         </div>
         <Switch
           id={`${idPrefix}-compact`}
           checked={compactAfterHandoff}
+          disabled={disabled}
           onCheckedChange={(next) => onChange({ compactAfterHandoff: next })}
         />
       </div>

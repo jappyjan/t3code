@@ -55,7 +55,7 @@ import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingEr
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as PipelineStore from "./PipelineStore.ts";
-import { compactStepThread } from "./PipelineStepCompaction.ts";
+import { compactStepThread, latestRunIsCompaction } from "./PipelineStepCompaction.ts";
 import {
   pipelineEscalationMessage,
   pipelineHandoffInstructions,
@@ -112,6 +112,10 @@ interface StepExpectation {
   readonly attempt: number;
   readonly stepStatus: PipelineRunStepStatus;
 }
+
+/** The step whose output feeds `index`: the nearest earlier completed one, so skipped steps don't. */
+const feedingStep = (run: PipelineRun, index: number) =>
+  run.steps.slice(0, index).findLast((candidate) => candidate.status === "completed");
 
 const pausePatch = (
   now: string,
@@ -527,7 +531,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
   const compactLastStep = Effect.fn("PipelineRunner.compactLastStep")(function* (
     runId: PipelineRunId,
   ) {
-    const run = yield* store.getRun(runId);
+    const run = yield* store.getRun(runId).pipe(Effect.orElseSucceed(() => null));
     if (run?.status !== "completed") return;
     yield* compactFinishedStep(run, run.steps.at(-1), "completed");
   });
@@ -591,15 +595,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     );
     if (childThreadId !== null) {
       yield* syncParentWorkspace(run, cursor, childThreadId, attempt, "launch");
-      yield* compactFinishedStep(
-        run,
-        run.steps
-          .slice(0, cursor)
-          .findLast(
-            (candidate) => candidate.status === "completed" && candidate.childThreadId !== null,
-          ),
-        `${step.id}:${attempt}`,
-      );
+      yield* compactFinishedStep(run, feedingStep(run, cursor), `${step.id}:${attempt}`);
     }
   });
 
@@ -740,7 +736,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     if (feedback !== undefined && feedback.stepIndex < step.index) {
       yield* compactFinishedStep(
         run,
-        run.steps.slice(0, step.index).findLast((candidate) => candidate.status === "completed"),
+        feedingStep(run, step.index),
         `${step.stepId}:${step.attempt}`,
       );
     }
@@ -755,10 +751,16 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     if (step === undefined) return;
     // Refresh the feeding step's output: a Continue may follow manual refinement in its thread.
     // A handed-off output is the agent's chosen result, so it is never replaced by a later message.
-    const feeding = run.steps
-      .slice(0, cursor)
-      .findLast((candidate) => candidate.status === "completed");
-    if (feeding?.childThreadId !== undefined && feeding.childThreadId !== null) {
+    // A compaction only follows a launch that already refreshed it, and its result is a summary.
+    const feeding = feedingStep(run, cursor);
+    if (
+      feeding?.childThreadId !== undefined &&
+      feeding.childThreadId !== null &&
+      !(yield* latestRunIsCompaction(threads, {
+        projectId: run.projectId,
+        threadId: feeding.childThreadId,
+      }))
+    ) {
       const settled = yield* waitSettled(run.projectId, feeding.childThreadId);
       if (settled._tag === "completed") {
         yield* withGuard(

@@ -116,15 +116,7 @@ const makeHarness = Effect.gen(function* () {
   /** Launches and compactions in the order they happened. */
   const trace: Array<string> = [];
   /** What the projection reports about a step thread when a compaction decides; eligible by default. */
-  const compactionState = new Map<
-    ThreadId,
-    {
-      usedTokens?: number | null;
-      runStatus?: string;
-      pendingRequest?: boolean;
-      latestText?: string;
-    }
-  >();
+  const compactionState = new Map<ThreadId, { usedTokens?: number | null; latestText?: string }>();
   const behavior = {
     providerCompacts: true,
     failCompactDispatch: false,
@@ -263,7 +255,7 @@ const makeHarness = Effect.gen(function* () {
         {
           id: runId,
           ordinal: 1,
-          status: state.runStatus ?? "completed",
+          status: "completed",
           userMessageId: "user-message",
           providerThreadId: "provider-thread",
           providerInstanceId: "codex",
@@ -285,8 +277,9 @@ const makeHarness = Effect.gen(function* () {
                 tokenUsage: { usedTokens: state.usedTokens ?? 120_000, updatedAt: NOW },
               },
             ],
-      runtimeRequests: state.pendingRequest === true ? [{ status: "pending" }] : [],
+      runtimeRequests: [],
       turnItems: [],
+      contextTransfers: [],
     };
   };
 
@@ -320,6 +313,7 @@ const makeHarness = Effect.gen(function* () {
             return yield* Effect.fail(new Error("parent boom") as never);
           }
           if (command.type === "message.dispatch" && behavior.failCompactDispatch) {
+            trace.push(`compact-failed:${command.threadId}`);
             return yield* Effect.fail(new Error("compact boom") as never);
           }
           commands.push(command);
@@ -1989,6 +1983,32 @@ it.effect("a step compacts once the next step has launched, never before", () =>
   ),
 );
 
+it.effect("a retried step builds on the feeding step's answer, not on its compaction", () =>
+  withService(
+    Effect.fn(function* (harness, service) {
+      harness.behavior.autoHandoff = false;
+      const { run } = yield* service.start(startInput("cmd-compact-retry"));
+      const first = yield* Queue.take(harness.launches);
+      harness.outputs.set(first.threadId, { reply: "first reply" });
+      yield* harness.settle(first.threadId, "completed");
+      yield* awaitRun(service, run.id, (current) => current.pauseReason === "awaiting_handoff");
+      yield* service.continueRun({ runId: run.id, stepIndex: 0 });
+      const second = yield* Queue.take(harness.launches);
+      assert.strictEqual((yield* Queue.take(harness.compactions)).threadId, first.threadId);
+
+      // The compaction is now the feeding thread's latest run, and it answers with no real output.
+      harness.compactionState.set(first.threadId, { latestText: "/compact" });
+      harness.outputs.set(first.threadId, { reply: "compaction summary" });
+      harness.outputs.set(second.threadId, { error: "boom" });
+      yield* harness.settle(second.threadId, "failed");
+      yield* awaitRun(service, run.id, (current) => current.pauseReason === "step_failed");
+      yield* service.retryStep({ runId: run.id, stepIndex: 1 });
+      const retried = yield* Queue.take(harness.launches);
+      assert.strictEqual(promptBody(retried.input.initialMessage?.text), "Build from: first reply");
+    }),
+  ),
+);
+
 it.effect("a run that is paused awaiting a handoff compacts nothing", () =>
   withService(
     Effect.fn(function* (harness, service) {
@@ -2051,9 +2071,6 @@ const leavesFirstStepAlone = (
 leavesFirstStepAlone("a step switched off is not compacted", "cmd-compact-off", () => {}, {
   compactAfterHandoff: false,
 });
-leavesFirstStepAlone("a thread under 50K tokens is not compacted", "cmd-compact-low", (h, id) => {
-  h.compactionState.set(id, { usedTokens: 49_999 });
-});
 leavesFirstStepAlone(
   "a provider that cannot compact never gets /compact",
   "cmd-compact-no",
@@ -2061,20 +2078,60 @@ leavesFirstStepAlone(
     h.behavior.providerCompacts = false;
   },
 );
-leavesFirstStepAlone(
-  "an archived step thread is not compacted",
-  "cmd-compact-archived",
-  (h, id) => {
-    h.archivedThreads.add(id);
-  },
+
+it.effect("a skipped step never feeds a compaction; the step before it does", () =>
+  withService(
+    Effect.fn(function* (harness, service, store) {
+      yield* store.updateDefinition(
+        definition([...twoSteps(), step("ship", "Ship: {{previous.output}}")]),
+      );
+      const { run } = yield* service.start(startInput("cmd-compact-skip"));
+      const first = yield* Queue.take(harness.launches);
+      harness.outputs.set(first.threadId, { reply: "approved plan" });
+      yield* harness.settle(first.threadId, "completed");
+      const second = yield* Queue.take(harness.launches);
+      assert.strictEqual((yield* Queue.take(harness.compactions)).threadId, first.threadId);
+      harness.outputs.set(second.threadId, { error: "boom" });
+      yield* harness.settle(second.threadId, "failed");
+      yield* awaitRun(service, run.id, (current) => current.pauseReason === "step_failed");
+      yield* service.skipStep({ runId: run.id, stepIndex: 1 });
+      yield* Queue.take(harness.launches);
+      const again = yield* Queue.take(harness.compactions);
+      assert.strictEqual(again.threadId, first.threadId);
+      assert.strictEqual(again.commandId, `server:pipeline-compact:${run.id}:plan:1:ship:1`);
+    }),
+  ),
+);
+
+it.effect("a last step switched on is not compacted when the run is cancelled", () =>
+  withService(
+    Effect.fn(function* (harness, service, store) {
+      yield* store.updateDefinition(definition(twoSteps({ compactAfterHandoff: true })));
+      const { run } = yield* service.start(startInput("cmd-compact-cancel"));
+      const first = yield* Queue.take(harness.launches);
+      harness.outputs.set(first.threadId, { reply: "approved plan" });
+      yield* harness.settle(first.threadId, "completed");
+      const second = yield* Queue.take(harness.launches);
+      harness.outputs.set(second.threadId, { error: "boom" });
+      yield* harness.settle(second.threadId, "failed");
+      yield* awaitRun(service, run.id, (current) => current.pauseReason === "step_failed");
+      yield* service.cancel({ runId: run.id });
+      yield* awaitRun(service, run.id, (current) => current.status === "cancelled");
+      assert.deepStrictEqual(
+        compactDispatches(harness).map((command) => command.threadId),
+        [first.threadId],
+      );
+    }),
+  ),
 );
 
 it.effect("a failed compaction never changes the run", () =>
   withService(
     Effect.fn(function* (harness, service) {
       harness.behavior.failCompactDispatch = true;
-      const { run, second } = yield* completedRun(harness, service, "cmd-compact-fail");
+      const { run, first, second } = yield* completedRun(harness, service, "cmd-compact-fail");
       const done = yield* awaitRun(service, run.id, (current) => current.status === "completed");
+      assert.include(harness.trace, `compact-failed:${first.threadId}`);
       assert.strictEqual(compactDispatches(harness).length, 0);
       assert.strictEqual(done.steps[1]?.childThreadId, second.threadId);
     }),

@@ -729,6 +729,7 @@ function StepSection(props: {
         <ThemedSwitch
           accessibilityLabel={`Pause before step ${index + 1}`}
           value={step.pauseBefore}
+          disabled={props.disabled}
           onValueChange={(pauseBefore) => props.onChange({ pauseBefore })}
         />
       </View>
@@ -739,6 +740,7 @@ function StepSection(props: {
         <ThemedSwitch
           accessibilityLabel={`Compact step ${index + 1} after handoff`}
           value={props.compactAfterHandoff}
+          disabled={props.disabled}
           onValueChange={(compactAfterHandoff) => props.onChange({ compactAfterHandoff })}
         />
       </View>

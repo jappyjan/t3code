@@ -16,6 +16,7 @@ const records = (
     readonly usedTokens?: number | null;
     readonly pendingRequest?: boolean;
     readonly backgroundTask?: boolean;
+    readonly mergeBack?: boolean;
   } = {},
 ) =>
   ({
@@ -64,6 +65,10 @@ const records = (
           ],
     runtimeRequests: overrides.pendingRequest === true ? [{ status: "pending" }] : [],
     turnItems: [],
+    contextTransfers:
+      overrides.mergeBack === true
+        ? [{ type: "merge_back", targetThreadId: "thread-1", status: "pending" }]
+        : [],
   }) as unknown as PipelineCompactionRecords;
 
 const ready = { providerCanCompact: true, instanceEnabled: true };
@@ -90,6 +95,7 @@ it.each([
   ["latest run is a compaction", records({ text: " /Compact " }), ready],
   ["pending request", records({ pendingRequest: true }), ready],
   ["pending background work", records({ backgroundTask: true }), ready],
+  ["pending merge-back", records({ mergeBack: true }), ready],
   ["no active provider thread", records({ thread: { activeProviderThreadId: null } }), ready],
   ["run on another provider thread", records({ run: { providerThreadId: "other" } }), ready],
   ["thread moved to another instance", records({ thread: { providerInstanceId: "codex" } }), ready],

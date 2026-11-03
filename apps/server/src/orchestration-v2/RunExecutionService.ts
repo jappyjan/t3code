@@ -932,7 +932,7 @@ export const layer: Layer.Layer<
             ),
           );
           // Side chats share the parent's worktree; a snapshot would capture the parent's edits.
-          // So does a server compaction, which can run while a pipeline's next step edits it.
+          // So does a server compaction, which can run while another thread edits the worktree.
           yield* (
             input.appThread.lineage.sideChat === true ||
             idleCompactionOf({ role: "user", ...input.message }) !== undefined
