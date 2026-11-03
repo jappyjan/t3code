@@ -100,19 +100,19 @@ thread.
 
 A run's page is a chat with its coordinator, an agent that knows the run and can check on it,
 send feedback to steps, continue past a pause when you ask it to, rerun or cancel. It acts when
-you message it, or when a step passes a request on (below), and it does not edit files itself. Change its model in the composer like in
-any thread. The step list stays pinned above the chat, where each step's feedback is listed.
+you message it, or when a step passes a request on (below), and it does not edit files itself.
+Change its model in the composer like in any thread. The step list stays pinned above the chat,
+where each step's feedback is listed.
 
 From a step's thread, click **Coordinator** in the header (or run **Open pipeline coordinator**
 from the command palette) to chat with it beside the step. When a step passes your request to the
-coordinator, it opens by itself, but only while you are looking at that step. A message from a step
-starts with "From step <name>", and is not something you wrote. The coordinator decides where the
-work belongs: it sends it as feedback to the step that owns it, so every later step, including the
-one that passed it on, redoes its work; it asks you when that is unclear; or it tells you the step
-should do it after all. On a message, **Send feedback** lets
-the coordinator decide where it goes, or sends it straight to one step. On mobile, tap
-**Coordinator** on the bar above a step's composer to chat in a sheet, and the speech bubble below
-an assistant message to send feedback.
+coordinator, it opens by itself while you are looking at that step. The step's message starts with
+"From step <name>". The coordinator sends the request as feedback to the step that owns it, so
+every later step, including the one that passed it on, redoes its work. When that is unclear it
+asks you, and when the step should do the work after all it sends it back there. On a message,
+**Send feedback** lets the coordinator decide where it goes, or sends it straight to one step. On
+mobile, tap **Coordinator** on the bar above a step's composer to chat in a sheet, and the speech
+bubble below an assistant message to send feedback.
 
 ### Shared workspace
 
