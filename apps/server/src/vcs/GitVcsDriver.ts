@@ -896,9 +896,19 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
   // core.longpaths is disabled in the user's Git configuration.
   const longPaths = hostPlatform === "win32" ? ["-c", "core.longpaths=true"] : [];
 
+  // Child repos would otherwise land in the parent checkpoint as gitlinks.
+  const excludedPathspecs = (excludePaths: ReadonlyArray<string> | undefined) =>
+    (excludePaths ?? []).map((relativePath) => `:(exclude,literal)${relativePath}`);
+
   const checkpoints: VcsDriver.VcsCheckpointOps = {
     captureCheckpoint: Effect.fn("GitVcsDriver.checkpoints.captureCheckpoint")(function* (input) {
       const operation = VcsProcess.CHECKPOINT_CAPTURE_OPERATION;
+      // git add rejects a pathspec naming an ignored folder, and skips that folder anyway.
+      const exclusionPathspecs = excludedPathspecs(
+        input.excludePaths === undefined
+          ? undefined
+          : yield* filterIgnoredPaths(input.cwd, input.excludePaths),
+      );
       // Scratch split-index writes can expire sharedindex files still used by the real index.
       const indexConfig = [
         "-c",
@@ -1174,6 +1184,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
               workspaceIgnored ? "-u" : "-A",
               "--",
               ".",
+              ...exclusionPathspecs,
               ...exclusions,
             ],
             env: commitEnv,
@@ -1304,10 +1315,11 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         return false;
       }
 
+      const pathspecs = [".", ...excludedPathspecs(input.excludePaths)];
       const tracked = yield* execute({
         operation,
         cwd: input.cwd,
-        args: ["ls-files", "--cached", `--with-tree=${commitOid}`, "-z", "--", "."],
+        args: ["ls-files", "--cached", `--with-tree=${commitOid}`, "-z", "--", ...pathspecs],
       });
       // An empty index and checkpoint have nothing for git restore's pathspec to match.
       if (tracked.stdout.length > 0) {
@@ -1322,7 +1334,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
             "--worktree",
             "--staged",
             "--",
-            ".",
+            ...pathspecs,
           ],
         });
       }
@@ -1343,7 +1355,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       const cleaned = yield* execute({
         operation,
         cwd: input.cwd,
-        args: [...longPaths, "clean", "-fd", "--", "."],
+        args: [...longPaths, "clean", "-fd", "--", ...pathspecs],
         allowNonZeroExit: true,
       });
       if (cleaned.exitCode !== 0) {
@@ -1372,7 +1384,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         yield* execute({
           operation,
           cwd: input.cwd,
-          args: [...longPaths, "reset", "--quiet", "--", "."],
+          args: [...longPaths, "reset", "--quiet", "--", ...pathspecs],
         });
       }
 
