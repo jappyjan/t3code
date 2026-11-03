@@ -957,11 +957,12 @@ export function useComposerSend(input: ComposerSendInput) {
         setThreadError(threadIdForSend, pipelineBlock);
         return;
       }
+      const pipelineRepositorySelectionKey = worktreeRepositorySelectionKey(
+        draftId,
+        scopeThreadRef(environmentId, threadIdForSend),
+      );
       const pipelineRepositories = baseBranchForWorktree
-        ? await readLaunchRepositories(
-            activeProject,
-            worktreeRepositorySelectionKey(draftId, scopeThreadRef(environmentId, threadIdForSend)),
-          )
+        ? await readLaunchRepositories(activeProject, pipelineRepositorySelectionKey)
         : undefined;
       const workspaceStrategy = draftWorkspaceStrategy(
         { branch: activeThreadBranch, worktreePath: activeThread.worktreePath },
@@ -979,7 +980,7 @@ export function useComposerSend(input: ComposerSendInput) {
         preparingWorktree: workspaceStrategy.type === "worktree",
         submissionIntent: "foreground",
       });
-      await sendToPipeline({
+      const started = await sendToPipeline({
         threadId: threadIdForSend,
         pipelineId: selectedPipelineId,
         projectId: activeProject.id,
@@ -987,6 +988,9 @@ export function useComposerSend(input: ComposerSendInput) {
         promptAtSend: promptForSend,
         workspaceStrategy,
       });
+      if (started && baseBranchForWorktree) {
+        useWorktreeRepositorySelectionStore.getState().clear(pipelineRepositorySelectionKey);
+      }
       return;
     }
     // Records bind attachments by the id each side knows: the local id for the optimistic
