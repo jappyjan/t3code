@@ -40,7 +40,6 @@ import {
   type PullRequestTargetInput,
   PullRequestWatchFailedError,
   PullRequestWatchFromSubagentError,
-  PullRequestWatchFromPipelineStepError,
   PullRequestThreadNotFoundError,
   PullRequestThreadRequiredError,
   PullRequestGuideFailedError,
@@ -279,10 +278,6 @@ const make = Effect.gen(function* () {
       );
     if (watching && thread.lineage.relationshipToParent === "subagent") {
       return yield* new PullRequestWatchFromSubagentError();
-    }
-    // A step's watch would hold its finished pipeline on the Working shelf and wake it later.
-    if (watching && isPipelineStep(thread)) {
-      return yield* new PullRequestWatchFromPipelineStepError();
     }
     const before = watchedLink(thread);
     if (watching && before?.snapshot?.state === "merged") {
