@@ -7,7 +7,7 @@ is built from `main` (upstream plus the fork's feature branches, rebuilt by the 
 Rules:
 
 - Never `brew uninstall --zap` (it deletes ~/.t3/userdata). Never run `install-desktop.sh --now`.
-- No pull request to pingdotgg/t3code, no posting to its discussions, never push from here.
+- No pull request to pingdotgg/t3code, no posting to its discussions. Push only as `rebuild-main.md` says (the scheduled task does this).
 - Don't open ~/.t3/userdata databases read-write.
 - Ask me before anything that removes or replaces installed software (brew uninstall,
   darwin-rebuild, replacing an app in /Applications). Queuing `install-desktop.sh` counts.
