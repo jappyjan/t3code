@@ -74,6 +74,7 @@ import {
   ProviderInteractionMode,
   resolveIdleCompaction,
   RuntimeMode,
+  type WorkspaceRepository,
 } from "@t3tools/contracts";
 import {
   deriveProviderSubagentStatus,
@@ -266,6 +267,7 @@ import {
   useQuietThreadShell,
   useThreadCheckpointSummaries,
 } from "../state/entities";
+import { useWorkspaceRepositories } from "../state/threadRepositories";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
@@ -398,6 +400,7 @@ import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplat
 const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_TURN_ITEMS: ThreadStructure["turnItems"] = [];
+const EMPTY_THREAD_REPOSITORIES: ReadonlyArray<WorkspaceRepository> = [];
 const EMPTY_AUTO_UPDATE_ENVIRONMENTS: ReadonlyArray<EnvironmentPresentation> = [];
 const EMPTY_COMPOSER_BANNER_ITEMS: ReadonlyArray<ComposerBannerStackItem> = [];
 
@@ -1705,7 +1708,11 @@ export default function ChatView(props: ChatViewProps) {
   // A paged history window cannot identify the first loaded run as the thread start.
   const threadStartCheckpointReady =
     !serverThreadHistory.hasMoreHistory &&
-    findRevertCheckpoint(serverProjection?.checkpoints ?? [], 0) !== undefined;
+    findRevertCheckpoint(
+      serverProjection?.checkpoints ?? [],
+      0,
+      serverProjection?.checkpointScopes,
+    ) !== undefined;
 
   const workspaceMutationId = deriveWorkspaceMutationId(
     serverVisibleTurnItems,
@@ -1817,6 +1824,20 @@ export default function ChatView(props: ChatViewProps) {
     }
   }, [environmentId, gitStatusCwd, liveIsGitRepo]);
   const isGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd) ?? true;
+  const threadWorkspace = useWorkspaceRepositories(
+    activeProject === null
+      ? null
+      : {
+          environmentId: activeProject.environmentId,
+          project: activeProject,
+          worktreePath: activeThreadWorktreePath,
+        },
+  );
+  const threadRepositories =
+    threadWorkspace?.repositories.filter((repository) => !repository.missing) ??
+    EMPTY_THREAD_REPOSITORIES;
+  // Tracked repos beside a plain home folder still have diffs and Git actions.
+  const hasGitSurfaces = isGitRepo || threadRepositories.length > 0;
   // Provider-native subagents cannot take messages; approvals and questions go to the top-level parent.
   const showProviderSubagentBar = isProviderSubagent;
   const composerMounted = !showProviderSubagentBar;
@@ -1850,6 +1871,7 @@ export default function ChatView(props: ChatViewProps) {
       persistInActiveThreads: settings.persistComposerContextStrip,
       hasActiveProject: activeProject !== null && !showProviderSubagentBar,
       isGitRepo,
+      hasTrackedFolders: (activeProject?.trackedFolders.length ?? 0) > 0,
       showEnvironmentIndicator: showComposerEnvironmentIndicator,
     });
   const terminalShortcutLabelOptions = {
@@ -2476,6 +2498,7 @@ export default function ChatView(props: ChatViewProps) {
     onOpenTurnDiffStable,
     openChangesFromThreadPanelStable,
     openFileSurfaceStable,
+    reviewRepositoryChangesStable,
     toggleRightPanelMaximizedStable,
     toggleRightPanelStable,
     toggleThreadPanelStable,
@@ -2491,7 +2514,7 @@ export default function ChatView(props: ChatViewProps) {
     pullRequestPanelTarget,
     threadPanelPresentation,
     isServerThread,
-    isGitRepo,
+    isGitRepo: hasGitSurfaces,
     browserAvailable,
     canOperatePreview,
     diffOpen,
@@ -3615,6 +3638,7 @@ export default function ChatView(props: ChatViewProps) {
                       ? {}
                       : {
                           onOpenTurnDiff: onOpenTurnDiffStable,
+                          onOpenRepositoryChanges: reviewRepositoryChangesStable,
                           onForkFromRun: onForkFromRunStable,
                         })}
                     onOpenThread={onOpenRelatedThreadStable}
@@ -4049,6 +4073,7 @@ export default function ChatView(props: ChatViewProps) {
                   }
                   gitCwd={gitCwd}
                   isGitRepo={isGitRepo}
+                  workspaceRepositories={threadRepositories}
                   envLocked={envLocked}
                   availableEnvironments={logicalProjectEnvironments}
                   autoEnvironmentLabel={autoEnvironmentLabel}
@@ -4077,7 +4102,7 @@ export default function ChatView(props: ChatViewProps) {
                     ? { onCheckoutPullRequestRequest: openPullRequestDialogStable }
                     : {})}
                   onComposerFocusRequest={scheduleComposerFocusStable}
-                  {...(isServerThread && isGitRepo
+                  {...(isServerThread && hasGitSurfaces
                     ? { onOpenChanges: openChangesFromThreadPanelStable }
                     : {})}
                   onRunProjectScript={runProjectScriptStable}
