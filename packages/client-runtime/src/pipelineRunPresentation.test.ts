@@ -388,21 +388,36 @@ describe("createPipelineEscalationWatcher", () => {
 
   it("fires once when a call seen in flight completes", () => {
     const watch = createPipelineEscalationWatcher();
-    expect(watch([row(call("running"))])).toBe(false);
-    expect(watch([row(call("completed", { next: "ok" }))])).toBe(true);
-    expect(watch([row(call("completed", { next: "ok" }))])).toBe(false);
+    expect(watch("thread-1", [row(call("running"))])).toBe(false);
+    expect(watch("thread-1", [row(call("completed", { next: "ok" }))])).toBe(true);
+    expect(watch("thread-1", [row(call("completed", { next: "ok" }))])).toBe(false);
+  });
+
+  it("forgets calls in flight when the view switches threads or leaves the screen", () => {
+    const watch = createPipelineEscalationWatcher();
+    for (const away of ["thread-2", null]) {
+      expect(watch("thread-1", [row(call("running"))])).toBe(false);
+      expect(watch(away, [row(call("running"))])).toBe(false);
+      expect(watch("thread-1", [row(call("completed", { next: "ok" }))])).toBe(false);
+    }
   });
 
   it("ignores calls that are already done when first seen, and failed calls", () => {
     const watch = createPipelineEscalationWatcher();
-    expect(watch([row(call("completed", { next: "ok" }))])).toBe(false);
-    expect(watch([row(call("running", undefined, "item-2"))])).toBe(false);
-    expect(watch([row(call("completed", { isError: true, content: [] }, "item-2"))])).toBe(false);
+    expect(watch("thread-1", [row(call("completed", { next: "ok" }))])).toBe(false);
+    expect(watch("thread-1", [row(call("running", undefined, "item-2"))])).toBe(false);
     expect(
-      watch([row({ type: "dynamic_tool", id: "x", status: "running", toolName: "other" })]),
+      watch("thread-1", [row(call("completed", { isError: true, content: [] }, "item-2"))]),
     ).toBe(false);
     expect(
-      watch([row({ type: "dynamic_tool", id: "x", status: "completed", toolName: "other" })]),
+      watch("thread-1", [
+        row({ type: "dynamic_tool", id: "x", status: "running", toolName: "other" }),
+      ]),
+    ).toBe(false);
+    expect(
+      watch("thread-1", [
+        row({ type: "dynamic_tool", id: "x", status: "completed", toolName: "other" }),
+      ]),
     ).toBe(false);
   });
 });

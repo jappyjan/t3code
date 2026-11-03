@@ -1056,23 +1056,18 @@ export default function ChatView(props: ChatViewProps) {
   const openCoordinator = useStableCallback(() => {
     if (activeThreadRef) openPipelineCoordinator(activeThreadRef);
   });
-  const escalationWatcherRef = useRef<{
-    threadKey: string;
-    watch: ReturnType<typeof createPipelineEscalationWatcher>;
-  } | null>(null);
-  const watchEscalations = pipelineStepId !== null && !embedded;
+  const [watchEscalation] = useState(createPipelineEscalationWatcher);
+  const escalationThreadKey =
+    pipelineStepId !== null && !embedded && activeThreadRef !== null
+      ? scopedThreadKey(activeThreadRef)
+      : null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the coordinator panel when the step's agent hands the user's request to it, a live event from the thread's stream
   useEffect(() => {
-    if (!watchEscalations || activeThreadRef === null) return;
-    const threadKey = scopedThreadKey(activeThreadRef);
-    if (escalationWatcherRef.current?.threadKey !== threadKey) {
-      escalationWatcherRef.current = { threadKey, watch: createPipelineEscalationWatcher() };
+    if (watchEscalation(escalationThreadKey, serverVisibleTurnItems) && activeThreadRef) {
+      // Not openPipelineCoordinator: an automatic open must not take focus from the step's composer.
+      useRightPanelStore.getState().open(activeThreadRef, "pipeline-coordinator");
     }
-    const watch = escalationWatcherRef.current.watch;
-    if (watch(serverVisibleTurnItems)) {
-      openPipelineCoordinator(activeThreadRef);
-    }
-  }, [watchEscalations, activeThreadRef, serverVisibleTurnItems]);
+  }, [watchEscalation, escalationThreadKey, activeThreadRef, serverVisibleTurnItems]);
   const [feedbackQuote, setFeedbackQuote] = useState<string | null>(null);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(

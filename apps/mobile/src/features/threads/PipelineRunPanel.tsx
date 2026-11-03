@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type {
   EnvironmentId,
   PipelineRun,
@@ -37,7 +37,7 @@ import { threadHasUnseenCompletion } from "./threadListV2";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useThreadVisibleTurnItems } from "../../state/use-thread-detail";
+import { useQuietThreadVisibleTurnItems } from "../../state/use-thread-detail";
 import { pipelineStepTone, stepRevisions, type PipelineStepTone } from "./pipeline-run-view";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
@@ -594,27 +594,24 @@ export function PipelineEscalationWatcher(props: {
     }),
   );
   const navigation = useNavigation();
-  const turnItems = useThreadVisibleTurnItems({
+  // Covered stack screens stay mounted; only the screen in front may open the sheet.
+  const focused = useIsFocused();
+  const turnItems = useQuietThreadVisibleTurnItems({
     environmentId: props.environmentId,
     threadId: props.threadId,
   });
-  const watcher = useRef<{
-    threadId: ThreadId;
-    watch: ReturnType<typeof createPipelineEscalationWatcher>;
-  } | null>(null);
+  const [watchEscalation] = useState(createPipelineEscalationWatcher);
   const parentThreadId = runQuery.data?.run.parentThreadId ?? null;
+  const threadKey = focused ? `${props.environmentId}:${props.threadId}` : null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the coordinator sheet when the step's agent hands the user's request to it, a live event from the thread's stream
   useEffect(() => {
-    if (watcher.current?.threadId !== props.threadId) {
-      watcher.current = { threadId: props.threadId, watch: createPipelineEscalationWatcher() };
-    }
-    if (watcher.current.watch(turnItems) && parentThreadId !== null) {
+    if (watchEscalation(threadKey, turnItems) && parentThreadId !== null) {
       navigation.navigate("PipelineCoordinator", {
         environmentId: String(props.environmentId),
         threadId: String(parentThreadId),
       });
     }
-  }, [turnItems, parentThreadId, props.threadId, props.environmentId, navigation]);
+  }, [watchEscalation, threadKey, turnItems, parentThreadId, props.environmentId, navigation]);
   return null;
 }
 

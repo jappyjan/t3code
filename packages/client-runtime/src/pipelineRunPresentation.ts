@@ -290,31 +290,39 @@ interface EscalationCandidateItem {
 /**
  * Tells a step thread's view when the agent just handed a request to the run's coordinator.
  * Only a call seen in flight and then completed counts, so history, paging and a reload that
- * finds the call already done never open the coordinator. Make one per mounted thread.
+ * finds the call already done never open the coordinator. Switching threads, or a null key
+ * while the thread is not on screen, starts over.
  */
 export function createPipelineEscalationWatcher() {
+  let watchedThreadKey: string | null = null;
   const inFlight = new Set<string>();
-  return (rows: ReadonlyArray<{ readonly item: EscalationCandidateItem }>): boolean => {
+  return (
+    threadKey: string | null,
+    rows: ReadonlyArray<{ readonly item: EscalationCandidateItem }>,
+  ): boolean => {
+    if (threadKey !== watchedThreadKey) {
+      watchedThreadKey = threadKey;
+      inFlight.clear();
+    }
+    if (threadKey === null) return false;
     let escalated = false;
     for (const { item } of rows) {
-      if (
-        item.type !== "dynamic_tool" ||
-        resolveT3McpToolId(item.toolName) !== "escalate_to_pipeline_coordinator"
-      ) {
-        continue;
-      }
-      if (item.status === "completed") {
-        if (inFlight.delete(item.id) && !compactDynamicToolOutput(item.output)?.isError) {
-          escalated = true;
-        }
-      } else if (
+      if (item.type !== "dynamic_tool") continue;
+      const done =
+        item.status === "completed" ||
         item.status === "failed" ||
         item.status === "cancelled" ||
-        item.status === "interrupted"
-      ) {
-        inFlight.delete(item.id);
-      } else {
+        item.status === "interrupted";
+      // Checked before the tool name so a long history costs one lookup per item.
+      if (done && !inFlight.has(item.id)) continue;
+      if (resolveT3McpToolId(item.toolName) !== "escalate_to_pipeline_coordinator") continue;
+      if (!done) {
         inFlight.add(item.id);
+        continue;
+      }
+      inFlight.delete(item.id);
+      if (item.status === "completed" && !compactDynamicToolOutput(item.output)?.isError) {
+        escalated = true;
       }
     }
     return escalated;
