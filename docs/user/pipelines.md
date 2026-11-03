@@ -99,8 +99,8 @@ thread.
 ### Coordinator
 
 A run's page is a chat with its coordinator, an agent that knows the run and can check on it,
-send feedback to steps, continue past a pause when you ask it to, rerun or cancel. It only acts
-when you message it, and it does not edit files itself. Change its model in the composer like in
+send feedback to steps, continue past a pause when you ask it to, rerun or cancel. It acts when
+you message it, or when a step passes a request on (below), and it does not edit files itself. Change its model in the composer like in
 any thread. The step list stays pinned above the chat, where each step's feedback is listed.
 
 From a step's thread, click **Coordinator** in the header (or run **Open pipeline coordinator**
