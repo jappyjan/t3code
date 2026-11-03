@@ -342,6 +342,23 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "pipeline-escalate": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Passed a request to the pipeline coordinator} other {Passed {count} requests to the pipeline coordinator}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to pass a request to the pipeline coordinator} other {Tried to pass {count} requests to the pipeline coordinator}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "pipeline-cancel": {
       const count = countEntities(entityIds("runId"));
       label = done
