@@ -9,6 +9,7 @@ import {
   draftToUpsertInput,
   emptyPipelineDraft,
   hasPipelineDraftChanges,
+  draftStepCompaction,
   moveStep,
   newStepDraft,
   normalizeSkillName,
@@ -602,6 +603,7 @@ function PipelineEditorDialog({
                   key={step.key}
                   environmentId={environmentId}
                   step={step}
+                  compactAfterHandoff={draftStepCompaction(draft, index)}
                   index={index}
                   count={draft.steps.length}
                   issues={issues.steps.get(step.key) ?? []}
@@ -651,6 +653,7 @@ function withDefaultModel(draft: PipelineDraft, modelSelection: ModelSelection |
 function PipelineStepEditor({
   environmentId,
   step,
+  compactAfterHandoff,
   index,
   count,
   issues,
@@ -664,6 +667,7 @@ function PipelineStepEditor({
 }: {
   readonly environmentId: EnvironmentId;
   readonly step: PipelineStepDraft;
+  readonly compactAfterHandoff: boolean;
   readonly index: number;
   readonly count: number;
   readonly issues: ReadonlyArray<string>;
@@ -837,6 +841,21 @@ function PipelineStepEditor({
           id={`${idPrefix}-pause`}
           checked={step.pauseBefore}
           onCheckedChange={(pauseBefore) => onChange({ pauseBefore })}
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <Label htmlFor={`${idPrefix}-compact`}>Compact after handoff</Label>
+          <p className="text-sm text-muted-foreground">
+            Compacts this step's thread once the next step has started, so coming back to it later
+            reads a summary. On by default, except for the last step.
+          </p>
+        </div>
+        <Switch
+          id={`${idPrefix}-compact`}
+          checked={compactAfterHandoff}
+          onCheckedChange={(next) => onChange({ compactAfterHandoff: next })}
         />
       </div>
 

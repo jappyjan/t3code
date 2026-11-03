@@ -8,6 +8,7 @@ import {
   PipelineError,
   PipelineRunId,
   pipelineDefinitionIssues,
+  resolvePipelineStepCompaction,
   type OrchestrationV2Actor,
   type OrchestrationV2ThreadLaunchWorkspaceStrategy,
   type PipelinePauseReason,
@@ -51,8 +52,10 @@ import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingErrors.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as PipelineStore from "./PipelineStore.ts";
+import { compactStepThread } from "./PipelineStepCompaction.ts";
 import {
   pipelineEscalationMessage,
   pipelineHandoffInstructions,
@@ -159,6 +162,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const ids = yield* IdAllocator.IdAllocatorV2;
   const random = yield* SecureRandom.SecureRandom;
+  const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const workspace = yield* makePipelineWorkspace();
 
   const permit = yield* Semaphore.make(1);
@@ -484,6 +488,50 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     return { _tag: "ready", prompt, workspaceStrategy: run.workspaceStrategy };
   });
 
+  /**
+   * Compacts a finished step's thread now that its successor has started (or the run completed).
+   * Only called after the successor's turn was dispatched: before that, `launchPending` may still
+   * wait on this thread's last run, and a user may still refine the step.
+   */
+  const compactFinishedStep = (
+    run: PipelineRun,
+    step: PipelineRunStep | undefined,
+    successor: string,
+  ) =>
+    step === undefined ||
+    step.status !== "completed" ||
+    step.childThreadId === null ||
+    !resolvePipelineStepCompaction(run.definition.steps, step.index)
+      ? Effect.void
+      : compactStepThread(
+          {
+            threads,
+            providerCanCompact: (instanceId) =>
+              providerRegistry.getProviders.pipe(
+                Effect.map(
+                  (providers) =>
+                    providers
+                      .find((provider) => provider.instanceId === instanceId)
+                      ?.slashCommands.some((command) => command.name === "compact") ?? false,
+                ),
+              ),
+          },
+          {
+            projectId: run.projectId,
+            threadId: step.childThreadId,
+            key: `${run.id}:${step.stepId}:${step.attempt}:${successor}`,
+          },
+        );
+
+  /** The last step has no successor, so the run completing is its "next step started". */
+  const compactLastStep = Effect.fn("PipelineRunner.compactLastStep")(function* (
+    runId: PipelineRunId,
+  ) {
+    const run = yield* store.getRun(runId);
+    if (run?.status !== "completed") return;
+    yield* compactFinishedStep(run, run.steps.at(-1), "completed");
+  });
+
   const launchStep = Effect.fn("PipelineRunner.launchStep")(function* (
     run: PipelineRun,
     cursor: number,
@@ -543,6 +591,15 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     );
     if (childThreadId !== null) {
       yield* syncParentWorkspace(run, cursor, childThreadId, attempt, "launch");
+      yield* compactFinishedStep(
+        run,
+        run.steps
+          .slice(0, cursor)
+          .findLast(
+            (candidate) => candidate.status === "completed" && candidate.childThreadId !== null,
+          ),
+        `${step.id}:${attempt}`,
+      );
     }
   });
 
@@ -678,6 +735,14 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
       }),
     );
     if (sentRunId === null) return;
+    // A downstream step caught up on a revision, so the revised step has been handed over again.
+    if (feedback !== undefined && feedback.stepIndex < step.index) {
+      yield* compactFinishedStep(
+        run,
+        run.steps[feedback.stepIndex],
+        `${step.stepId}:${step.attempt}`,
+      );
+    }
     yield* settleRunning(run, step.index, childThreadId, step.attempt, sentRunId);
   });
 
@@ -819,7 +884,10 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
   const drive = Effect.fn("PipelineRunner.drive")(function* (runId: PipelineRunId) {
     while (true) {
       const run = yield* readRun(runId);
-      if (run.status !== "running") return;
+      if (run.status !== "running") {
+        if (run.status === "completed") yield* compactLastStep(runId);
+        return;
+      }
       const cursor = run.currentStepIndex;
       const step = run.steps[cursor];
       if (step === undefined) {
@@ -837,6 +905,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
             yield* notifyRunChanged(runId);
           }),
         );
+        yield* compactLastStep(runId);
         return;
       }
       const expect: StepExpectation = { cursor, attempt: step.attempt, stepStatus: step.status };
