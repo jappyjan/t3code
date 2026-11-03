@@ -32,6 +32,8 @@ import { Tool } from "effect/ai";
 import * as McpSchema from "effect/ai/McpSchema";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
+import { pipelineCoordinatorNote } from "../../apps/server/src/pipelines/pipelineCoordinator.ts";
+import { pipelineHandoffInstructions } from "../../apps/server/src/pipelines/pipelineTemplate.ts";
 import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
@@ -39,6 +41,7 @@ import {
   EnvironmentId,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
   PullRequestState,
+  PipelineRunId,
   ThreadId,
 } from "@t3tools/contracts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
@@ -245,6 +248,12 @@ export const McpToolUseCase = Schema.Struct({
     role: Schema.Literals(["top", "delegated-child", "native-subagent"]),
     /** Runs only on this harness, for cases whose right answer depends on it. */
     harness: Schema.optional(Schema.Literals(["claude", "codex"])),
+    /** The thread is this step of a pipeline run: T3 appends its handoff instructions to `prompt`. */
+    pipelineStep: Schema.optional(
+      Schema.Struct({ number: Schema.Number, count: Schema.Number, name: Schema.String }),
+    ),
+    /** The thread is a run's coordinator chat: T3 puts the coordinator's instructions ahead of `prompt`. */
+    pipelineCoordinatorRunId: Schema.optional(Schema.String),
     /** The Linked environments beta is on, so T3 lists its link tools. */
     linkedEnvironments: Schema.optional(Schema.Boolean),
     /** delegate_task `role` for a delegated child. T3 builds the child's first message from it. */
@@ -921,10 +930,32 @@ export const buildMessages = (sample: Sample) => {
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
+  const { pipelineStep, pipelineCoordinatorRunId } = testCase.setup;
+  const pipelinePrompt = [
+    pipelineCoordinatorRunId === undefined
+      ? ""
+      : pipelineCoordinatorNote({
+          pipeline: { runId: PipelineRunId.make(pipelineCoordinatorRunId), stepId: null },
+          nativeCommand: false,
+          providerThreadId: "provider-thread",
+          activeAttemptId: null,
+          providerTurns: [],
+        }),
+    testCase.prompt,
+    pipelineStep === undefined
+      ? ""
+      : pipelineHandoffInstructions({
+          stepNumber: pipelineStep.number,
+          stepCount: pipelineStep.count,
+          stepName: pipelineStep.name,
+        }),
+  ]
+    .filter((part) => part !== "")
+    .join("\n\n");
   const userText =
     testCase.promptContext === undefined
-      ? testCase.prompt
-      : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+      ? pipelinePrompt
+      : projectComposerContextForProvider({ text: pipelinePrompt, ...testCase.promptContext });
   const sideChat = testCase.setup.sideChat;
   const prompt =
     sideChat === undefined

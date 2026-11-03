@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,
@@ -3671,6 +3672,7 @@ describe("OrchestratorMcpService pipelines", () => {
     const continued: Array<unknown> = [];
     const handedOff: Array<unknown> = [];
     const revised: Array<unknown> = [];
+    const escalated: Array<unknown> = [];
     const caller = liveThreadShell(callerThreadId, modes);
     const shell = {
       ...caller,
@@ -3700,6 +3702,11 @@ describe("OrchestratorMcpService pipelines", () => {
         Effect.sync(() => {
           revised.push(input);
           return { run: run({ status: "running", pauseReason: null, currentStepIndex: 0 }) };
+        }),
+      escalateToCoordinator: (input) =>
+        Effect.sync(() => {
+          escalated.push(input);
+          return { runId: input.runId, coordinatorThreadId: ThreadId.make("coordinator-thread") };
         }),
       handoffStep: (input) =>
         Effect.sync(() => {
@@ -3748,6 +3755,7 @@ describe("OrchestratorMcpService pipelines", () => {
       started,
       continued,
       handedOff,
+      escalated,
       revised,
       scope,
       layer: OrchestratorMcpService.layer.pipe(
@@ -4231,6 +4239,57 @@ describe("OrchestratorMcpService pipelines", () => {
         );
         assert.include(refused.message, "not a pipeline step");
         assert.deepEqual(h.handedOff, []);
+      }
+    }),
+  );
+
+  it.effect("passes a step's out-of-scope request to the run's coordinator", () =>
+    Effect.gen(function* () {
+      const h = harness(
+        { runtimeMode: "full-access", interactionMode: "default" },
+        { pipelineThread: { runId: PipelineRunId.make("pipeline-run:one"), stepId: "plan" } },
+      );
+      const result = yield* withService(h, (service) =>
+        service.escalateToPipelineCoordinator(h.scope, {
+          request: "Fix the button",
+          reason: "Review does not change code",
+        }),
+      );
+      assert.deepEqual(h.escalated, [
+        {
+          runId: "pipeline-run:one",
+          threadId: callerThreadId,
+          stepLink: formatThreadLink({
+            environmentId: h.scope.environmentId,
+            threadId: callerThreadId,
+          }),
+          request: "Fix the button",
+          reason: "Review does not change code",
+        },
+      ]);
+      assert.include(result.link, "coordinator-thread");
+      assert.include(result.next, "without handing off");
+      assert.include(result.next, result.link);
+    }),
+  );
+
+  it.effect("refuses an escalation from a thread that is not a pipeline step", () =>
+    Effect.gen(function* () {
+      for (const pipelineThread of [
+        undefined,
+        { runId: PipelineRunId.make("pipeline-run:one"), stepId: null },
+      ]) {
+        const h = harness(
+          { runtimeMode: "full-access", interactionMode: "default" },
+          pipelineThread === undefined ? {} : { pipelineThread },
+        );
+        const refused = yield* Effect.flip(
+          withService(h, (service) =>
+            service.escalateToPipelineCoordinator(h.scope, { request: "x", reason: "y" }),
+          ),
+        );
+        assert.include(refused.message, "not a pipeline step");
+        assert.deepEqual(h.escalated, []);
       }
     }),
   );

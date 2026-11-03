@@ -245,6 +245,9 @@ export function summarizeT3ToolCalls(
         quantity(countEntities(entityIds("runId")), "pipeline run"),
       );
       break;
+    case "pipeline-escalate":
+      label = phrase("Passed", "pass", "a request to the pipeline coordinator");
+      break;
     case "pipeline-cancel":
       label = phrase(
         "Requested cancellation of",

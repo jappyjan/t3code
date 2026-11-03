@@ -1,4 +1,6 @@
 import type { PipelineRun, PipelineRunStep } from "@t3tools/contracts";
+import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
+import { compactDynamicToolOutput } from "@t3tools/shared/toolOutput";
 
 export interface PipelineRunActions {
   readonly continue: boolean;
@@ -275,4 +277,46 @@ export function feedbackQuoteExcerpt(text: string): string {
   return trimmed.length <= FEEDBACK_EXCERPT_CHARS
     ? trimmed
     : `${trimmed.slice(0, FEEDBACK_EXCERPT_CHARS).trimEnd()}…`;
+}
+
+interface EscalationCandidateItem {
+  readonly type: string;
+  readonly id: string;
+  readonly status?: string;
+  readonly toolName?: string | null;
+  readonly output?: unknown;
+}
+
+/**
+ * Tells a step thread's view when the agent just handed a request to the run's coordinator.
+ * Only a call seen in flight and then completed counts, so history, paging and a reload that
+ * finds the call already done never open the coordinator. Make one per mounted thread.
+ */
+export function createPipelineEscalationWatcher() {
+  const inFlight = new Set<string>();
+  return (rows: ReadonlyArray<{ readonly item: EscalationCandidateItem }>): boolean => {
+    let escalated = false;
+    for (const { item } of rows) {
+      if (
+        item.type !== "dynamic_tool" ||
+        resolveT3McpToolId(item.toolName) !== "escalate_to_pipeline_coordinator"
+      ) {
+        continue;
+      }
+      if (item.status === "completed") {
+        if (inFlight.delete(item.id) && !compactDynamicToolOutput(item.output)?.isError) {
+          escalated = true;
+        }
+      } else if (
+        item.status === "failed" ||
+        item.status === "cancelled" ||
+        item.status === "interrupted"
+      ) {
+        inFlight.delete(item.id);
+      } else {
+        inFlight.add(item.id);
+      }
+    }
+    return escalated;
+  };
 }

@@ -30,6 +30,8 @@ import {
   type OrchestratorMcpRequestSecretResult,
   type OrchestratorMcpDeleteScheduledTaskResult,
   type OrchestratorMcpContinuePipelineInput,
+  type OrchestratorMcpEscalateToPipelineCoordinatorInput,
+  type OrchestratorMcpEscalateToPipelineCoordinatorResult,
   type OrchestratorMcpHandoffPipelineStepInput,
   type OrchestratorMcpHandoffPipelineStepResult,
   type OrchestratorMcpRerunPipelineInput,
@@ -231,6 +233,10 @@ export interface OrchestratorMcpServiceShape {
     input: OrchestratorMcpRevisePipelineStepInput,
   ) => Effect.Effect<OrchestratorMcpPipelineRun, OrchestratorMcpFailure>;
   /** Only from a pipeline step's own thread. */
+  readonly escalateToPipelineCoordinator: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpEscalateToPipelineCoordinatorInput,
+  ) => Effect.Effect<OrchestratorMcpEscalateToPipelineCoordinatorResult, OrchestratorMcpFailure>;
   readonly handoffPipelineStep: (
     scope: McpInvocationScope,
     input: OrchestratorMcpHandoffPipelineStepInput,
@@ -2521,6 +2527,42 @@ const make = Effect.gen(function* () {
         };
       },
     ),
+    escalateToPipelineCoordinator: Effect.fn(
+      "OrchestratorMcpService.escalateToPipelineCoordinator",
+    )(function* (scope, input) {
+      yield* requireCapability(scope);
+      const threadScope = yield* requireThreadScope(scope, "escalate_to_pipeline_coordinator");
+      const threadId = threadScope.thread.threadId;
+      const shell = yield* threadManagement
+        .getThreadShell(threadId)
+        .pipe(Effect.mapError(threadManagementFailure));
+      const pipeline = shell?.pipeline;
+      if (pipeline === undefined || pipeline.stepId === null) {
+        return yield* failure(
+          "invalid_request",
+          "This thread is not a pipeline step, so it has no run coordinator to hand a request to. Do the work the user asked for, or ask them how to proceed.",
+        );
+      }
+      const { runId, coordinatorThreadId } = yield* pipelines
+        .escalateToCoordinator({
+          runId: pipeline.runId,
+          threadId,
+          stepLink: formatThreadLink({ environmentId: scope.environmentId, threadId }),
+          request: input.request,
+          reason: input.reason,
+        })
+        .pipe(Effect.mapError(pipelineFailure));
+      const link = formatThreadLink({
+        environmentId: scope.environmentId,
+        threadId: coordinatorThreadId,
+      });
+      return {
+        runId,
+        coordinatorThreadId,
+        link,
+        next: `The request is with the run's coordinator (${link}), which decides where it belongs. End your turn now without handing off, and tell the user briefly that the coordinator has it. Do not do the work yourself.`,
+      };
+    }),
     requestSecret: Effect.fn("OrchestratorMcpService.requestSecret")(function* (scope, input) {
       const { scope: threadScope, parent } = yield* loadThreadCaller(scope, "request_secret");
       const threadId = threadScope.thread.threadId;

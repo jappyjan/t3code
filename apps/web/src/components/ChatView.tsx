@@ -279,7 +279,10 @@ import { ThreadTimeline } from "./chat/ThreadTimeline";
 import { NativeChildWorkDialog } from "./chat/NativeChildWorkDialog";
 import { PipelineMessageFeedbackDialog } from "./chat/PipelineMessageFeedbackDialog";
 import { PipelineRunView } from "./chat/PipelineRunView";
-import { pipelineStepBreadcrumbTitle } from "@t3tools/client-runtime/pipeline-run-presentation";
+import {
+  createPipelineEscalationWatcher,
+  pipelineStepBreadcrumbTitle,
+} from "@t3tools/client-runtime/pipeline-run-presentation";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveScrollToEndClearance } from "./composerFooterLayout";
@@ -1053,6 +1056,23 @@ export default function ChatView(props: ChatViewProps) {
   const openCoordinator = useStableCallback(() => {
     if (activeThreadRef) openPipelineCoordinator(activeThreadRef);
   });
+  const escalationWatcherRef = useRef<{
+    threadKey: string;
+    watch: ReturnType<typeof createPipelineEscalationWatcher>;
+  } | null>(null);
+  const watchEscalations = pipelineStepId !== null && !embedded;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the coordinator panel when the step's agent hands the user's request to it, a live event from the thread's stream
+  useEffect(() => {
+    if (!watchEscalations || activeThreadRef === null) return;
+    const threadKey = scopedThreadKey(activeThreadRef);
+    if (escalationWatcherRef.current?.threadKey !== threadKey) {
+      escalationWatcherRef.current = { threadKey, watch: createPipelineEscalationWatcher() };
+    }
+    const watch = escalationWatcherRef.current.watch;
+    if (watch(serverVisibleTurnItems)) {
+      openPipelineCoordinator(activeThreadRef);
+    }
+  }, [watchEscalations, activeThreadRef, serverVisibleTurnItems]);
   const [feedbackQuote, setFeedbackQuote] = useState<string | null>(null);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(

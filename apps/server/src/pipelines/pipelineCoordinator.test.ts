@@ -29,6 +29,12 @@ describe("pipelineCoordinatorNote", () => {
     assert.include(note({ providerTurns: [turn("attempt-2", "running")] }), `\`${runId}\``);
   });
 
+  it("tells the coordinator how to route a request a step handed over", () => {
+    assert.include(note(), "revise_pipeline_step");
+    assert.include(note(), "From step <name> (<link>)");
+    assert.include(note(), "awaiting its handoff");
+  });
+
   it("sends them once per provider thread", () => {
     assert.equal(note({ providerTurns: [turn("attempt-1", "completed")] }), "");
     assert.equal(note({ providerTurns: [turn("attempt-1", "running")] }), "");

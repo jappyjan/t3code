@@ -5,9 +5,11 @@ import type {
   PipelineRun,
   PipelineRunId,
   PipelineRunResult,
+  ThreadId,
 } from "@t3tools/contracts";
 import {
   availablePipelineActions,
+  createPipelineEscalationWatcher,
   pipelineRevisionAuthorLabel,
   pipelineRunStateLabel,
   pipelineStepPosition,
@@ -20,7 +22,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { formatModelSlugName } from "@t3tools/shared/model";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { StatusPill, type StatusTone } from "../../components/StatusPill";
@@ -35,6 +37,7 @@ import { threadHasUnseenCompletion } from "./threadListV2";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useThreadVisibleTurnItems } from "../../state/use-thread-detail";
 import { pipelineStepTone, stepRevisions, type PipelineStepTone } from "./pipeline-run-view";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
@@ -573,6 +576,46 @@ function PipelineStepRow(props: {
       ) : null}
     </View>
   );
+}
+
+/**
+ * Opens the coordinator over a step thread when the step's agent hands the user's request to it.
+ * Renders nothing; only a call seen in flight while this thread is on screen counts.
+ */
+export function PipelineEscalationWatcher(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly runId: PipelineRunId;
+}) {
+  const runQuery = useEnvironmentQuery(
+    serverEnvironment.pipelineRunLive({
+      environmentId: props.environmentId,
+      input: { runId: props.runId },
+    }),
+  );
+  const navigation = useNavigation();
+  const turnItems = useThreadVisibleTurnItems({
+    environmentId: props.environmentId,
+    threadId: props.threadId,
+  });
+  const watcher = useRef<{
+    threadId: ThreadId;
+    watch: ReturnType<typeof createPipelineEscalationWatcher>;
+  } | null>(null);
+  const parentThreadId = runQuery.data?.run.parentThreadId ?? null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the coordinator sheet when the step's agent hands the user's request to it, a live event from the thread's stream
+  useEffect(() => {
+    if (watcher.current?.threadId !== props.threadId) {
+      watcher.current = { threadId: props.threadId, watch: createPipelineEscalationWatcher() };
+    }
+    if (watcher.current.watch(turnItems) && parentThreadId !== null) {
+      navigation.navigate("PipelineCoordinator", {
+        environmentId: String(props.environmentId),
+        threadId: String(parentThreadId),
+      });
+    }
+  }, [turnItems, parentThreadId, props.threadId, props.environmentId, navigation]);
+  return null;
 }
 
 /** Shown above a step thread's composer: names its place in the run and links to the parent. */
