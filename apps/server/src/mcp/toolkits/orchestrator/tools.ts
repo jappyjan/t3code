@@ -14,6 +14,8 @@ import {
   OrchestratorMcpDeleteScheduledTaskInput,
   OrchestratorMcpDeleteScheduledTaskResult,
   OrchestratorMcpContinuePipelineInput,
+  OrchestratorMcpEscalateToPipelineCoordinatorInput,
+  OrchestratorMcpEscalateToPipelineCoordinatorResult,
   OrchestratorMcpHandoffPipelineStepInput,
   OrchestratorMcpHandoffPipelineStepResult,
   OrchestratorMcpRerunPipelineInput,
@@ -307,6 +309,18 @@ const HandoffPipelineStepTool = Tool.make("handoff_pipeline_step", {
   .annotate(Tool.Title, "Hand off a pipeline step")
   .annotate(Tool.Destructive, false);
 
+const EscalateToPipelineCoordinatorTool = Tool.make("escalate_to_pipeline_coordinator", {
+  description:
+    "Only in a pipeline step's thread, and only after the user agreed to it: pass a request that does not belong to this step's role to the run's coordinator, which decides how to route it. Then end your turn without handing off and do not do the work yourself.",
+  parameters: OrchestratorMcpEscalateToPipelineCoordinatorInput,
+  success: OrchestratorMcpEscalateToPipelineCoordinatorResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Pass a request to the pipeline coordinator")
+  .annotate(Tool.Destructive, false);
+
 const RequestSecretTool = Tool.make("request_secret", {
   description:
     'Ask the user to enter a secret in a private card and wait. You never see the value. Returns a one-use `secretRef` for a tool that accepts it, or with `delivery: "file"` a private file path to read inside a shell command. Asked how to provide a secret: call this now, do not explain instead.',
@@ -477,6 +491,7 @@ export const OrchestratorToolkit = Toolkit.make(
   RerunPipelineTool,
   RevisePipelineStepTool,
   HandoffPipelineStepTool,
+  EscalateToPipelineCoordinatorTool,
   RequestSecretTool,
   CreateThreadsTool,
   ThreadListTool,
