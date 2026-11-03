@@ -10,6 +10,7 @@ import type {
 import {
   availablePipelineActions,
   createPipelineEscalationWatcher,
+  pipelineAwaitingHandoffThreadId,
   pipelineRevisionAuthorLabel,
   pipelineRunNeedsAttention,
   pipelineRunStateLabel,
@@ -61,15 +62,11 @@ function reportFailure(title: string, result: AtomCommandResult<unknown, unknown
   }
 }
 
-/** Whether the run waits on the current step's pull request watch, from the step thread's shell. */
 function useRunWaitingOnPullRequest(
   environmentId: EnvironmentId,
   run: PipelineRun | null,
 ): boolean {
-  const childThreadId =
-    run?.status === "paused" && run.pauseReason === "awaiting_handoff"
-      ? (run.steps[run.currentStepIndex]?.childThreadId ?? null)
-      : null;
+  const childThreadId = pipelineAwaitingHandoffThreadId(run);
   const shell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId, threadId: childThreadId },
   );
@@ -81,13 +78,11 @@ function runTone(run: PipelineRun, waitingOnPullRequest: boolean): StatusTone {
     case "running":
       return { label: "Running", ...STEP_TONES.active };
     case "paused":
+      if (!pipelineRunNeedsAttention(run, waitingOnPullRequest)) {
+        return { label: "Waiting", ...STEP_TONES.active };
+      }
       return {
-        label:
-          run.pauseReason === "awaiting_continue"
-            ? "Paused"
-            : pipelineRunNeedsAttention(run, waitingOnPullRequest)
-              ? "Needs attention"
-              : "Waiting on pull request",
+        label: run.pauseReason === "awaiting_continue" ? "Paused" : "Needs attention",
         pillClassName: "bg-warning",
         textClassName: "text-warning-foreground",
       };

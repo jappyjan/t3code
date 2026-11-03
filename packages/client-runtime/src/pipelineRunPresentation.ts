@@ -1,4 +1,5 @@
 import type { PipelineRun, PipelineRunStep } from "@t3tools/contracts";
+import { pullRequestWatchHoldsThread } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput } from "@t3tools/shared/toolOutput";
 
@@ -74,11 +75,19 @@ export function pipelineStepAwaitsHandoff(
   );
 }
 
-/** Whether a thread's agent has a pull request watch running, from the shell clients already hold. */
+/** Whether a thread waits on a pull request watch, by the rule the sidebar's busy state uses. */
 export function threadWatchesPullRequest(
-  shell: { readonly pullRequests?: ReadonlyArray<{ readonly watch?: unknown }> | undefined } | null,
+  shell: {
+    readonly pullRequests?: ReadonlyArray<Parameters<typeof pullRequestWatchHoldsThread>[0]>;
+  } | null,
 ): boolean {
-  return shell?.pullRequests?.some((link) => link.watch !== undefined) ?? false;
+  return shell?.pullRequests?.some(pullRequestWatchHoldsThread) ?? false;
+}
+
+/** The thread of the current step when the run waits for its handoff, else null. */
+export function pipelineAwaitingHandoffThreadId(run: PipelineRun | null) {
+  if (run === null || !pipelineStepAwaitsHandoff(run, run.currentStepIndex)) return null;
+  return run.steps[run.currentStepIndex]?.childThreadId ?? null;
 }
 
 /**

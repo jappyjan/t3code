@@ -1,5 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  pipelineAwaitingHandoffThreadId,
   pipelineRunStateLabel,
   stepName,
   threadWatchesPullRequest,
@@ -54,12 +55,15 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
   const { environmentId, threadId } = props.stepThreadRef;
   const navigate = useNavigate();
   const composerRef = useRef<ChatComposerHandle | null>(null);
-  const stepShell = useQuietThreadShell(props.stepThreadRef);
-  const runId = stepShell?.pipeline?.runId ?? null;
+  const runId = useQuietThreadShell(props.stepThreadRef)?.pipeline?.runId ?? null;
   const query = useEnvironmentQuery(
     runId === null ? null : serverEnvironment.pipelineRunLive({ environmentId, input: { runId } }),
   );
   const run = query.data?.run ?? null;
+  const awaitingChildId = pipelineAwaitingHandoffThreadId(run);
+  const awaitingShell = useQuietThreadShell(
+    awaitingChildId === null ? null : scopeThreadRef(environmentId, awaitingChildId),
+  );
   const parentRef = run === null ? null : scopeThreadRef(environmentId, run.parentThreadId);
   const parentExists = useQuietThreadShell(parentRef) !== null;
   if (run === null || parentRef === null) {
@@ -101,11 +105,7 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
             }
           >
             Step {currentIndex + 1}/{run.steps.length} · {stepName(run, currentIndex)} ·{" "}
-            {pipelineRunStateLabel(
-              run,
-              run.steps[currentIndex]?.childThreadId === threadId &&
-                threadWatchesPullRequest(stepShell),
-            )}
+            {pipelineRunStateLabel(run, threadWatchesPullRequest(awaitingShell))}
           </TooltipTrigger>
           <TooltipPopup side="left">Open the run's main page</TooltipPopup>
         </Tooltip>

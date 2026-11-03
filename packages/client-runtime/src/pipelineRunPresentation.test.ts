@@ -301,10 +301,15 @@ describe("missing handoff", () => {
     expect(pipelineRunNeedsAttention(run, true)).toBe(false);
     expect(pipelineRunNeedsAttention(run, false)).toBe(true);
     expect(pipelineRunNeedsAttention({ ...run, pauseReason: "step_failed" }, true)).toBe(true);
-    expect(threadWatchesPullRequest({ pullRequests: [{}, { watch: { startedAt: "now" } }] })).toBe(
-      true,
-    );
-    expect(threadWatchesPullRequest({ pullRequests: [{}] })).toBe(false);
+    const watch = { startedAt: "now" };
+    const link = { source: "agent" as const, snapshot: null };
+    expect(threadWatchesPullRequest({ pullRequests: [link, { ...link, watch }] })).toBe(true);
+    // A merged pull request's watch holds nothing, as the sidebar's busy state reads it.
+    expect(
+      threadWatchesPullRequest({
+        pullRequests: [{ ...link, watch, snapshot: { state: "merged" as const } }],
+      }),
+    ).toBe(false);
     expect(threadWatchesPullRequest(null)).toBe(false);
   });
 });

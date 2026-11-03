@@ -74,12 +74,13 @@ run continues on its own. **Continue with last message** moves on with the threa
 instead.
 
 A step that waits on checks, reviews or a merge watches its pull request and ends its turn; the run
-then shows it as waiting on the pull request instead of **No handoff**. The watch ends when the
-step hands off or stops being the run's current step.
+then shows **Waiting on pull request** instead of **No handoff**. The watch ends when the step
+hands off or stops being the run's current step, and when the pull request merges.
 
 - **Refine before continuing.** When a run is paused, before a step or after a failure, keep
   chatting in the previous step's thread. **Continue** then passes that thread's latest answer on.
-  A paused run is marked as needing attention in the sidebar.
+  A paused run is marked as needing attention in the sidebar, unless its step is waiting on a
+  pull request.
 - **Retry** runs a failed step again in a new thread, in the same workspace. When the run uses a
   T3 Code worktree, you can choose **Retry from step start**: it first puts the files back to how
   they were when the step began, then runs the step again. **Retry with current files** keeps

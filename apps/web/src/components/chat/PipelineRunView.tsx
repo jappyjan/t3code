@@ -3,6 +3,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   availablePipelineActions,
   pipelineFeedingStep,
+  pipelineAwaitingHandoffThreadId,
   pipelineRevisionAuthorLabel,
   pipelineRunStatusLabel,
   pipelineStepAwaitsHandoff,
@@ -404,10 +405,7 @@ function useRunStatusLabel(environmentId: EnvironmentId, run: PipelineRun | null
   const shell = useQuietThreadShell(
     feeding === null ? null : scopeThreadRef(environmentId, feeding.childThreadId),
   );
-  const awaitingChildId =
-    run !== null && pipelineStepAwaitsHandoff(run, run.currentStepIndex)
-      ? (run.steps[run.currentStepIndex]?.childThreadId ?? null)
-      : null;
+  const awaitingChildId = pipelineAwaitingHandoffThreadId(run);
   const awaitingShell = useQuietThreadShell(
     awaitingChildId === null ? null : scopeThreadRef(environmentId, awaitingChildId),
   );
