@@ -735,11 +735,12 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
       }),
     );
     if (sentRunId === null) return;
-    // A downstream step caught up on a revision, so the revised step has been handed over again.
+    // A downstream step caught up on a revision, so the step feeding it has been handed over again:
+    // the revised step for the next one, the step that caught up before it for any later one.
     if (feedback !== undefined && feedback.stepIndex < step.index) {
       yield* compactFinishedStep(
         run,
-        run.steps[feedback.stepIndex],
+        run.steps.slice(0, step.index).findLast((candidate) => candidate.status === "completed"),
         `${step.stepId}:${step.attempt}`,
       );
     }

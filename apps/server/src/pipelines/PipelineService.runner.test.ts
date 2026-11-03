@@ -2114,3 +2114,47 @@ it.effect("a revised step compacts again once the downstream step caught up", ()
     }),
   ),
 );
+
+it.effect("a later step catching up on a revision compacts the step that fed it", () =>
+  withService(
+    Effect.fn(function* (harness, service, store) {
+      yield* store.updateDefinition(
+        definition([...twoSteps(), step("ship", "Ship: {{previous.output}}")]),
+      );
+      const { run } = yield* service.start(startInput("cmd-compact-revise-chain"));
+      const first = yield* Queue.take(harness.launches);
+      harness.outputs.set(first.threadId, { reply: "approved plan" });
+      yield* harness.settle(first.threadId, "completed");
+      const second = yield* Queue.take(harness.launches);
+      harness.outputs.set(second.threadId, { reply: "built it" });
+      yield* harness.settle(second.threadId, "completed");
+      const third = yield* Queue.take(harness.launches);
+      harness.outputs.set(third.threadId, { reply: "shipped" });
+      yield* harness.settle(third.threadId, "completed");
+      yield* awaitRun(service, run.id, (current) => current.status === "completed");
+      assert.strictEqual((yield* Queue.take(harness.compactions)).threadId, first.threadId);
+      assert.strictEqual((yield* Queue.take(harness.compactions)).threadId, second.threadId);
+
+      yield* service.reviseStep({
+        runId: run.id,
+        stepIndex: 0,
+        feedback: "Cover dark mode too",
+        author: "user",
+      });
+      const feedback = yield* Queue.take(harness.sentMessages);
+      harness.outputs.set(feedback.runId, { reply: "plan with dark mode" });
+      yield* harness.settle(first.threadId, "completed", feedback.runId);
+      const buildPing = yield* Queue.take(harness.sentMessages);
+      assert.strictEqual(buildPing.input.threadId, second.threadId);
+      assert.strictEqual((yield* Queue.take(harness.compactions)).threadId, first.threadId);
+
+      harness.outputs.set(buildPing.runId, { reply: "built it again" });
+      yield* harness.settle(second.threadId, "completed", buildPing.runId);
+      const shipPing = yield* Queue.take(harness.sentMessages);
+      assert.strictEqual(shipPing.input.threadId, third.threadId);
+      const again = yield* Queue.take(harness.compactions);
+      assert.strictEqual(again.threadId, second.threadId);
+      assert.strictEqual(again.commandId, `server:pipeline-compact:${run.id}:build:2:ship:2`);
+    }),
+  ),
+);
