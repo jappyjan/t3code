@@ -3786,6 +3786,7 @@ describe("OrchestratorMcpService pipelines", () => {
     });
     const dependencies = Layer.mergeAll(
       NodeServices.layer,
+      NodeCrypto.layer,
       Layer.mock(ThreadManagementService.ThreadManagementService)({
         getThreadRecords: () => Effect.succeed(idleThreadProjection(shell)),
         getThreadShell: (threadId) =>
