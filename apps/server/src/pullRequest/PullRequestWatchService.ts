@@ -53,15 +53,6 @@ export class PullRequestWatchFromSubagentError extends Schema.TaggedError<PullRe
   }
 }
 
-export class PullRequestWatchFromPipelineStepError extends Schema.TaggedError<PullRequestWatchFromPipelineStepError>()(
-  "PullRequestWatchFromPipelineStepError",
-  {},
-) {
-  override get message(): string {
-    return "This thread is a pipeline step, so it cannot watch pull requests. Finish your step, then hand off with `handoff_pipeline_step`, including the pull request's state in its output.";
-  }
-}
-
 export class PullRequestWatchThreadNotFoundError extends Schema.TaggedError<PullRequestWatchThreadNotFoundError>()(
   "PullRequestWatchThreadNotFoundError",
   { threadId: ThreadId },
@@ -83,7 +74,6 @@ export class PullRequestWatchService extends Context.Service<
       | PullRequestWatchFailedError
       | PullRequestNotOpenError
       | PullRequestWatchFromSubagentError
-      | PullRequestWatchFromPipelineStepError
       | PullRequestWatchThreadNotFoundError
       | PullRequestTargetError
       | PullRequestUnavailableError
@@ -128,10 +118,6 @@ const make = Effect.gen(function* () {
       );
     if (watching && thread.lineage.relationshipToParent === "subagent") {
       return yield* new PullRequestWatchFromSubagentError();
-    }
-    // A step's watch would hold its finished pipeline on the Working shelf and wake it later.
-    if (watching && thread.pipeline != null && thread.pipeline.stepId !== null) {
-      return yield* new PullRequestWatchFromPipelineStepError();
     }
     const before = watchedLink(thread);
     if (watching && before?.snapshot?.state === "merged") {
