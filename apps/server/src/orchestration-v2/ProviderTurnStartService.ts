@@ -723,6 +723,7 @@ export const layer: Layer.Layer<
         appThread: projection.thread,
         run,
         checkpointScope,
+        message: providerMessage,
       });
       const sessionResult = yield* Effect.result(
         providerSessions.open({
