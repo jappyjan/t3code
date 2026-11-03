@@ -136,7 +136,7 @@ import {
   runtimeModeRank,
   taskPrompt,
 } from "./delegatedTaskModes.ts";
-import { isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
+import { assertTargetWithinLimits, isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
@@ -237,6 +237,7 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpEscalateToPipelineCoordinatorInput,
   ) => Effect.Effect<OrchestratorMcpEscalateToPipelineCoordinatorResult, OrchestratorMcpFailure>;
+  /** Only from a pipeline step's own thread. */
   readonly handoffPipelineStep: (
     scope: McpInvocationScope,
     input: OrchestratorMcpHandoffPipelineStepInput,
@@ -2537,10 +2538,30 @@ const make = Effect.gen(function* () {
         .getThreadShell(threadId)
         .pipe(Effect.mapError(threadManagementFailure));
       const pipeline = shell?.pipeline;
-      if (pipeline === undefined || pipeline.stepId === null) {
+      if (shell === null || pipeline === undefined || pipeline.stepId === null) {
         return yield* failure(
           "invalid_request",
           "This thread is not a pipeline step, so it has no run coordinator to hand a request to. Do the work the user asked for, or ask them how to proceed.",
+        );
+      }
+      const run = yield* pipelines.getRun(pipeline.runId).pipe(Effect.mapError(pipelineFailure));
+      const coordinator = yield* threadManagement
+        .getThreadShell(run.parentThreadId)
+        .pipe(Effect.mapError(threadManagementFailure));
+      // Starting a coordinator turn must not run broader than this step, as with t3_thread_send.
+      // A missing or archived coordinator falls through to the runner's own error.
+      if (
+        coordinator !== null &&
+        coordinator.deletedAt === null &&
+        coordinator.archivedAt === null
+      ) {
+        yield* assertTargetWithinLimits(shell, coordinator).pipe(
+          Effect.mapError((error) =>
+            failure(
+              error.code,
+              "The run's coordinator runs with broader permissions than this step, so this step cannot start it. Tell the user to message the coordinator themselves.",
+            ),
+          ),
         );
       }
       const { runId, coordinatorThreadId } = yield* pipelines
@@ -2560,7 +2581,7 @@ const make = Effect.gen(function* () {
         runId,
         coordinatorThreadId,
         link,
-        next: `The request is with the run's coordinator (${link}), which decides where it belongs. End your turn now without handing off, and tell the user briefly that the coordinator has it. Do not do the work yourself.`,
+        next: "The request is with the run's coordinator, which decides where it belongs. End your turn now without handing off, and tell the user briefly that the coordinator has it; name it by its `link`, verbatim. Do not do the work yourself.",
       };
     }),
     requestSecret: Effect.fn("OrchestratorMcpService.requestSecret")(function* (scope, input) {

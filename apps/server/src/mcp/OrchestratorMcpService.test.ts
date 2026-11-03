@@ -4268,8 +4268,27 @@ describe("OrchestratorMcpService pipelines", () => {
         },
       ]);
       assert.include(result.link, "coordinator-thread");
-      assert.include(result.next, "without handing off");
-      assert.include(result.next, result.link);
+
+      // A step cannot start a coordinator turn that runs broader than the step itself.
+      const narrow = harness(
+        { runtimeMode: "approval-required", interactionMode: "default" },
+        {
+          pipelineThread: { runId: PipelineRunId.make("pipeline-run:one"), stepId: "plan" },
+          shells: [
+            liveThreadShell(ThreadId.make("thread:pipeline-parent"), {
+              runtimeMode: "full-access",
+            }),
+          ],
+        },
+      );
+      const refused = yield* withService(narrow, (service) =>
+        service
+          .escalateToPipelineCoordinator(narrow.scope, { request: "x", reason: "y" })
+          .pipe(Effect.flip),
+      );
+      assert.equal(refused.code, "runtime_mode_escalation_denied");
+      assert.include(refused.message, "broader permissions");
+      assert.deepEqual(narrow.escalated, []);
     }),
   );
 

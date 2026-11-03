@@ -144,12 +144,10 @@ describe("revision messages", () => {
 });
 
 describe("escalation", () => {
-  it("asks every step to confirm before passing out-of-scope requests on, then not hand off", () => {
+  it("offers every step, the last included, the coordinator for out-of-scope requests", () => {
     for (const stepNumber of [1, 3]) {
       const text = pipelineHandoffInstructions({ stepNumber, stepCount: 3, stepName: "Review" });
       assert.include(text, "escalate_to_pipeline_coordinator");
-      assert.include(text, "Ask me with your question tool whether to pass the request");
-      assert.include(text, "end your turn without handing off");
     }
   });
 

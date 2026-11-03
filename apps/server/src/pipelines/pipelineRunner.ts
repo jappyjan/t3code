@@ -1402,11 +1402,6 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     return yield* result(input.runId);
   });
 
-  /**
-   * Posts a step agent's out-of-scope request to the run's coordinator, as the step. The turn
-   * waits behind a coordinator turn that is already running. Allowed in any run status: the
-   * coordinator can still revise or rerun a finished run.
-   */
   const escalateToCoordinator = Effect.fn("PipelineRunner.escalateToCoordinator")(
     function* (input: {
       readonly runId: PipelineRunId;
@@ -1441,9 +1436,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
       }
       if (coordinator.archivedAt !== null) return yield* unavailable("is archived");
       const text = pipelineEscalationMessage({
-        stepName:
-          run.definition.steps.find((candidate) => candidate.id === step.stepId)?.name ??
-          step.stepId,
+        stepName: run.definition.steps[step.index]?.name ?? `Step ${step.index + 1}`,
         stepLink: input.stepLink,
         request: input.request,
         reason: input.reason,

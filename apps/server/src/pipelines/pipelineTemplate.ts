@@ -102,7 +102,7 @@ export function pipelineEscalationMessage(input: {
   readonly request: string;
   readonly reason: string;
 }): string {
-  return `From step ${input.stepName} (${input.stepLink}): the user asked this step for the work below, and this step handed it to you because it is outside its role (${input.reason.trim()}). The step did not do it. Decide where it belongs.\n\n${blockquote(input.request.trim())}`;
+  return `From step ${input.stepName} (${input.stepLink}): the user asked this step for the work below, and this step handed it to you because it is outside its role (${input.reason.replace(/\s+/g, " ").trim()}). The step did not do it. Decide where it belongs.\n\n${blockquote(input.request.trim())}`;
 }
 
 const REVISION_HISTORY_FEEDBACK_CHARS = 600;

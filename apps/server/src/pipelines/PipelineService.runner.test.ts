@@ -1368,7 +1368,11 @@ it.effect(
         assert.strictEqual(sent.input.mode, "queue");
         assert.strictEqual(sent.input.createdBy, "agent");
         assert.strictEqual(sent.input.senderThreadId, first.threadId);
-        assert.match(sent.input.text, /^From step .+ \(<t3-thread:\/\/step>\): /);
+        assert.isTrue(
+          sent.input.text.startsWith(
+            `From step ${run.definition.steps[0]?.name} (<t3-thread://step>): `,
+          ),
+        );
         assert.include(sent.input.text, "> Fix the button");
         assert.include(sent.input.text, "this step does not change code");
 
@@ -1386,6 +1390,18 @@ it.effect(
         );
         assert.include(long.message, "Summarize it more briefly");
         assert.strictEqual(yield* Queue.size(harness.sentMessages), 0);
+
+        // A finished run still takes requests, and escalating never moves the run itself.
+        assert.strictEqual(yield* Queue.take(harness.waitsStarted), first.threadId);
+        yield* service.cancel({ runId: run.id });
+        yield* service.escalateToCoordinator(input);
+        assert.strictEqual(
+          (yield* Queue.take(harness.sentMessages)).input.threadId,
+          run.parentThreadId,
+        );
+        const after = yield* service.getRun(run.id);
+        assert.strictEqual(after.status, "cancelled");
+        assert.strictEqual(yield* Queue.size(harness.launches), 0);
       }),
     ),
 );
