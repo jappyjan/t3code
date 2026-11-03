@@ -7,12 +7,15 @@ import {
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Schema from "effect/Schema";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import { checkpointRefForScopeOrdinal } from "../orchestration-v2/CheckpointService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import { TaskFolderStore } from "../workspace/TaskFolders.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
 import type { StartCheckpoint } from "./PipelineStore.ts";
@@ -34,6 +37,8 @@ export const makePipelineWorkspace = Effect.fn("PipelineWorkspace.make")(functio
   const checkpoints = yield* CheckpointStore.CheckpointStore;
   const crypto = yield* Crypto.Crypto;
   const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
+  const path = yield* Path.Path;
+  const taskFolders = yield* Effect.serviceOption(TaskFolderStore);
 
   /**
    * The state a thread's first run found its workspace in: the root scope's ordinal-0 checkpoint.
@@ -47,10 +52,25 @@ export const makePipelineWorkspace = Effect.fn("PipelineWorkspace.make")(functio
       // Each run has its own root scope; later ones already hold this step's own changes.
       const firstRun = context.runs[0];
       if (firstRun === undefined) return null;
+      // The snapshot covers only the root folder; restoring it would leave the other repos' files
+      // from the failed attempt behind, so a multi-repo workspace has no restorable start.
+      if (context.checkpointScopes.some((candidate) => candidate.kind === "repository")) {
+        return null;
+      }
       const scope = context.checkpointScopes.find(
         (candidate) => candidate.kind === "root_run" && candidate.runId === firstRun.id,
       );
       if (scope === undefined || !(yield* isManagedWorktreePath(scope.cwd))) return null;
+      // Repository scopes are recorded best effort, so also ask the task folder itself.
+      if (Option.isSome(taskFolders)) {
+        const folder = yield* taskFolders.value.findContaining(path.resolve(scope.cwd));
+        if (
+          Option.isSome(folder) &&
+          folder.value.repositories.some((repository) => repository.kind === "repository")
+        ) {
+          return null;
+        }
+      }
       const recorded = context.checkpoints.find(
         (checkpoint) =>
           checkpoint.scopeId === scope.id &&

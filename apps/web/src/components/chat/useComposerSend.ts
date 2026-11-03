@@ -65,7 +65,12 @@ import { recordPromptSent } from "../GitHubStarPrompt";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { readLaunchRepositories } from "../../lib/readWorkspaceRepositories";
 import { buildThreadRouteParams } from "../../threadRoutes";
+import {
+  useWorktreeRepositorySelectionStore,
+  worktreeRepositorySelectionKey,
+} from "../../worktreeRepositorySelectionStore";
 import {
   beginBackgroundDraftSubmissionByRef,
   clearBackgroundDraftSubmissionByRef,
@@ -937,6 +942,13 @@ export function useComposerSend(input: ComposerSendInput) {
         setThreadError(threadIdForSend, pipelineBlock);
         return;
       }
+      const pipelineRepositorySelectionKey = worktreeRepositorySelectionKey(
+        draftId,
+        scopeThreadRef(environmentId, threadIdForSend),
+      );
+      const pipelineRepositories = baseBranchForWorktree
+        ? await readLaunchRepositories(activeProject, pipelineRepositorySelectionKey)
+        : undefined;
       const workspaceStrategy = draftWorkspaceStrategy(
         { branch: activeThreadBranch, worktreePath: activeThread.worktreePath },
         baseBranchForWorktree
@@ -944,6 +956,7 @@ export function useComposerSend(input: ComposerSendInput) {
               projectCwd: activeProject.workspaceRoot,
               baseBranch: baseBranchForWorktree,
               ...(startFromOrigin ? { startFromOrigin: true } : {}),
+              ...(pipelineRepositories ? { repositories: pipelineRepositories } : {}),
             }
           : undefined,
       );
@@ -952,7 +965,7 @@ export function useComposerSend(input: ComposerSendInput) {
         preparingWorktree: workspaceStrategy.type === "worktree",
         submissionIntent: "foreground",
       });
-      await sendToPipeline({
+      const started = await sendToPipeline({
         threadId: threadIdForSend,
         pipelineId: selectedPipelineId,
         projectId: activeProject.id,
@@ -960,6 +973,9 @@ export function useComposerSend(input: ComposerSendInput) {
         promptAtSend: promptForSend,
         workspaceStrategy,
       });
+      if (started && baseBranchForWorktree) {
+        useWorktreeRepositorySelectionStore.getState().clear(pipelineRepositorySelectionKey);
+      }
       return;
     }
     // Records bind attachments by the id each side knows: the local id for the optimistic
@@ -1386,7 +1402,14 @@ export function useComposerSend(input: ComposerSendInput) {
 
     let backgroundDraftOpened = false;
     let turnStartSucceeded = false;
+    const repositorySelectionKey = worktreeRepositorySelectionKey(
+      draftId,
+      scopeThreadRef(environmentId, threadIdForSend),
+    );
     if (failure === null && turnAttachmentsResult._tag === "Success") {
+      const launchRepositories = baseBranchForWorktree
+        ? await readLaunchRepositories(activeProject, repositorySelectionKey)
+        : undefined;
       const bootstrap =
         isLocalDraftThread || baseBranchForWorktree
           ? {
@@ -1416,6 +1439,7 @@ export function useComposerSend(input: ComposerSendInput) {
                         ? { branch: draftThread.linearIssue.branchName }
                         : {}),
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                      ...(launchRepositories ? { repositories: launchRepositories } : {}),
                     },
                     runSetupScript: true,
                   }
@@ -1493,6 +1517,9 @@ export function useComposerSend(input: ComposerSendInput) {
               title,
             }),
           );
+        }
+        if (baseBranchForWorktree) {
+          useWorktreeRepositorySelectionStore.getState().clear(repositorySelectionKey);
         }
         setKeepFullHistory(routeThreadKey, false);
         clearUsageLimitsFor(routeThreadKey);

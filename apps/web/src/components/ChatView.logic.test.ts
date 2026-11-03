@@ -701,6 +701,7 @@ describe("worktree setup visibility", () => {
     worktreePath: null,
     setupScript: null,
     stages: [stage("checkout", "running"), stage("agent", "pending")],
+    repositories: [],
     error: null,
     sequence: 1,
   };

@@ -1472,6 +1472,7 @@ export function makeClaudeQueryOptions(input: {
   readonly resume: boolean;
   readonly resumeSessionAt?: string;
   readonly cwd: string | null;
+  readonly workspace?: ProviderAdapter.ProviderAdapterV2RuntimeWorkspace;
   readonly attachmentsDir?: string;
   readonly settings?: ClaudeSettings;
   readonly sdkSettings?: string | ClaudeSdkSettings;
@@ -1599,7 +1600,10 @@ export function makeClaudeQueryOptions(input: {
       type: "preset" as const,
       preset: "claude_code" as const,
       append: [
-        buildRuntimeInstructions({ harness: "Claude Code" }) +
+        buildRuntimeInstructions({
+          harness: "Claude Code",
+          runtimePolicy: { cwd: input.cwd, workspace: input.workspace },
+        }) +
           (input.mcpServers === undefined
             ? ""
             : T3_CODE_ORCHESTRATION_INSTRUCTIONS +
@@ -1617,6 +1621,7 @@ export function makeClaudeQueryOptions(input: {
   };
   const additionalDirectories = [
     ...(input.cwd === null ? [] : [input.cwd]),
+    ...(input.workspace?.extraRoots ?? []),
     ...(input.attachmentsDir === undefined ? [] : [input.attachmentsDir]),
     ...claudeLaunchArgDirectories(input.settings?.launchArgs),
   ];
@@ -2569,6 +2574,8 @@ export interface ClaudeRuntimeQueryPolicy {
   readonly allowedTools?: ReadonlyArray<string>;
   readonly allowDangerouslySkipPermissions?: true;
   readonly installPermissionCallback: boolean;
+  /** A live query keeps the directories and prompt it opened with, so this is part of its key. */
+  readonly workspace?: ProviderAdapter.ProviderAdapterV2RuntimeWorkspace;
 }
 
 interface ClaudeBypassAvailability {
@@ -2608,6 +2615,9 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
         runtimePolicy.runtimeMode === "auto-accept-edits"
       : runtimePolicy.approvalPolicy !== "never");
 
+  const workspace =
+    runtimePolicy.workspace === undefined ? {} : { workspace: runtimePolicy.workspace };
+
   if (permissionMode === "plan") {
     return {
       permissionMode,
@@ -2615,6 +2625,7 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
       ...(allowedTools === undefined ? {} : { allowedTools }),
       // Claude routes Plan-mode writes to the callback even in Auto or Full access.
       installPermissionCallback: true,
+      ...workspace,
     };
   }
 
@@ -2624,6 +2635,7 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
     ...(allowedTools === undefined ? {} : { allowedTools }),
     ...(permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
     installPermissionCallback,
+    ...workspace,
   };
 }
 
@@ -2723,6 +2735,7 @@ function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
     allowedTools: policy.allowedTools,
     allowDangerouslySkipPermissions: policy.allowDangerouslySkipPermissions,
     installPermissionCallback: policy.installPermissionCallback,
+    workspace: policy.workspace,
   });
 }
 
@@ -10358,6 +10371,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             resume: shouldResume,
             ...(resumeSessionAt === undefined ? {} : { resumeSessionAt }),
             cwd: turnInput.runtimePolicy.cwd,
+            ...(queryPolicy.workspace === undefined ? {} : { workspace: queryPolicy.workspace }),
             attachmentsDir,
             settings: adapterOptions.settings,
             ...(launchArgSettings === undefined

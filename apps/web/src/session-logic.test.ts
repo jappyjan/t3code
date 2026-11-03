@@ -2,6 +2,7 @@ import {
   MessageId,
   RuntimeRequestId,
   CheckpointId,
+  CheckpointRef,
   CheckpointScopeId,
   NodeId,
   PlanId,
@@ -28,6 +29,7 @@ import {
   deriveTimelineEntriesFromVisibleTurnItemsWithState,
   deriveRevertTurnCountByUserMessageId,
   derivePhase,
+  findRevertCheckpoint,
   isLatestRunSettled,
   selectHandoffImageResources,
   selectMessageImageResources,
@@ -234,6 +236,8 @@ describe("V2 session presentation", () => {
           checkpointRef: "checkpoint-run-1" as never,
           status: "ready",
           files: [],
+          repositories: [],
+          outsideEdits: [],
           assistantMessageId,
           completedAt: "2026-06-20T00:00:03.000Z",
         },
@@ -242,6 +246,51 @@ describe("V2 session presentation", () => {
 
     expect([...targets]).toEqual([[turnStartMessageId, 0]]);
     expect(targets.has(steerMessageId)).toBe(false);
+  });
+
+  it("offers a rewind after a turn in a plain home whose repos hold the ready checkpoints", () => {
+    const runIds = [RunId.make("plain-run-1"), RunId.make("plain-run-2")];
+    const userIds = [MessageId.make("plain-user-1"), MessageId.make("plain-user-2")];
+    const timelineEntries = runIds.map((runId, index): TimelineEntry => {
+      const message = {
+        id: userIds[index]!,
+        role: "user" as const,
+        text: `Turn ${index + 1}`,
+        runId,
+        inputIntent: "turn_start" as const,
+        streaming: false,
+        createdAt: `2026-06-20T00:00:0${index}.000Z`,
+        updatedAt: `2026-06-20T00:00:0${index}.000Z`,
+      };
+      return { id: message.id, kind: "message", createdAt: message.createdAt, message };
+    });
+    const summary = (index: number, repositoryStatus: "ready" | "missing") => ({
+      runId: runIds[index]!,
+      checkpointTurnCount: index + 1,
+      checkpointRef: `checkpoint-plain-${index + 1}` as never,
+      status: "missing" as const,
+      files: [],
+      repositories: [{ status: repositoryStatus }] as never,
+      outsideEdits: [],
+      assistantMessageId: null,
+      completedAt: "2026-06-20T00:00:03.000Z",
+    });
+
+    const rewindable = deriveRevertTurnCountByUserMessageId({
+      timelineEntries,
+      threadStartCheckpointReady: false,
+      checkpoints: [summary(0, "ready"), summary(1, "ready")],
+    });
+    // The thread start has no root snapshot, so only turn 2 can be edited from.
+    expect([...rewindable]).toEqual([[userIds[1], 1]]);
+
+    expect(
+      deriveRevertTurnCountByUserMessageId({
+        timelineEntries,
+        threadStartCheckpointReady: false,
+        checkpoints: [summary(0, "missing"), summary(1, "missing")],
+      }).size,
+    ).toBe(0);
   });
 
   describe("revert targets after a rewind", () => {
@@ -272,6 +321,8 @@ describe("V2 session presentation", () => {
       checkpointRef: `checkpoint-${ordinal}` as never,
       status,
       files: [],
+      repositories: [],
+      outsideEdits: [],
       assistantMessageId: MessageId.make(`assistant-${ordinal}`),
       completedAt: "2026-06-20T00:00:09.000Z",
     });
@@ -1786,4 +1837,72 @@ it("renders automatic completion as a work entry instead of a user bubble", () =
       ],
     })[0]?.kind,
   ).toBe("message");
+});
+
+describe("findRevertCheckpoint", () => {
+  const rootScopeId = CheckpointScopeId.make("scope-root");
+  const repoScopeId = CheckpointScopeId.make("scope-repo-api");
+  const checkpoint = (input: {
+    readonly id: string;
+    readonly scopeId: CheckpointScopeId;
+    readonly ordinalWithinScope: number;
+    readonly appRunOrdinal: number | null;
+  }) => ({
+    id: CheckpointId.make(input.id),
+    threadId: ThreadId.make("thread-1"),
+    scopeId: input.scopeId,
+    runId: null,
+    nodeId: NodeId.make("node-1"),
+    parentCheckpointId: null,
+    ordinalWithinScope: input.ordinalWithinScope,
+    appRunOrdinal: input.appRunOrdinal,
+    ref: CheckpointRef.make(`refs/t3/checkpoints/${input.id}`),
+    status: "ready" as const,
+    files: [],
+    capturedAt: DateTime.makeUnsafe("2026-10-27T00:00:00.000Z"),
+  });
+
+  it("rewinds to the root scope's start when repository scopes also have a start checkpoint", () => {
+    const rootStart = checkpoint({
+      id: "root-0",
+      scopeId: rootScopeId,
+      ordinalWithinScope: 0,
+      appRunOrdinal: null,
+    });
+    // Repository baselines are written before the root's, but a later snapshot can list them last.
+    const repoStart = checkpoint({
+      id: "repo-0",
+      scopeId: repoScopeId,
+      ordinalWithinScope: 0,
+      appRunOrdinal: null,
+    });
+    const scopes = [
+      { id: rootScopeId, kind: "root_run" as const },
+      { id: repoScopeId, kind: "repository" as const },
+    ];
+
+    expect(findRevertCheckpoint([rootStart, repoStart], 0, scopes)?.id).toBe(rootStart.id);
+  });
+
+  it("rewinds a plain home folder to a turn whose root snapshot is missing", () => {
+    const rootTurn = {
+      ...checkpoint({
+        id: "root-1",
+        scopeId: rootScopeId,
+        ordinalWithinScope: 1,
+        appRunOrdinal: 1,
+      }),
+      status: "missing" as const,
+    };
+
+    expect(
+      findRevertCheckpoint([rootTurn], 1, [
+        { id: rootScopeId, kind: "root_run" },
+        { id: repoScopeId, kind: "repository" },
+      ])?.id,
+    ).toBe(rootTurn.id);
+    expect(findRevertCheckpoint([rootTurn], 1, [{ id: rootScopeId, kind: "root_run" }])).toBe(
+      undefined,
+    );
+  });
 });

@@ -46,6 +46,9 @@ vi.mock("../../state/entities", () => ({
   useEnvironmentServerConfig: () => null,
   useServerConfigs: () => new Map(),
 }));
+vi.mock("../../state/use-thread-repositories", () => ({
+  useThreadRepositories: () => ({ repositories: [], multiRepository: false, loading: false }),
+}));
 vi.mock("../../state/vcs", () => ({
   vcsEnvironment: { status: mocks.status, listRefs: mocks.refs },
 }));
@@ -121,6 +124,7 @@ function project(environment: string, id: string): EnvironmentProject {
     defaultModelSelection: null,
     defaultThreadEnvMode: "worktree",
     scripts: [],
+    trackedFolders: [],
     createdAt: "2026-10-26T00:00:00Z",
     updatedAt: "2026-10-26T00:00:00Z",
   };

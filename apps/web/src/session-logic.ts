@@ -3,6 +3,7 @@ import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/mod
 import {
   type AssetResource,
   type OrchestrationV2Checkpoint,
+  type OrchestrationV2CheckpointScope,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2PlanArtifact,
   type OrchestrationV2ProjectedTurnItem,
@@ -1063,7 +1064,12 @@ export function deriveRevertTurnCountByUserMessageId(input: {
 }): Map<ChatMessage["id"], number> {
   const readyTurnCountByRunId = new Map<RunId, number>();
   for (const checkpoint of input.checkpoints) {
-    if (checkpoint.status === "ready") {
+    // A plain home folder has no root checkpoint; its repos' ready checkpoints carry the turn.
+    if (
+      checkpoint.status === "ready" ||
+      (checkpoint.status === "missing" &&
+        checkpoint.repositories.some((repository) => repository.status === "ready"))
+    ) {
       readyTurnCountByRunId.set(checkpoint.runId, checkpoint.checkpointTurnCount);
     }
   }
@@ -1111,10 +1117,18 @@ export function deriveRevertTurnCountByUserMessageId(input: {
 export function findRevertCheckpoint(
   checkpoints: ReadonlyArray<OrchestrationV2Checkpoint>,
   turnCount: number,
+  scopes: ReadonlyArray<Pick<OrchestrationV2CheckpointScope, "id" | "kind">> = [],
 ): OrchestrationV2Checkpoint | undefined {
+  // Repository scopes share ordinals with the root scope; rewind always targets the root.
+  const repositoryScopeIds = new Set(
+    scopes.filter((scope) => scope.kind === "repository").map((scope) => scope.id),
+  );
   return checkpoints.findLast(
     (checkpoint) =>
-      checkpoint.status === "ready" &&
+      (checkpoint.status === "ready" ||
+        // A plain home has no root snapshot; the server restores its repos alone.
+        (checkpoint.status === "missing" && repositoryScopeIds.size > 0)) &&
+      !repositoryScopeIds.has(checkpoint.scopeId) &&
       (turnCount === 0
         ? checkpoint.ordinalWithinScope === 0 && checkpoint.appRunOrdinal === null
         : checkpoint.appRunOrdinal === turnCount),

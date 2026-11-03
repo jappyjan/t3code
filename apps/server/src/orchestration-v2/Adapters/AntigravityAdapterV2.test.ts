@@ -389,6 +389,63 @@ describe("AntigravityAdapterV2 client file system", () => {
   );
 });
 
+describe("AntigravityAdapterV2 multi-repo files", () => {
+  it.effect(
+    "reads the thread's other repos and reference folders and never advertises writes",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const web = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-antigravity-web-" });
+        const api = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-antigravity-api-" });
+        const design = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-antigravity-ref-" });
+        const spec = path.join(design, "spec.md");
+        yield* fileSystem.writeFileString(spec, "spec");
+        const files = makeAntigravityAcpAdapterFlavor({
+          instanceId: ProviderInstanceId.make("antigravity-multi-repo-test"),
+          crypto: yield* Crypto.Crypto,
+          fileSystem,
+          path,
+          host: yield* ProviderHost.ProviderHost,
+          selfInvocation: undefined as never,
+          makeRuntime: () => Effect.die("not spawned in this test"),
+          withProcess: (_stop, task) => task,
+          // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
+          defaultModel: Effect.succeed(undefined),
+        }).clientFileSystem;
+        if (files === undefined) return yield* Effect.die("Antigravity serves client files");
+        const policy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: web,
+          workspace: {
+            repositories: [
+              { name: "web", path: web },
+              { name: "api", path: api },
+            ],
+            referenceFolders: [{ name: "design", path: design }],
+            extraRoots: [api],
+            relativePathsDiffer: false,
+          },
+        });
+
+        yield* fileSystem.writeFileString(path.join(api, "index.ts"), "api");
+        const readApi = yield* files.readTextFile(
+          { sessionId: "mock-session-1", path: path.join(api, "index.ts") },
+          policy,
+        );
+        assert.equal(readApi.content, "api");
+        const readSpec = yield* files.readTextFile(
+          { sessionId: "mock-session-1", path: spec },
+          policy,
+        );
+        assert.equal(readSpec.content, "spec");
+        // Antigravity is read-only by design, even for the thread's own repos.
+        assert.isUndefined(files.writeTextFile);
+      }).pipe(Effect.provide(layerSession), Effect.scoped),
+  );
+});
+
 describe("AntigravityAdapterV2 workspace changes", () => {
   it.effect("confines file requests to the workspace of the turn in progress", () =>
     Effect.gen(function* () {
