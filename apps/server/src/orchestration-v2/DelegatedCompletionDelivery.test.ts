@@ -52,7 +52,7 @@ import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import { continueRestartedRun } from "./RestartContinuation.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
-import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
+import { limitRecoveryCommand } from "./usageLimitRecovery.ts";
 import * as ProviderTurnStartServiceTestkit from "./ProviderTurnStartService.testkit.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";

@@ -46,7 +46,7 @@ import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "./orchestration-v2/ProjectionStore.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import { threadHasQueuedTurnStart } from "./orchestration-v2/ThreadSettlementService.ts";
-import { MAX_OVERDUE_ARM_MS } from "./orchestration-v2/UsageLimitRecoveryWorker.ts";
+import { MAX_OVERDUE_ARM_MS } from "./orchestration-v2/usageLimitRecovery.ts";
 import { forkParked } from "./serverActivation.ts";
 import * as Settings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";

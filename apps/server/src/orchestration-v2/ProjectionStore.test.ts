@@ -58,7 +58,7 @@ import {
   THREAD_HISTORY_TURN_SNAPSHOT_ROW_LIMIT,
 } from "./threadHistoryPaging.ts";
 import { buildBoundedThreadStreamSnapshot } from "./ThreadStream.ts";
-import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
+import { limitRecoveryCommand } from "./usageLimitRecovery.ts";
 
 import { layerReaderDatabase, traceSqlRouting } from "../persistence/testkit/SqliteRouting.ts";
 
