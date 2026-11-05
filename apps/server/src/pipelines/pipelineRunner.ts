@@ -439,6 +439,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
             ...(runId === undefined ? {} : { runId }),
             timeoutMs: WAIT_TIMEOUT_MS,
             untilDelegatedWorkSettled: true,
+            throughUsageLimitResume: true,
           });
           if (!result.timedOut) return result;
         }
