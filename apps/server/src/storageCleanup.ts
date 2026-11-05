@@ -54,7 +54,7 @@ import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManag
 import { checkpointRefForScopeOrdinal } from "./orchestration-v2/CheckpointService.ts";
 import * as PendingSettleScripts from "./orchestration-v2/PendingSettleScripts.ts";
 import { threadHasQueuedTurnStart } from "./orchestration-v2/ThreadSettlementService.ts";
-import { MAX_OVERDUE_ARM_MS } from "./orchestration-v2/UsageLimitRecoveryWorker.ts";
+import { MAX_OVERDUE_ARM_MS } from "./orchestration-v2/usageLimitRecovery.ts";
 import * as WorktreeBranchSync from "./orchestration-v2/WorktreeBranchSync.ts";
 import { forkParked } from "./serverActivation.ts";
 import * as Settings from "./serverSettings.ts";
