@@ -31,7 +31,10 @@ import {
   type RunId,
   type ThreadId,
 } from "@t3tools/contracts";
-import { remapComposerContextAttachments } from "@t3tools/shared/composerContextReferences";
+import {
+  remapComposerContextAttachments,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { subagentResultForRun } from "@t3tools/provider-core/server/subagentProjection";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
@@ -174,9 +177,18 @@ const stepInputMessage = (run: PipelineRun, cursor: number) => {
     : { attachments: [] };
 };
 
+/** The input as prose: inline context markers become their labels, image markers vanish. */
+const inputProse = (input: string) =>
+  replaceComposerContextReferences(input, (reference) =>
+    reference.kind === "image" ? "" : reference.label,
+  ).trim();
+
 /** Placeholder until the generated title lands, and the fallback if generation fails. */
 const parentTitle = (run: PipelineRun) => {
-  const firstLine = run.input.split(/\r?\n/).find((line) => line.trim().length > 0) ?? "";
+  const firstLine =
+    inputProse(run.input)
+      .split(/\r?\n/)
+      .find((line) => line.trim().length > 0) ?? "";
   const excerpt = firstLine.trim().slice(0, PARENT_TITLE_INPUT_CHARS).trim();
   return excerpt.length === 0 ? run.definition.name : excerpt;
 };
@@ -398,7 +410,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
           }),
         ),
       );
-    const titleSource = run.input.trim();
+    const titleSource = inputProse(run.input);
     if (!created || titleSource.length === 0) return;
     // Title the run like a chat: the parent has no messages, so name it from the run's input.
     yield* bestEffort(
