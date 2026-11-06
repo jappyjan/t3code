@@ -45,7 +45,7 @@ function projectFailure(error: Project.ProjectServiceError) {
           ? "The workspace is already registered to a project."
           : error._tag === "ProjectTrackedFoldersInvalidError"
             ? error.message
-          : "The project is not empty; force=true is required to delete it.";
+            : "The project is not empty; force=true is required to delete it.";
   return new OrchestratorMcpFailure({ code: "invalid_request", message });
 }
 
