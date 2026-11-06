@@ -174,6 +174,11 @@ const trimNonEmpty = (value: string | null | undefined): Option.Option<string> =
 const nonEmptyPath = (value: string | null | undefined): Option.Option<string> =>
   Option.fromNullishOr(value).pipe(Option.filter((entry) => entry.length > 0));
 
+// launchd hands every GUI app its own default agent socket, which would mask an agent the
+// login shell selects (1Password, Bitwarden, Secretive).
+const isLaunchdSshAgentSocket = (value: string) =>
+  /\/com\.apple\.launchd\.[^/]+\/Listeners$/u.test(value);
+
 const readEnvPath = (env: NodeJS.ProcessEnv): Option.Option<string> =>
   nonEmptyPath(env.PATH ?? env.Path ?? env.path);
 
@@ -535,7 +540,11 @@ const installPosixEnvironment = Effect.fn("desktop.shellEnvironment.installPosix
     if (Option.isSome(mergedPath)) {
       config.env.PATH = mergedPath.value;
     }
-    if (!config.env.SSH_AUTH_SOCK && shellEnvironment.SSH_AUTH_SOCK) {
+    if (
+      shellEnvironment.SSH_AUTH_SOCK &&
+      (!config.env.SSH_AUTH_SOCK ||
+        (config.platform === "darwin" && isLaunchdSshAgentSocket(config.env.SSH_AUTH_SOCK)))
+    ) {
       config.env.SSH_AUTH_SOCK = shellEnvironment.SSH_AUTH_SOCK;
     }
 
