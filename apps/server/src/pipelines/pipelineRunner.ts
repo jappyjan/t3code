@@ -206,7 +206,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
         (reference) => reference.kind === "input",
       );
     if (!usesInput) return { attachments: [] };
-    const context = run.contextChips.length === 0 ? undefined : yield* store.getRunContext(run.id);
+    const context = yield* store.getRunContext(run.id);
     return { attachments: run.attachments, ...(context === undefined ? {} : { context }) };
   });
 
@@ -1353,7 +1353,14 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
         }
         // A start whose parent could not be created is cancelled before any step saw its files.
         yield* launchRun(yield* readRun(runId)).pipe(
-          Effect.tapError(() => releaseClaims(claimed.claimedPaths)),
+          Effect.tapError(() =>
+            store.getRun(runId).pipe(
+              Effect.flatMap((current) =>
+                current?.status === "cancelled" ? releaseClaims(claimed.claimedPaths) : Effect.void,
+              ),
+              Effect.ignore,
+            ),
+          ),
         );
         return yield* result(runId);
       }),
@@ -2074,8 +2081,19 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     return yield* result(input.runId);
   });
 
-  const cancelForDeletedParent = (runId: PipelineRunId) =>
-    cancelRun(runId, "The pipeline's parent thread was deleted.");
+  const cancelForDeletedParent = Effect.fn("PipelineRunner.cancelForDeletedParent")(function* (
+    run: PipelineRun,
+  ) {
+    yield* cancelRun(run.id, "The pipeline's parent thread was deleted.");
+    // The run's files live in its parent's folder and go with it, like a thread's own files.
+    // Ids from elsewhere passed through the claim unchanged; another thread owns those.
+    const ownSegment = toSafeThreadAttachmentSegment(run.parentThreadId);
+    yield* resourceCleanup.cleanupAttachments(
+      run.attachments
+        .map((attachment) => attachment.id)
+        .filter((id) => parseThreadSegmentFromAttachmentId(id) === ownSegment),
+    );
+  });
 
   const onThreadDeleted = Effect.fn("PipelineRunner.onThreadDeleted")(function* (
     threadId: ThreadId,
@@ -2084,16 +2102,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
       "Could not cancel pipeline run for deleted parent",
       Effect.gen(function* () {
         const run = yield* store.getRunByParentThreadId(threadId);
-        if (run === null) return;
-        yield* cancelForDeletedParent(run.id);
-        // The run's files live in its parent's folder and go with it, like a thread's own files.
-        // Ids from elsewhere passed through the claim unchanged; another thread owns those.
-        const ownSegment = toSafeThreadAttachmentSegment(threadId);
-        yield* resourceCleanup.cleanupAttachments(
-          run.attachments
-            .map((attachment) => attachment.id)
-            .filter((id) => parseThreadSegmentFromAttachmentId(id) === ownSegment),
-        );
+        if (run !== null) yield* cancelForDeletedParent(run);
       }),
     );
   });
@@ -2106,12 +2115,12 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
         if (run === null) return;
         const shell = yield* threads.getThreadShell(run.parentThreadId);
         if (shell !== null && shell.deletedAt !== null) {
-          yield* cancelForDeletedParent(runId);
+          yield* cancelForDeletedParent(run);
           return;
         }
         if (shell === null) {
           if (run.steps.some((step) => step.attempt > 0)) {
-            yield* cancelForDeletedParent(runId);
+            yield* cancelForDeletedParent(run);
             return;
           }
           // Crashed between inserting the run and creating its parent.
