@@ -2495,6 +2495,25 @@ const storedAttachmentFiles = () =>
     Effect.orDie,
   );
 
+it.effect("start titles the parent from the prose, not from inline context markers", () =>
+  withService(
+    Effect.fn(function* (harness, service) {
+      yield* service.start(
+        startWithContent("cmd-title-1", {
+          input:
+            "[doc.pdf](t3-context://v1/file/file_1) Report this\n![shot](t3-context://v1/image/ctx-1)",
+        }),
+      );
+      const [parent] = commandOfType(harness.commands, "thread.create");
+      assert.strictEqual(parent?.title, "doc.pdf Report this");
+      const titleRequests = commandOfType(harness.commands, "thread.metadata.update").filter(
+        (command) => command.regenerateTitle === true,
+      );
+      assert.strictEqual(titleRequests[0]?.titleSource, "doc.pdf Report this");
+    }),
+  ),
+);
+
 it.effect(
   "start claims attachments into the parent thread and only {{input}} steps receive them",
   () =>
