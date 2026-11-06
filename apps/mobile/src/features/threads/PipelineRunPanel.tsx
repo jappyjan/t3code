@@ -13,6 +13,7 @@ import {
   pipelineAwaitingHandoffThreadId,
   pipelineRevisionAuthorLabel,
   pipelineRunNeedsAttention,
+  pipelineRunNeedsYou,
   pipelineRunStateLabel,
   pipelineStepPosition,
   pipelineStepStatusLabel,
@@ -35,8 +36,8 @@ import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { formatMessageTime } from "../../lib/time";
-import { useQuietThreadShell } from "../../state/entities";
-import { threadHasUnseenCompletion } from "./threadListV2";
+import { useQuietThreadShell, useThreadShells } from "../../state/entities";
+import { resolveThreadListV2Status, threadHasUnseenCompletion } from "./threadListV2";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -160,6 +161,7 @@ export function PipelineRunPanel(props: {
   const [expanded, setExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const openThread = useOpenLinkedThread();
+  const shells = useThreadShells();
 
   const canContinue = useAtomValue(
     serverEnvironment.continuePipelineRun.permissionAtom(environmentId),
@@ -259,6 +261,19 @@ export function PipelineRunPanel(props: {
   const stepInput = { runId: run.id, stepIndex };
   const currentStepName = stepName(run, Math.min(stepIndex, run.steps.length - 1));
   const actionsVisible = actions.continue || actions.retry || actions.skip || actions.cancel;
+  const needsYou = pipelineRunNeedsYou(
+    run,
+    shells
+      .filter(
+        (shell) =>
+          shell.environmentId === environmentId &&
+          shell.pipeline?.runId === run.id &&
+          shell.pipeline.stepId !== null,
+      )
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+    resolveThreadListV2Status,
+  );
+  const needsYouThreadId = needsYou?.threadId ?? null;
 
   return wrap(
     <>
@@ -291,6 +306,24 @@ export function PipelineRunPanel(props: {
           {pipelineRunStateLabel(run, waitingOnPullRequest)}
         </Text>
       </Pressable>
+      {needsYou !== null ? (
+        <View className="flex-row flex-wrap items-center gap-2 px-4">
+          <Text textRole="footnote" className="min-w-0 flex-1 font-t3-medium text-foreground">
+            {needsYou.text}
+          </Text>
+          {needsYouThreadId !== null ? (
+            <Button
+              label={`Open ${needsYou.stepName}`}
+              onPress={() =>
+                openThread({
+                  environmentId: String(environmentId),
+                  threadId: String(needsYouThreadId),
+                })
+              }
+            />
+          ) : null}
+        </View>
+      ) : null}
       {run.error ? (
         <Text textRole="footnote" className="px-4 text-danger-text">
           {run.error}

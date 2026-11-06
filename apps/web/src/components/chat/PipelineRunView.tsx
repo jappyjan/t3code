@@ -5,6 +5,7 @@ import {
   pipelineFeedingStep,
   pipelineAwaitingHandoffThreadId,
   pipelineRevisionAuthorLabel,
+  pipelineRunNeedsYou,
   pipelineRunStatusLabel,
   pipelineStepAwaitsHandoff,
   threadWatchesPullRequest,
@@ -44,7 +45,8 @@ import { requestConfirmDialog } from "../../confirmDialog";
 import { useClientSettings } from "../../hooks/useSettings";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { useEnvironmentQuery } from "../../state/query";
-import { useQuietThreadShell } from "../../state/entities";
+import { useQuietThreadShell, useQuietThreadShells } from "../../state/entities";
+import { resolveSidebarThreadStatus } from "../Sidebar.logic";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -150,6 +152,7 @@ function PipelineRunBody(props: {
   readonly expanded: boolean;
 }) {
   const { environmentId } = props;
+  const openThread = useOpenThread(environmentId);
   // The command's own result is the freshest run until the subscription catches up, so the
   // buttons never render from the pre-command state once the lock releases.
   const [commandRun, setCommandRun] = useState<PipelineRun | null>(null);
@@ -251,8 +254,37 @@ function PipelineRunBody(props: {
   };
 
   const actionsVisible = actions.continue || actions.retry || actions.skip || actions.cancel;
+  const shells = useQuietThreadShells();
+  const needsYou = pipelineRunNeedsYou(
+    run,
+    shells
+      .filter(
+        (shell) =>
+          shell.environmentId === environmentId &&
+          shell.pipeline?.runId === run.id &&
+          shell.pipeline.stepId !== null,
+      )
+      .toSorted((left, right) => left.createdAt.localeCompare(right.createdAt)),
+    resolveSidebarThreadStatus,
+  );
+  const needsYouThreadId = needsYou?.threadId ?? null;
   return (
     <>
+      {needsYou !== null ? (
+        <div
+          className="chat-content-lane flex flex-wrap items-center gap-2 pt-1 pb-1"
+          data-testid="pipeline-needs-you"
+        >
+          <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+            {needsYou.text}
+          </span>
+          {needsYouThreadId !== null ? (
+            <Button size="sm" variant="outline" onClick={() => openThread(needsYouThreadId)}>
+              Open {needsYou.stepName}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {run.error || actionsVisible ? (
         <div className="chat-content-lane flex flex-col gap-2 pt-1 pb-2">
           {run.error ? (
@@ -449,6 +481,7 @@ function PipelineStepRow(props: {
     liveState,
     pipelineStepAwaitsHandoff(run, step.index),
     threadWatchesPullRequest(shell),
+    isCurrent && run.status === "paused",
   );
   const childThreadId = step.childThreadId;
 

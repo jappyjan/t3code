@@ -714,7 +714,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   );
 });
 
-export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
   /** A pipeline step under its parent: indented, shows its own status, offers no settle, snooze or pin. */
@@ -724,6 +724,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly stepStatus?: PipelineStepStatus | null;
   /** On a pipeline step: its label under the parent; the thread title when unset. */
   readonly stepLabel?: string;
+  /** On a step of a live run that will redo it: no unseen "Done". */
+  readonly suppressUnseenDone?: boolean;
+  /** On an earlier attempt of a step: its number; the row is dimmed. */
+  readonly earlierAttempt?: number;
+  /** On a pipeline's parent: the step its attention badge opens; null opens the parent. */
+  readonly attentionTarget?: EnvironmentThreadShell | null;
+  readonly attentionLabel?: string;
   /** On a pipeline's parent: its progress bar. */
   readonly pipelineProgress?: ReadonlyArray<ThreadListV2PipelineSegment>;
   /** On a pipeline's parent with step rows: whether they all show. */
@@ -851,7 +858,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     resolveThreadListV2Status(thread),
     props.stepStatus ?? null,
   );
-  const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
+  const isUnread =
+    status === "ready" && props.suppressUnseenDone !== true && threadHasUnseenCompletion(thread);
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
   const showsWoke = status === "ready" && props.wokeAt !== null;
   const statusLabel =
@@ -872,6 +880,21 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   }, [props.wokeAt, thread.environmentId, thread.id, visitThread]);
   const pipelineProgress = props.pipelineProgress;
   const pipelineExpanded = props.pipelineExpanded;
+  // A run's attention badge opens the step that needs the user, or the parent when it has no thread yet.
+  const attentionBadge =
+    !nested &&
+    props.attentionTarget !== undefined &&
+    props.stepStatus != null &&
+    status === props.stepStatus;
+  const attentionTargetThread = props.attentionTarget ?? thread;
+  const attentionBadgeLabel =
+    props.attentionLabel === undefined
+      ? `${thread.title} needs your attention`
+      : `${props.attentionLabel} needs your ${status === "approval" ? "approval" : status === "request" ? "response" : "input"}`;
+  const openAttention = useCallback(
+    () => onSelectThread(attentionTargetThread),
+    [onSelectThread, attentionTargetThread],
+  );
   // VoiceOver cannot focus buttons inside the accessible row.
   const pipelineAccessibilityActions = useMemo(
     () =>
@@ -887,11 +910,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   );
   const rowAccessibilityActions = useMemo(
     () => [
+      ...(attentionBadge && props.attentionLabel !== undefined
+        ? [{ name: "openAttention", label: `Open ${props.attentionLabel}` }]
+        : []),
       ...(prBadgeLabel ? [{ name: "openPullRequests", label: prBadgeLabel }] : []),
       ...(showsWoke ? [{ name: "dismissWoke", label: "Dismiss Woke notification" }] : []),
       ...pipelineAccessibilityActions,
     ],
-    [prBadgeLabel, showsWoke, pipelineAccessibilityActions],
+    [attentionBadge, props.attentionLabel, prBadgeLabel, showsWoke, pipelineAccessibilityActions],
   );
   const rowAccessibilityLabel = [
     thread.title,
@@ -1371,7 +1397,17 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               </Text>
             </Pressable>
           ) : statusLabel ? (
-            <View className="flex-row items-center gap-1">
+            <Pressable
+              // Padding cancelled by negative margin grows the touch target to about 44pt without moving the badge.
+              className={cn("flex-row items-center gap-1", attentionBadge && "-m-3 p-3")}
+              disabled={!attentionBadge}
+              accessibilityRole={attentionBadge ? "button" : undefined}
+              accessibilityLabel={attentionBadge ? attentionBadgeLabel : undefined}
+              onPress={attentionBadge ? openAttention : undefined}
+              // Handle long-press so opening the iOS row menu cannot also open the step on release.
+              onLongPress={attentionBadge ? () => undefined : undefined}
+              style={({ pressed }) => ({ opacity: pressed && attentionBadge ? 0.6 : 1 })}
+            >
               <SymbolView
                 name={statusLabel.icon}
                 size={13}
@@ -1397,7 +1433,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                   <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
                 ) : null}
               </Text>
-            </View>
+            </Pressable>
           ) : (
             <Text
               className={cn(
@@ -1556,6 +1592,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         accessibilityState={rowAccessibilityState}
         accessibilityActions={rowAccessibilityActions}
         onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "openAttention") openAttention();
           if (event.nativeEvent.actionName === "openPullRequests") handleOpenPullRequests();
           if (event.nativeEvent.actionName === "dismissWoke") handleAcknowledgeWoke();
           if (event.nativeEvent.actionName === "togglePipelineSteps") togglePipelineSteps();
@@ -1604,7 +1641,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             sidebarPane && "px-3",
           )}
           // Steps start where the parent's title does, with a rail under its icon.
-          style={nested ? { paddingLeft: rowInset + projectIconSize + 8 } : undefined}
+          style={
+            nested
+              ? {
+                  paddingLeft: rowInset + projectIconSize + 8,
+                  ...(props.earlierAttempt === undefined ? {} : { opacity: 0.55 }),
+                }
+              : undefined
+          }
         >
           {nested ? (
             <PipelineStepConnector
@@ -1635,7 +1679,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               )}
               numberOfLines={1}
             >
-              {nested ? (props.stepLabel ?? thread.title) : thread.title}
+              {nested
+                ? props.earlierAttempt === undefined
+                  ? (props.stepLabel ?? thread.title)
+                  : `${props.stepLabel ?? thread.title} · attempt ${props.earlierAttempt}`
+                : thread.title}
             </Text>
             {props.searchMatch ? (
               <ThreadSearchMatchExcerpt
@@ -1756,4 +1804,82 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       </ThreadSwipeable>
     </View>
   );
+});
+
+/** The muted row ending a run's steps: how many earlier attempts there are, and a way to show them. */
+function ThreadListV2EarlierAttemptsRow(props: {
+  readonly fold: { readonly foldKey: string; readonly count: number; readonly expanded: boolean };
+  readonly pane?: "screen" | "sidebar";
+  readonly isLastStep?: boolean;
+  readonly onTogglePipelineSteps?: (threadKey: string) => void;
+}) {
+  const theme = useUniwindTheme();
+  const sidebarPane = props.pane === "sidebar";
+  const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, false);
+  const titleTypography = useScaledTextRole("body");
+  const { fontScale } = useWindowDimensions();
+  const projectIconSize = titleTypography.fontSize * 1.25 * fontScale;
+  const rowInset = sidebarPane ? 12 : 20;
+  const { foldKey, count, expanded } = props.fold;
+  return (
+    <RowPressable
+      interactionClassName={rowAppearance.interactionClassName}
+      interactionOpacity={rowAppearance.interactionOpacity}
+      accessibilityLabel={`${count} earlier ${count === 1 ? "attempt" : "attempts"}`}
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+      className={rowAppearance.className}
+      onPress={() => props.onTogglePipelineSteps?.(foldKey)}
+      style={rowAppearance.style}
+    >
+      <View
+        className={cn(
+          THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME,
+          "min-h-[36px] flex-row items-center gap-1.5 py-1.5",
+          sidebarPane && "px-3",
+        )}
+        style={{ paddingLeft: rowInset + projectIconSize + 8 }}
+      >
+        <PipelineStepConnector
+          left={rowInset + projectIconSize / 2}
+          last={props.isLastStep === true}
+          className={sidebarPane ? "bg-drawer-border" : "bg-border"}
+        />
+        <SymbolView
+          name="chevron.right"
+          size={10}
+          tintColorClassName={rowAppearance.tertiaryIconTintClassName}
+          type="monochrome"
+          weight="semibold"
+          style={{ transform: [{ rotate: expanded ? "90deg" : "0deg" }] }}
+        />
+        <Text className={cn("text-sm", rowAppearance.tertiaryForegroundClassName)}>
+          {count} earlier {count === 1 ? "attempt" : "attempts"}
+        </Text>
+      </View>
+    </RowPressable>
+  );
+}
+
+export const ThreadListV2Row = memo(function ThreadListV2Row(
+  props: ComponentProps<typeof ThreadListV2ThreadRow> & {
+    readonly earlierFold?: {
+      readonly foldKey: string;
+      readonly count: number;
+      readonly expanded: boolean;
+    };
+  },
+) {
+  const { earlierFold, ...rowProps } = props;
+  if (earlierFold !== undefined) {
+    return (
+      <ThreadListV2EarlierAttemptsRow
+        fold={earlierFold}
+        pane={props.pane}
+        isLastStep={props.isLastStep}
+        onTogglePipelineSteps={props.onTogglePipelineSteps}
+      />
+    );
+  }
+  return <ThreadListV2ThreadRow {...rowProps} />;
 });

@@ -292,7 +292,7 @@ function finishedRunStepStatus(threadStatus: string): PipelineProgressStatus {
  * A step thread waiting on the user shows as `attention` either way.
  */
 export function pipelineProgressSegments<T extends PipelineNestable & { readonly title: string }>(
-  run: PipelineRunSummary | undefined,
+  run: PausedRunInput | undefined,
   steps: readonly T[],
   threadStatus: (step: T) => string,
 ): readonly PipelineProgressSegment<T>[] {
@@ -344,4 +344,90 @@ export function countFinishedPipelineSegments(
   return segments.filter(
     (segment) => segment.status === "completed" || segment.status === "skipped",
   ).length;
+}
+
+export interface PipelineAttentionTargets<T> {
+  /** Step threads that need the user, by `scopedThreadKey`, with the status their row shows. */
+  readonly attentionThreads: ReadonlyMap<string, PipelineStepStatus>;
+  /** The thread the run's attention badge opens; null opens the parent. */
+  readonly target: T | null;
+}
+
+/**
+ * Which current-attempt step threads need the user: a paused run's current step while it is
+ * not busy (including a failed or stopped one), or a step thread asking for approval or input.
+ * A row shows its own status when it is one of those, else `input` like the parent.
+ */
+export function pipelineAttentionTargets<T extends PipelineNestable & { readonly title: string }>(
+  run: PausedRunInput | undefined,
+  steps: readonly T[],
+  threadStatus: (step: T) => string,
+): PipelineAttentionTargets<T> {
+  const attentionThreads = new Map<string, PipelineStepStatus>();
+  let current: T | null = null;
+  let first: T | null = null;
+  pipelineProgressSegments(run, steps, threadStatus).forEach((segment, index) => {
+    const thread = segment.thread;
+    if (thread === null) return;
+    const own = threadStatus(thread);
+    const asksUser = ATTENTION_THREAD_STATUSES.has(own);
+    const pausedHere =
+      run?.status === "paused" && index === run.currentStepIndex && !BUSY_THREAD_STATUSES.has(own);
+    if (!asksUser && !pausedHere && segment.status !== "attention") return;
+    attentionThreads.set(shellKey(thread), asksUser ? (own as PipelineStepStatus) : "input");
+    first ??= thread;
+    if (run !== undefined && index === run.currentStepIndex) current = thread;
+  });
+  return { attentionThreads, target: current ?? first };
+}
+
+export interface PipelineStepAttempts<T> {
+  /** One thread per step, its current attempt, in run order; threads outside the run follow. */
+  readonly current: readonly T[];
+  /** The other attempts, grouped by step in run order, oldest first. `attempt` counts from 1. */
+  readonly earlier: ReadonlyArray<{ readonly thread: T; readonly attempt: number }>;
+  /** Threads of steps a live run will redo (`pending`); their finished state is not news. */
+  readonly redoKeys: ReadonlySet<string>;
+}
+
+/** Splits a run's step threads (oldest first) into current and earlier attempts, as the progress bar reads them. */
+export function pipelineStepAttempts<T extends PipelineNestable>(
+  run: Pick<PipelineRunSummary, "steps"> | undefined,
+  steps: readonly T[],
+): PipelineStepAttempts<T> {
+  const byStepId = new Map<string, T[]>();
+  const loose: T[] = [];
+  for (const step of steps) {
+    const stepId = step.pipeline?.stepId;
+    if (stepId == null) {
+      loose.push(step);
+      continue;
+    }
+    const list = byStepId.get(stepId);
+    if (list === undefined) byStepId.set(stepId, [step]);
+    else list.push(step);
+  }
+  const order = run === undefined ? [...byStepId.keys()] : run.steps.map((entry) => entry.stepId);
+  const current: T[] = [];
+  const earlier: Array<{ thread: T; attempt: number }> = [];
+  const redoKeys = new Set<string>();
+  for (const stepId of order) {
+    const list = byStepId.get(stepId);
+    if (list === undefined) continue;
+    const entry = run?.steps.find((candidate) => candidate.stepId === stepId);
+    const latest =
+      list.find((thread) => thread.id === entry?.childThreadId) ?? list[list.length - 1]!;
+    list.forEach((thread, index) => {
+      if (thread === latest) current.push(thread);
+      else earlier.push({ thread, attempt: index + 1 });
+      if (entry?.status === "pending") redoKeys.add(shellKey(thread));
+    });
+  }
+  for (const [stepId, list] of byStepId) if (!order.includes(stepId)) loose.push(...list);
+  loose.sort(
+    (left, right) =>
+      timestampMs(left.createdAt) - timestampMs(right.createdAt) ||
+      (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+  );
+  return { current: [...current, ...loose], earlier, redoKeys };
 }

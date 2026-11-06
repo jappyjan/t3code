@@ -1,5 +1,6 @@
-import type { PipelineRun, PipelineRunStep } from "@t3tools/contracts";
+import type { PipelineRun, PipelineRunStep, ThreadId } from "@t3tools/contracts";
 import { pullRequestWatchHoldsThread } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { pipelineAttentionTargets, type PipelineNestable } from "./state/pipelineNesting.ts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput } from "@t3tools/shared/toolOutput";
 
@@ -364,4 +365,66 @@ export function pipelineRunNeedsAttention(
 ): boolean {
   if (run.status !== "paused") return false;
   return !(run.pauseReason === "awaiting_handoff" && waitingOnPullRequest);
+}
+
+export interface PipelineNeedsYou {
+  /** "<Step> needs you", or a more specific variant of it. */
+  readonly text: string;
+  /** The step's thread, or null when the run waits before a step that has no thread yet. */
+  readonly threadId: ThreadId | null;
+  readonly stepName: string;
+}
+
+/**
+ * What the run's overview leads with when it needs the user: the step `pipelineAttentionTargets`
+ * picks, as the sidebar's badge does. `steps` are the run's step thread shells.
+ */
+export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly title: string }>(
+  run: PipelineRun,
+  steps: readonly T[],
+  threadStatus: (step: T) => string,
+): PipelineNeedsYou | null {
+  const { target } = pipelineAttentionTargets(
+    {
+      status: run.status,
+      currentStepIndex: run.currentStepIndex,
+      steps: run.steps.map((step) => ({
+        stepId: step.stepId,
+        name: stepName(run, step.index),
+        status: step.status,
+        childThreadId: step.childThreadId,
+      })),
+    },
+    steps,
+    threadStatus,
+  );
+  if (target === null) {
+    if (run.status === "paused" && run.pauseReason === "awaiting_continue") {
+      const name = stepName(run, run.currentStepIndex);
+      return { text: `Paused before ${name}`, threadId: null, stepName: name };
+    }
+    return null;
+  }
+  const entry =
+    run.steps.find((step) => step.childThreadId === target.id) ??
+    run.steps.find((step) => step.stepId === target.pipeline?.stepId);
+  const name = stepName(run, entry?.index ?? run.currentStepIndex);
+  const own = threadStatus(target);
+  const reason =
+    own === "approval"
+      ? "is asking for approval"
+      : own === "input"
+        ? "is asking for input"
+        : run.pauseReason === "awaiting_handoff"
+          ? "ended without handing off"
+          : run.pauseReason === "step_failed"
+            ? "failed"
+            : run.pauseReason === "step_stopped"
+              ? "stopped"
+              : "needs you";
+  return {
+    text: `${name} ${reason}`,
+    threadId: target.id,
+    stepName: name,
+  };
 }
