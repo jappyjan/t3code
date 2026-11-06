@@ -1288,8 +1288,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       </span>
     ) : null;
 
+  const rowTitle =
+    variant === "step" && props.earlierAttempt !== undefined && !/attempt \d/.test(thread.title)
+      ? `${thread.title} · attempt ${props.earlierAttempt}`
+      : thread.title;
   const accessibility = resolveSidebarRowAccessibility({
-    title: thread.title,
+    title: rowTitle,
     statusLabel: topStatus?.label ?? null,
     projectDisplayName: props.projectDisplayName,
     isActive: props.isActive,
@@ -1328,17 +1332,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     : "text-secondary-label/70",
             ),
         isRegeneratingTitle && "opacity-55",
+        variant === "step" && props.earlierAttempt !== undefined && "flex",
       )}
       dir={textDirection(thread.title)}
     >
-      {variant === "step"
-        ? props.earlierAttempt === undefined
-          ? (props.stepLabel ?? thread.title)
-          : `${props.stepLabel ?? thread.title} · attempt ${props.earlierAttempt}`
-        : thread.title}
+      {variant === "step" ? (
+        props.earlierAttempt === undefined ? (
+          (props.stepLabel ?? thread.title)
+        ) : (
+          <>
+            <span className="min-w-0 truncate">{props.stepLabel ?? thread.title}</span>
+            <span className="shrink-0 whitespace-pre"> · attempt {props.earlierAttempt}</span>
+          </>
+        )
+      ) : (
+        thread.title
+      )}
     </span>
   );
-  const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
+  const accessibleTitle = isRenaming ? null : <span className="sr-only">{rowTitle}</span>;
 
   const prBadgeShape = supportsMultiplePullRequests
     ? resolveThreadPullRequestBadge(thread.pullRequests)
