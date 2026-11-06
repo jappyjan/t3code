@@ -79,6 +79,12 @@ export const ensurePipelineSchema = Effect.gen(function* () {
   if (!runColumns.some((column) => column.name === "revisions_json")) {
     yield* sql`ALTER TABLE pipeline_runs ADD COLUMN revisions_json TEXT NOT NULL DEFAULT '[]'`;
   }
+  if (!runColumns.some((column) => column.name === "input_attachments_json")) {
+    yield* sql`ALTER TABLE pipeline_runs ADD COLUMN input_attachments_json TEXT NOT NULL DEFAULT '[]'`;
+  }
+  if (!runColumns.some((column) => column.name === "input_context_json")) {
+    yield* sql`ALTER TABLE pipeline_runs ADD COLUMN input_context_json TEXT`;
+  }
 
   yield* sql`
     CREATE TABLE IF NOT EXISTS pipeline_starter_seeds (

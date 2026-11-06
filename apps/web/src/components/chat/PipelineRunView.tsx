@@ -54,6 +54,8 @@ import { buildThreadRouteParams } from "../../threadRoutes";
 import { cn } from "../../lib/utils";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 import ChatMarkdown from "../ChatMarkdown";
+import { stripInlineContextReferences } from "../../lib/composerContextReferences";
+import { PipelineStartAttachments } from "./PipelineStartAttachments";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -158,6 +160,8 @@ function PipelineRunBody(props: {
   // buttons never render from the pre-command state once the lock releases.
   const [commandRun, setCommandRun] = useState<PipelineRun | null>(null);
   const run = newerPipelineRun(props.liveRun, commandRun);
+  // Inline markers stand for context chips, which the starting prompt shows apart from its text.
+  const startingText = stripInlineContextReferences(run.input).trim();
   const actions = availablePipelineActions(run);
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
@@ -367,16 +371,23 @@ function PipelineRunBody(props: {
       {props.expanded ? (
         <div className="scrollbar-gutter-both max-h-[45vh] overflow-y-auto">
           <div className="chat-content-lane flex flex-col gap-6 py-3">
-            <section aria-label="Starting prompt" className="flex flex-col items-end gap-1">
-              <div className="min-w-0 max-w-[80%] rounded-2xl bg-message px-4 py-3 text-message-foreground">
-                <ChatMarkdown
-                  text={run.input}
-                  cwd={props.cwd}
-                  environmentId={environmentId}
-                  isStreaming={false}
-                  headingLevelOffset={3}
-                />
-              </div>
+            <section aria-label="Starting prompt" className="flex flex-col items-end gap-1.5">
+              <PipelineStartAttachments
+                environmentId={environmentId}
+                attachments={run.attachments}
+                context={run.context}
+              />
+              {startingText.length > 0 ? (
+                <div className="min-w-0 max-w-[80%] rounded-2xl bg-message px-4 py-3 text-message-foreground">
+                  <ChatMarkdown
+                    text={startingText}
+                    cwd={props.cwd}
+                    environmentId={environmentId}
+                    isStreaming={false}
+                    headingLevelOffset={3}
+                  />
+                </div>
+              ) : null}
             </section>
 
             <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Pipeline steps">

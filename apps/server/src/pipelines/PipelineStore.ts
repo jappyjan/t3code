@@ -1,4 +1,6 @@
 import {
+  ChatAttachment,
+  OrchestrationMessageContext,
   CheckpointRef,
   OrchestrationV2ThreadLaunchWorkspaceStrategy,
   PIPELINE_OUTPUT_PREVIEW_CHARS,
@@ -182,6 +184,8 @@ interface PipelineRunRow {
   readonly updated_at: string;
   readonly completed_at: string | null;
   readonly revisions_json: string;
+  readonly input_attachments_json: string;
+  readonly input_context_json: string | null;
 }
 
 interface PipelineRunStepRow {
@@ -205,6 +209,10 @@ const encodeStepsJson = Schema.encodeSync(Schema.fromJsonString(PipelineDefiniti
 const encodeRevisionsJson = Schema.encodeSync(
   Schema.fromJsonString(Schema.Array(PipelineRevision)),
 );
+const encodeAttachmentsJson = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Array(ChatAttachment)),
+);
+const encodeContextJson = Schema.encodeSync(Schema.fromJsonString(OrchestrationMessageContext));
 const encodeSnapshotJson = Schema.encodeSync(Schema.fromJsonString(PipelineSnapshot));
 const workspaceStrategyJson = Schema.fromJsonString(OrchestrationV2ThreadLaunchWorkspaceStrategy);
 const encodeWorkspaceStrategyJson = Schema.encodeSync(workspaceStrategyJson);
@@ -254,6 +262,9 @@ const decodeRunRow = Effect.fnUntraced(function* (
   const definition = yield* parseJson(row.definition_json);
   const workspaceStrategy = yield* parseJson(row.workspace_strategy_json);
   const revisions = yield* parseJson(row.revisions_json);
+  const attachments = yield* parseJson(row.input_attachments_json);
+  const context =
+    row.input_context_json === null ? undefined : yield* parseJson(row.input_context_json);
   return yield* decodeRun({
     id: row.run_id,
     pipelineId: row.pipeline_id,
@@ -261,6 +272,8 @@ const decodeRunRow = Effect.fnUntraced(function* (
     projectId: row.project_id,
     parentThreadId: row.parent_thread_id,
     input: row.input,
+    attachments,
+    ...(context === undefined ? {} : { context }),
     workspaceStrategy,
     status: row.status,
     pauseReason: row.pause_reason,
@@ -455,6 +468,9 @@ export const layer: Layer.Layer<PipelineStore, never, SqlClient.SqlClient> = Lay
                 project_id: run.projectId,
                 parent_thread_id: run.parentThreadId,
                 input: run.input,
+                input_attachments_json: encodeAttachmentsJson(run.attachments),
+                input_context_json:
+                  run.context === undefined ? null : encodeContextJson(run.context),
                 workspace_strategy_json: encodeWorkspaceStrategyJson(run.workspaceStrategy),
                 status: run.status,
                 pause_reason: run.pauseReason,

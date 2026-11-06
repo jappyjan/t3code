@@ -51,7 +51,8 @@ import {
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import { composerContextImportsAtom } from "../../state/use-composer-drafts";
 import { abortComposerDraftOperations } from "../../state/composerDraftOperations";
-import { composerContextSendBlockReason } from "../../lib/composerContext";
+import { composerContextSendBlockReason, uploadedComposerContext } from "../../lib/composerContext";
+import { prepareTurnAttachments, type UploadedMobileAttachment } from "../../lib/attachmentUpload";
 import { ComposerInlineControl } from "../../components/ComposerToolbar";
 
 import {
@@ -62,7 +63,10 @@ import {
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
-import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
+import {
+  isImageReferencesOnly,
+  threadContextsOutsideEnvironment,
+} from "@t3tools/shared/composerContextReferences";
 
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import { uuidv4 } from "../../lib/uuid";
@@ -622,6 +626,12 @@ export function NewTaskDraftScreen(props: {
     locked: isComposerInteractionLocked,
   });
 
+  // Uploads return references; inline images (only on servers without uploads) carry a data URL.
+  const isUploadedReference = (
+    attachment: UploadedMobileAttachment,
+  ): attachment is Exclude<UploadedMobileAttachment, { readonly dataUrl: string }> =>
+    !("dataUrl" in attachment);
+
   async function handleStart(): Promise<import("@t3tools/contracts").MessageId | null> {
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
@@ -655,7 +665,7 @@ export function NewTaskDraftScreen(props: {
     const initialMessageText = draft.text.trim();
 
     if (pipelineId !== null) {
-      // A pipeline run starts on the server: no outbox, no model, text only. A chosen pipeline
+      // A pipeline run starts on the server: no outbox and no model; the server keeps its attachments and context. A chosen pipeline
       // never degrades to a normal thread: block when it cannot be started right now.
       if (!selectedPipeline) {
         Dialog.alert(
@@ -666,14 +676,47 @@ export function NewTaskDraftScreen(props: {
         );
         return null;
       }
-      if (draft.attachments.length > 0 || draft.context?.records?.length) {
+      const attachmentsSupported =
+        selectedEnvironmentServerConfig?.environment.capabilities.pipelineAttachments === true;
+      const hasExtras = draft.attachments.length > 0 || (draft.context?.records?.length ?? 0) > 0;
+      if (hasExtras && !attachmentsSupported) {
         Dialog.alert(
           "Pipelines take text only",
           "Remove attachments and context to start a pipeline.",
         );
         return null;
       }
-      if (initialMessageText.length === 0) return null;
+      if (initialMessageText.length === 0 && !hasExtras) return null;
+      if (attachmentBlockReason !== null) return null;
+      if (draft.attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+        Dialog.alert(
+          "Too many attachments",
+          `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
+        );
+        return null;
+      }
+      const pipelineContextBlock = composerContextSendBlockReason(draft.context);
+      if (pipelineContextBlock) {
+        Dialog.alert("Too much context", pipelineContextBlock);
+        return null;
+      }
+      const pipelineStranded = threadContextsOutsideEnvironment({
+        text: draft.text,
+        records: draft.context?.records ?? [],
+        environmentId: selectedProject.environmentId,
+        linkedEnvironments: flow.linkedEnvironments,
+      })[0];
+      if (pipelineStranded) {
+        const owner =
+          flow.environments.find(
+            (environment) => environment.environmentId === pipelineStranded.environmentId,
+          )?.environmentLabel ?? "its machine";
+        Dialog.alert(
+          "Attached thread unavailable",
+          `"${pipelineStranded.title}" is on another machine. Switch back to ${owner} or remove it from the draft.`,
+        );
+        return null;
+      }
       if (workspaceSelection.pullRequestReference) {
         Dialog.alert(
           "Pipelines cannot start from a pull request",
@@ -682,6 +725,8 @@ export function NewTaskDraftScreen(props: {
         return null;
       }
       if (workspaceMode === "worktree" && !selectedBranchName) return null;
+      // Image references alone are not a prompt; the attachments carry the request.
+      const pipelineText = isImageReferencesOnly(draft.text) ? "" : initialMessageText;
       const branch = resolveProjectThreadCreationBranch({
         workspaceMode,
         selectedBranch: selectedBranchName ?? null,
@@ -695,19 +740,51 @@ export function NewTaskDraftScreen(props: {
         {
           pipelineId: selectedPipeline.id,
           projectId: selectedProject.id,
-          input: initialMessageText,
+          input: pipelineText,
           workspace: [workspaceMode, branch, worktreePath, startFromOrigin],
+          attachments: draft.attachments.map((attachment) => attachment.id),
+          context: draft.context,
         },
         uuidv4,
       ));
       flow.setSubmitting(true);
+      const prepared =
+        draft.attachments.length === 0
+          ? null
+          : await settlePromise(() =>
+              prepareTurnAttachments({
+                environmentId: selectedProject.environmentId,
+                attachments: draft.attachments,
+                supportsImageUploads: true,
+              }),
+            );
+      if (
+        prepared !== null &&
+        (AsyncResult.isFailure(prepared) || prepared.value.status === "abandoned")
+      ) {
+        flow.setSubmitting(false);
+        if (AsyncResult.isFailure(prepared)) {
+          const error = squashAtomCommandFailure(prepared);
+          Dialog.alert(
+            "Could not upload attachments",
+            error instanceof Error ? error.message : "An attachment could not upload.",
+          );
+        }
+        return null;
+      }
+      const uploaded = prepared?.value.status === "ready" ? prepared.value.attachments : [];
+      const pipelineContext = uploadedComposerContext(draft.context, draft.attachments, uploaded);
       const started = await startPipelineRun({
         environmentId: selectedProject.environmentId,
         input: {
           commandId: attempt.commandId,
           pipelineId: selectedPipeline.id,
           projectId: selectedProject.id,
-          input: initialMessageText,
+          input: pipelineText,
+          ...(uploaded.length > 0 ? { attachments: uploaded.filter(isUploadedReference) } : {}),
+          ...(pipelineContext && pipelineContext.records.length > 0
+            ? { context: pipelineContext }
+            : {}),
           workspaceStrategy: draftWorkspaceStrategy(
             { branch, worktreePath },
             workspaceMode === "worktree" && branch !== null
@@ -1190,6 +1267,8 @@ export function NewTaskDraftScreen(props: {
           sendBlockedReason: setupBlockReason,
           interactionLocked: isComposerInteractionLocked,
           pipelineSelected: pipelineId !== null,
+          pipelineAttachments:
+            selectedEnvironmentServerConfig?.environment.capabilities.pipelineAttachments === true,
         }}
         canOperateThread={canOperate}
         selectedThread={thread}
