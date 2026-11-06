@@ -304,10 +304,11 @@ it.effect("attachment cleanup keeps files another thread owns", () =>
   Effect.gen(function* () {
     const own = `${toSafeThreadAttachmentSegment(threadId)}-00000000-0000-4000-8000-000000000001`;
     const other = "thread-another-run-00000000-0000-4000-8000-000000000002";
+    const pending = "pending-00000000-0000-4000-8000-000000000003";
     const plan = yield* planThreadDeletion({
       command,
       projection: makeProjection(),
-      attachmentIds: [own, other, "legacy_file"],
+      attachmentIds: [own, other, pending, "legacy_file"],
       now: deletedAt,
       idAllocator: yield* IdAllocator.IdAllocatorV2,
     });
@@ -318,7 +319,7 @@ it.effect("attachment cleanup keeps files another thread owns", () =>
           id: `effect:${command.commandId}:attachment.cleanup`,
           commandId: command.commandId,
           threadId,
-          request: { type: "attachment.cleanup", attachmentIds: [own, "legacy_file"] },
+          request: { type: "attachment.cleanup", attachmentIds: [own, pending, "legacy_file"] },
         },
       ],
     );

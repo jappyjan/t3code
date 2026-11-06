@@ -43,6 +43,7 @@ import type {
   ThreadManagementSendInput,
   ThreadManagementWaitResult,
 } from "../orchestration-v2/ThreadManagementService.ts";
+import * as ResourceCleanupService from "../orchestration-v2/ResourceCleanupService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
@@ -111,6 +112,7 @@ const makeHarness = Effect.gen(function* () {
   const launches = yield* Queue.unbounded<{ input: ThreadLaunchInput; threadId: ThreadId }>();
   const waitsStarted = yield* Queue.unbounded<ThreadId>();
   const events = yield* Queue.unbounded<OrchestrationV2DomainEvent>();
+  const cleanedAttachments = yield* Queue.unbounded<ReadonlyArray<string>>();
   const interrupted = yield* Deferred.make<ThreadId>();
   const subscriptions = yield* Queue.unbounded<number>();
   const subscribed = yield* Deferred.make<void>();
@@ -480,6 +482,12 @@ const makeHarness = Effect.gen(function* () {
       attachmentsDir: ATTACHMENTS_DIR,
     } as ServerConfig.ServerConfig["Service"]),
     Layer.mock(DocumentText.DocumentText)({ ensure: () => Effect.undefined }),
+    Layer.succeed(ResourceCleanupService.ResourceCleanupService, {
+      cleanupScheduledTasks: () => Effect.void,
+      cleanupTerminals: () => Effect.void,
+      cleanupPreviews: () => Effect.void,
+      cleanupAttachments: (ids) => Queue.offer(cleanedAttachments, ids),
+    }),
     IdAllocator.layer,
     NodeCrypto.layer,
     NodeServices.layer,
@@ -492,6 +500,7 @@ const makeHarness = Effect.gen(function* () {
     sentMessages,
     waitsStarted,
     events,
+    cleanedAttachments,
     interrupted,
     providerEnabled,
     commands,
@@ -1773,8 +1782,9 @@ const completedRun = Effect.fn("completedRun")(function* (
   harness: Effect.Success<typeof makeHarness>,
   service: PipelineService.PipelineService["Service"],
   commandId: string,
+  start: PipelineRunStartInput = startInput(commandId),
 ) {
-  const { run } = yield* service.start(startInput(commandId));
+  const { run } = yield* service.start(start);
   const first = yield* Queue.take(harness.launches);
   harness.outputs.set(first.threadId, { reply: "approved plan" });
   yield* harness.settle(first.threadId, "completed");
@@ -1790,7 +1800,13 @@ it.effect(
   () =>
     withService(
       Effect.fn(function* (harness, service) {
-        const { run, first, second } = yield* completedRun(harness, service, "cmd-revise");
+        const image = yield* pendingImage(3);
+        const { run, first, second } = yield* completedRun(
+          harness,
+          service,
+          "cmd-revise",
+          startWithContent("cmd-revise", { input: "Fix the bug", attachments: [image] }),
+        );
         harness.behavior.autoHandoff = false;
 
         const { run: revised } = yield* service.reviseStep({
@@ -1825,6 +1841,11 @@ it.effect(
         assert.include(feedback.input.text, "> Only light mode is planned");
         assert.include(feedback.input.text, "Pipeline handoff:");
         assert.strictEqual(feedback.input.createdBy, "user");
+        // The revised step reads {{input}}, so its starting files come with the feedback.
+        assert.deepStrictEqual(
+          feedback.input.attachments?.map((attachment) => attachment.id),
+          run.attachments.map((attachment) => attachment.id),
+        );
         // Nobody is launched fresh: both steps keep their threads.
         assert.strictEqual(yield* Queue.size(harness.launches), 0);
 
@@ -1850,6 +1871,7 @@ it.effect(
         assert.include(ping.input.text, "Cover dark mode too");
         assert.strictEqual(ping.input.messageId, `pipeline-run-message:${run.id}:build:2`);
         assert.strictEqual(ping.input.createdBy, "user");
+        assert.deepStrictEqual(ping.input.attachments, []);
 
         harness.behavior.autoHandoff = true;
         harness.outputs.set(ping.runId, { reply: "built it again" });
@@ -2519,7 +2541,7 @@ it.effect(
   "start claims attachments into the parent thread and only {{input}} steps receive them",
   () =>
     withService(
-      Effect.fn(function* (harness, service) {
+      Effect.fn(function* (harness, service, store) {
         const image = yield* pendingImage(1);
         const before = (yield* storedAttachmentFiles()).length;
         const { run } = yield* service.start(
@@ -2537,7 +2559,13 @@ it.effect(
           toSafeThreadAttachmentSegment(run.parentThreadId),
         );
         assert.strictEqual((yield* storedAttachmentFiles()).length, before + 1);
-        const contextRecord = run.context?.records[0] as { attachmentId?: string } | undefined;
+        // The live run carries only chips; the full context stays on the server.
+        assert.deepStrictEqual(
+          run.contextChips.map(({ contextId, kind, label }) => [contextId, kind, label]),
+          [["ctx-1", "image", "shot"]],
+        );
+        const context = yield* store.getRunContext(run.id);
+        const contextRecord = context?.records[0] as { attachmentId?: string } | undefined;
         assert.strictEqual(contextRecord?.attachmentId, claimedId);
 
         // With no text, the parent keeps the pipeline's name and asks for no generated title.
@@ -2555,7 +2583,7 @@ it.effect(
           first.input.initialMessage?.attachments.map((attachment) => attachment.id),
           [claimedId],
         );
-        assert.deepStrictEqual(first.input.initialMessage?.context, run.context);
+        assert.deepStrictEqual(first.input.initialMessage?.context, context);
 
         // The second step's template has no {{input}}: it gets neither.
         harness.outputs.set(first.threadId, { reply: "first reply" });
@@ -2569,6 +2597,13 @@ it.effect(
           startWithContent("cmd-att-1", { attachments: [image], context: imageContext(image.id) }),
         );
         assert.strictEqual((yield* storedAttachmentFiles()).length, before + 1);
+
+        // The run's files go with its parent thread.
+        yield* Queue.offer(harness.events, {
+          type: "thread.deleted",
+          threadId: run.parentThreadId,
+        } as unknown as OrchestrationV2DomainEvent);
+        assert.deepStrictEqual(yield* Queue.take(harness.cleanedAttachments), [claimedId]);
       }),
     ),
 );
@@ -2611,6 +2646,7 @@ it.effect("retry and rerun re-send the run's attachments after the pending uploa
         rerun.input.initialMessage?.attachments.map((attachment) => attachment.id),
         [claimedId],
       );
+      assert.include(yield* storedAttachmentFiles(), `${claimedId}.png`);
     }),
   ),
 );
