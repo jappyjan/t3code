@@ -66,7 +66,7 @@ app_pids() { ps -axo pid=,comm= | grep -F "$1" | awk '{print $1}' || true; }
 app_running() { [[ -n "$(app_pids "$target/Contents/MacOS/")" ]]; }
 active_runs() {
   sqlite3 -readonly "$USERDATA/statev2.sqlite" \
-    "SELECT COUNT(*) FROM orchestration_v2_projection_runs WHERE status IN ('preparing','starting','running')" \
+    "SELECT COUNT(*) FROM orchestration_v2_projection_runs WHERE status IN ('preparing','queued','starting','running','waiting')" \
     2>/dev/null || echo 1
 }
 
