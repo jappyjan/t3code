@@ -921,6 +921,11 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
   );
   const rowAccessibilityLabel = [
     thread.title,
+    attentionBadge
+      ? props.attentionLabel === undefined
+        ? "needs your attention"
+        : attentionBadgeLabel
+      : null,
     props.hasQueuedMessages ? "messages queued to send" : null,
     isRegeneratingTitle ? "regenerating title" : null,
     pipelineProgress
