@@ -99,7 +99,7 @@ import {
   pipelineSendBlock,
   referencedThreadContexts,
 } from "./composerSend.logic";
-import { usePipelineSend } from "./usePipelineSend";
+import { pipelineDraftContentKey, usePipelineSend } from "./usePipelineSend";
 import { usePlanFollowUpSend } from "./useProposedPlanSend";
 import { useMultipleModelSend } from "./useMultipleModelSend";
 import { type ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
@@ -625,6 +625,12 @@ export function useComposerSend(input: ComposerSendInput) {
           previewAnnotationContextReference(directAnnotation.annotation),
         ])
       : promptRef.current;
+    const pipelineDraftAtSend =
+      selectedPipelineId === null
+        ? ""
+        : pipelineDraftContentKey(
+            useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
+          );
     const strandedThread = threadContextsOutsideEnvironment({
       text: promptForSend,
       records: composerThreadContexts,
@@ -917,6 +923,9 @@ export function useComposerSend(input: ComposerSendInput) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
     }
+    const pipelineAttachmentsSupported =
+      appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+        .pipelineAttachments === true;
     if (selectedPipelineId !== null) {
       const pipelineBlock = pipelineSendBlock({
         attachmentCount: composerAttachmentsSnapshot.length,
@@ -926,35 +935,12 @@ export function useComposerSend(input: ComposerSendInput) {
           composerReviewCommentsSnapshot.length > 0 ||
           composerThreadContextsSnapshot.length > 0 ||
           composerEnvironmentContextsSnapshot.length > 0,
+        supportsAttachments: pipelineAttachmentsSupported,
       });
       if (pipelineBlock !== null) {
         setThreadError(threadIdForSend, pipelineBlock);
         return;
       }
-      const workspaceStrategy = draftWorkspaceStrategy(
-        { branch: activeThreadBranch, worktreePath: activeThread.worktreePath },
-        baseBranchForWorktree
-          ? {
-              projectCwd: activeProject.workspaceRoot,
-              baseBranch: baseBranchForWorktree,
-              ...(startFromOrigin ? { startFromOrigin: true } : {}),
-            }
-          : undefined,
-      );
-      sendInFlightRef.current = true;
-      beginLocalDispatch({
-        preparingWorktree: workspaceStrategy.type === "worktree",
-        submissionIntent: "foreground",
-      });
-      await sendToPipeline({
-        threadId: threadIdForSend,
-        pipelineId: selectedPipelineId,
-        projectId: activeProject.id,
-        text: messageTextForSend,
-        promptAtSend: promptForSend,
-        workspaceStrategy,
-      });
-      return;
     }
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server
@@ -1004,7 +990,7 @@ export function useComposerSend(input: ComposerSendInput) {
 
     const multipleTargets: MultipleModelTarget[] = [];
     for (const resolved of resolveMultipleModelTargets({
-      selections: multipleModelSelections ?? [],
+      selections: selectedPipelineId === null ? (multipleModelSelections ?? []) : [],
       providerInstanceEntries,
       messageText: messageTextForSend,
       planModeEnabled,
@@ -1054,6 +1040,62 @@ export function useComposerSend(input: ComposerSendInput) {
         setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
         return;
       }
+    }
+
+    if (selectedPipelineId !== null) {
+      const workspaceStrategy = draftWorkspaceStrategy(
+        { branch: activeThreadBranch, worktreePath: activeThread.worktreePath },
+        baseBranchForWorktree
+          ? {
+              projectCwd: activeProject.workspaceRoot,
+              baseBranch: baseBranchForWorktree,
+              ...(startFromOrigin ? { startFromOrigin: true } : {}),
+            }
+          : undefined,
+      );
+      beginLocalDispatch({
+        preparingWorktree: workspaceStrategy.type === "worktree",
+        submissionIntent: "foreground",
+      });
+      const pipelineAttachments = await settlePromise(() =>
+        prepareTurnAttachments({
+          environmentId,
+          attachments: composerAttachmentsSnapshot,
+          usesAttachmentUploads: true,
+        }),
+      );
+      if (pipelineAttachments._tag === "Failure") {
+        sendInFlightRef.current = false;
+        resetLocalDispatch();
+        setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
+        return;
+      }
+      if (expiredTerminalContextCount > 0) {
+        const toastCopy = buildExpiredTerminalContextToastCopy(
+          expiredTerminalContextCount,
+          "omitted",
+        );
+        toastManager.add(
+          stackedThreadToast({
+            type: "warning",
+            title: toastCopy.title,
+            description: toastCopy.description,
+          }),
+        );
+      }
+      await sendToPipeline({
+        threadId: threadIdForSend,
+        pipelineId: selectedPipelineId,
+        projectId: activeProject.id,
+        text: messageTextForSend,
+        draftAtSend: pipelineDraftAtSend,
+        attachments: pipelineAttachments.value,
+        context: buildOutgoingMessageContext(
+          boundAttachmentIds(pipelineAttachments.value, composerAttachmentsSnapshot),
+        ),
+        workspaceStrategy,
+      });
+      return;
     }
 
     if (

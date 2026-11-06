@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { composerContextProse } from "@t3tools/shared/composerContextReferences";
 import {
   availablePipelineActions,
   pipelineFeedingStep,
@@ -51,6 +52,9 @@ import { buildThreadRouteParams } from "../../threadRoutes";
 import { cn } from "../../lib/utils";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 import ChatMarkdown from "../ChatMarkdown";
+import { PipelineStartAttachments } from "./PipelineStartAttachments";
+import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import type { ChatFileAttachment } from "../../types";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -107,6 +111,8 @@ export function PipelineRunView(props: {
   readonly environmentId: EnvironmentId;
   readonly runId: PipelineRun["id"];
   readonly cwd: string | undefined;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+  readonly onFileOpen: (attachment: ChatFileAttachment) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const query = useEnvironmentQuery(
@@ -136,6 +142,8 @@ export function PipelineRunView(props: {
           liveRun={run}
           cwd={props.cwd}
           expanded={expanded}
+          onImageExpand={props.onImageExpand}
+          onFileOpen={props.onFileOpen}
         />
       )}
     </div>
@@ -148,12 +156,16 @@ function PipelineRunBody(props: {
   readonly cwd: string | undefined;
   /** Collapsed, only the run's error and actions show. */
   readonly expanded: boolean;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+  readonly onFileOpen: (attachment: ChatFileAttachment) => void;
 }) {
   const { environmentId } = props;
   // The command's own result is the freshest run until the subscription catches up, so the
   // buttons never render from the pre-command state once the lock releases.
   const [commandRun, setCommandRun] = useState<PipelineRun | null>(null);
   const run = newerPipelineRun(props.liveRun, commandRun);
+  // The chips show apart from the text, so each inline marker reads as its label.
+  const startingText = composerContextProse(run.input);
   const actions = availablePipelineActions(run);
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
@@ -341,16 +353,25 @@ function PipelineRunBody(props: {
       {props.expanded ? (
         <div className="scrollbar-gutter-both max-h-[45vh] overflow-y-auto">
           <div className="chat-content-lane flex flex-col gap-6 py-3">
-            <section aria-label="Starting prompt" className="flex flex-col items-end gap-1">
-              <div className="min-w-0 max-w-[80%] rounded-2xl bg-message px-4 py-3 text-message-foreground">
-                <ChatMarkdown
-                  text={run.input}
-                  cwd={props.cwd}
-                  environmentId={environmentId}
-                  isStreaming={false}
-                  headingLevelOffset={3}
-                />
-              </div>
+            <section aria-label="Starting prompt" className="flex flex-col items-end gap-1.5">
+              <PipelineStartAttachments
+                environmentId={environmentId}
+                attachments={run.attachments}
+                contextChips={run.contextChips}
+                onImageExpand={props.onImageExpand}
+                onFileOpen={props.onFileOpen}
+              />
+              {startingText.length > 0 ? (
+                <div className="min-w-0 max-w-[80%] rounded-2xl bg-message px-4 py-3 text-message-foreground">
+                  <ChatMarkdown
+                    text={startingText}
+                    cwd={props.cwd}
+                    environmentId={environmentId}
+                    isStreaming={false}
+                    headingLevelOffset={3}
+                  />
+                </div>
+              ) : null}
             </section>
 
             <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Pipeline steps">
