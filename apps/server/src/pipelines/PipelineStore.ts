@@ -8,6 +8,7 @@ import {
   PipelineError,
   PipelineRevision,
   PipelineRun,
+  PipelineRunContextChip,
   PipelineRunStep,
   PipelineSnapshot,
   type PipelineId,
@@ -27,7 +28,10 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 /** A run before its steps are attached; steps are inserted separately with it. */
-export type NewPipelineRun = Omit<PipelineRun, "steps" | "revisions">;
+export type NewPipelineRun = Omit<PipelineRun, "steps" | "revisions"> & {
+  /** Stored apart from the run: only a launching step reads it, never the live run. */
+  readonly context?: OrchestrationMessageContext;
+};
 
 /** Every step starts pending with attempt 0; only identity and the pause override are supplied. */
 export type NewPipelineRunStep = Pick<PipelineRunStep, "index" | "stepId" | "pauseBefore">;
@@ -109,6 +113,10 @@ export class PipelineStore extends Context.Service<
       run: NewPipelineRun,
       steps: ReadonlyArray<NewPipelineRunStep>,
     ) => Effect.Effect<void, PipelineError>;
+    /** The context that came with the starting prompt, or undefined when there was none. */
+    readonly getRunContext: (
+      runId: PipelineRunId,
+    ) => Effect.Effect<OrchestrationMessageContext | undefined, PipelineError>;
     /** The run with steps (output previews truncated), or null; a corrupt run fails with PipelineError. */
     readonly getRun: (runId: PipelineRunId) => Effect.Effect<PipelineRun | null, PipelineError>;
     /** Same as getRun, looked up by the run's parent thread. */
@@ -185,7 +193,7 @@ interface PipelineRunRow {
   readonly completed_at: string | null;
   readonly revisions_json: string;
   readonly input_attachments_json: string;
-  readonly input_context_json: string | null;
+  readonly input_context_chips_json: string;
 }
 
 interface PipelineRunStepRow {
@@ -213,6 +221,12 @@ const encodeAttachmentsJson = Schema.encodeSync(
   Schema.fromJsonString(Schema.Array(ChatAttachment)),
 );
 const encodeContextJson = Schema.encodeSync(Schema.fromJsonString(OrchestrationMessageContext));
+const decodeContextJson = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(OrchestrationMessageContext),
+);
+const encodeContextChipsJson = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Array(PipelineRunContextChip)),
+);
 const encodeSnapshotJson = Schema.encodeSync(Schema.fromJsonString(PipelineSnapshot));
 const workspaceStrategyJson = Schema.fromJsonString(OrchestrationV2ThreadLaunchWorkspaceStrategy);
 const encodeWorkspaceStrategyJson = Schema.encodeSync(workspaceStrategyJson);
@@ -263,8 +277,7 @@ const decodeRunRow = Effect.fnUntraced(function* (
   const workspaceStrategy = yield* parseJson(row.workspace_strategy_json);
   const revisions = yield* parseJson(row.revisions_json);
   const attachments = yield* parseJson(row.input_attachments_json);
-  const context =
-    row.input_context_json === null ? undefined : yield* parseJson(row.input_context_json);
+  const contextChips = yield* parseJson(row.input_context_chips_json);
   return yield* decodeRun({
     id: row.run_id,
     pipelineId: row.pipeline_id,
@@ -273,7 +286,7 @@ const decodeRunRow = Effect.fnUntraced(function* (
     parentThreadId: row.parent_thread_id,
     input: row.input,
     attachments,
-    ...(context === undefined ? {} : { context }),
+    contextChips,
     workspaceStrategy,
     status: row.status,
     pauseReason: row.pause_reason,
@@ -471,6 +484,7 @@ export const layer: Layer.Layer<PipelineStore, never, SqlClient.SqlClient> = Lay
                 input_attachments_json: encodeAttachmentsJson(run.attachments),
                 input_context_json:
                   run.context === undefined ? null : encodeContextJson(run.context),
+                input_context_chips_json: encodeContextChipsJson(run.contextChips),
                 workspace_strategy_json: encodeWorkspaceStrategyJson(run.workspaceStrategy),
                 status: run.status,
                 pause_reason: run.pauseReason,
@@ -518,7 +532,11 @@ export const layer: Layer.Layer<PipelineStore, never, SqlClient.SqlClient> = Lay
         .withTransaction(
           Effect.gen(function* () {
             const rows = yield* sql<PipelineRunRow>`
-                SELECT * FROM pipeline_runs WHERE ${sql(column)} = ${value}
+                SELECT run_id, pipeline_id, definition_json, project_id, parent_thread_id, input,
+                       workspace_strategy_json, status, pause_reason, error, current_step_index,
+                       created_by, creation_source, created_at, updated_at, completed_at,
+                       revisions_json, input_attachments_json, input_context_chips_json
+                FROM pipeline_runs WHERE ${sql(column)} = ${value}
               `;
             const row = rows[0];
             if (row === undefined) return null;
@@ -539,6 +557,19 @@ export const layer: Layer.Layer<PipelineStore, never, SqlClient.SqlClient> = Lay
         storageError("Could not decode pipeline run.", {
           runId: read.row.run_id as PipelineRunId,
         }),
+      );
+    });
+
+    const getRunContext: PipelineStore["Service"]["getRunContext"] = Effect.fn(
+      "PipelineStore.getRunContext",
+    )(function* (runId) {
+      const rows = yield* sql<{ readonly input_context_json: string | null }>`
+        SELECT input_context_json FROM pipeline_runs WHERE run_id = ${runId}
+      `.pipe(NodeSqliteClient.readOnly, storageError("Could not read pipeline run.", { runId }));
+      const json = rows[0]?.input_context_json ?? null;
+      if (json === null) return undefined;
+      return yield* decodeContextJson(json).pipe(
+        storageError("Could not decode pipeline run context.", { runId }),
       );
     });
 
@@ -672,6 +703,7 @@ export const layer: Layer.Layer<PipelineStore, never, SqlClient.SqlClient> = Lay
       deleteDefinition,
       seedStarter,
       insertRunWithSteps,
+      getRunContext,
       getRun,
       getRunByParentThreadId,
       listRunIdsByStatus,

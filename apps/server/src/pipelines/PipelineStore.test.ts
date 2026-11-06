@@ -9,6 +9,7 @@ import {
   PipelineRunId,
   PipelineStepId,
   ThreadId,
+  ComposerContextId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -354,21 +355,42 @@ it.effect(
         mimeType: "image/png",
         sizeBytes: 12,
       };
-      const context = { version: 1 as const, records: [] };
+      const context = {
+        version: 1 as const,
+        records: [
+          {
+            version: 1 as const,
+            contextId: ComposerContextId.make("ctx-1"),
+            kind: "terminal" as const,
+            label: "Terminal 1",
+            terminalId: "terminal-1",
+            terminalLabel: "Terminal 1",
+            lineStart: 1,
+            lineEnd: 2,
+            text: "npm test\nfailed",
+          },
+        ],
+      };
+      const contextChips = [
+        { contextId: ComposerContextId.make("ctx-1"), kind: "terminal", label: "Terminal 1" },
+      ];
       yield* store.insertRunWithSteps(
-        { ...newRun(), attachments: [attachment], context },
+        { ...newRun(), attachments: [attachment], contextChips, context },
         newSteps(["plan", "build"]),
       );
       const stored = yield* store.getRun(runId);
       assert.deepStrictEqual(stored?.attachments, [attachment]);
-      assert.deepStrictEqual(stored?.context, context);
+      assert.deepStrictEqual(stored?.contextChips, contextChips);
+      assert.deepStrictEqual(yield* store.getRunContext(runId), context);
 
       // A database from before the columns existed gains them with empty defaults.
       yield* sql`ALTER TABLE pipeline_runs DROP COLUMN input_attachments_json`;
       yield* sql`ALTER TABLE pipeline_runs DROP COLUMN input_context_json`;
+      yield* sql`ALTER TABLE pipeline_runs DROP COLUMN input_context_chips_json`;
       yield* ensurePipelineSchema;
       const older = yield* store.getRun(runId);
       assert.deepStrictEqual(older?.attachments, []);
-      assert.isUndefined(older?.context);
+      assert.deepStrictEqual(older?.contextChips, []);
+      assert.isUndefined(yield* store.getRunContext(runId));
     }).pipe(Effect.provide(testLayer)),
 );

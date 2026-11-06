@@ -15,7 +15,11 @@ import {
   TrimmedString,
 } from "./baseSchemas.ts";
 import { ChatAttachment, PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "./chatAttachment.ts";
-import { OrchestrationMessageContext } from "./composerContext.ts";
+import {
+  ComposerContextId,
+  ComposerContextKind,
+  OrchestrationMessageContext,
+} from "./composerContext.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import {
   OrchestrationV2Actor,
@@ -285,6 +289,13 @@ export const PipelineRevision = Schema.Struct({
 });
 export type PipelineRevision = typeof PipelineRevision.Type;
 
+export const PipelineRunContextChip = Schema.Struct({
+  contextId: ComposerContextId,
+  kind: ComposerContextKind,
+  label: Schema.String,
+});
+export type PipelineRunContextChip = typeof PipelineRunContextChip.Type;
+
 export const PipelineRun = Schema.Struct({
   id: PipelineRunId,
   pipelineId: Schema.NullOr(PipelineId),
@@ -294,7 +305,10 @@ export const PipelineRun = Schema.Struct({
   input: Schema.String,
   /** Files and images that came with the starting prompt; steps that use `{{input}}` get them. */
   attachments: Schema.Array(ChatAttachment).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  context: Schema.optional(OrchestrationMessageContext),
+  /** The starting context's records, without their contents; those stay on the server. */
+  contextChips: Schema.Array(PipelineRunContextChip).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
   status: PipelineRunStatus,
   pauseReason: Schema.NullOr(PipelinePauseReason),

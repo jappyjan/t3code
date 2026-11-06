@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 
 import {
   parseThreadSegmentFromAttachmentId,
+  PENDING_ATTACHMENT_THREAD_SEGMENT,
   toSafeThreadAttachmentSegment,
 } from "../attachmentStore.ts";
 import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
@@ -235,7 +236,9 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
   const ownSegment = toSafeThreadAttachmentSegment(command.threadId);
   const attachmentIds = Array.from(new Set(input.attachmentIds)).filter((id) => {
     const segment = parseThreadSegmentFromAttachmentId(id);
-    return segment === null || segment === ownSegment;
+    return (
+      segment === null || segment === ownSegment || segment === PENDING_ATTACHMENT_THREAD_SEGMENT
+    );
   });
   if (attachmentIds.length > 0) {
     effects.push({

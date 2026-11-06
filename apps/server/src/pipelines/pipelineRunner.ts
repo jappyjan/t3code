@@ -32,8 +32,8 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import {
+  composerContextProse,
   remapComposerContextAttachments,
-  replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { subagentResultForRun } from "@t3tools/provider-core/server/subagentProjection";
@@ -58,6 +58,11 @@ import {
 } from "../orchestration-v2/DispatchModeLimit.ts";
 import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
 import * as AttachmentClaims from "../orchestration-v2/AttachmentClaims.ts";
+import * as ResourceCleanupService from "../orchestration-v2/ResourceCleanupService.ts";
+import {
+  parseThreadSegmentFromAttachmentId,
+  toSafeThreadAttachmentSegment,
+} from "../attachmentStore.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { isPullRequestWatchWake } from "../orchestration-v2/pullRequestWatch.ts";
@@ -163,30 +168,10 @@ const advancePatch = (run: PipelineRun, now: string): PipelineStore.PipelineRunP
   };
 };
 
-/** Only a step that reads `{{input}}` carries the run's attachments and context. */
-const stepInputMessage = (run: PipelineRun, cursor: number) => {
-  const step = run.definition.steps[cursor];
-  const usesInput =
-    step !== undefined &&
-    pipelineTemplateReferences(step.promptTemplate).some((reference) => reference.kind === "input");
-  return usesInput
-    ? {
-        attachments: run.attachments,
-        ...(run.context === undefined ? {} : { context: run.context }),
-      }
-    : { attachments: [] };
-};
-
-/** The input as prose: inline context markers become their labels, image markers vanish. */
-const inputProse = (input: string) =>
-  replaceComposerContextReferences(input, (reference) =>
-    reference.kind === "image" ? "" : reference.label,
-  ).trim();
-
 /** Placeholder until the generated title lands, and the fallback if generation fails. */
 const parentTitle = (run: PipelineRun) => {
   const firstLine =
-    inputProse(run.input)
+    composerContextProse(run.input)
       .split(/\r?\n/)
       .find((line) => line.trim().length > 0) ?? "";
   const excerpt = firstLine.trim().slice(0, PARENT_TITLE_INPUT_CHARS).trim();
@@ -207,6 +192,23 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
   const claimServices = yield* Effect.context<
     ServerConfig.ServerConfig | FileSystem.FileSystem | DocumentText.DocumentText
   >();
+  const resourceCleanup = yield* ResourceCleanupService.ResourceCleanupService;
+
+  /** Only a step that reads `{{input}}` carries the run's attachments and context. */
+  const stepInputMessage = Effect.fn("PipelineRunner.stepInputMessage")(function* (
+    run: PipelineRun,
+    cursor: number,
+  ) {
+    const step = run.definition.steps[cursor];
+    const usesInput =
+      step !== undefined &&
+      pipelineTemplateReferences(step.promptTemplate).some(
+        (reference) => reference.kind === "input",
+      );
+    if (!usesInput) return { attachments: [] };
+    const context = run.contextChips.length === 0 ? undefined : yield* store.getRunContext(run.id);
+    return { attachments: run.attachments, ...(context === undefined ? {} : { context }) };
+  });
 
   const permit = yield* Semaphore.make(1);
   const drivers = yield* FiberMap.make<PipelineRunId>();
@@ -410,7 +412,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
           }),
         ),
       );
-    const titleSource = inputProse(run.input);
+    const titleSource = composerContextProse(run.input);
     if (!created || titleSource.length === 0) return;
     // Title the run like a chat: the parent has no messages, so name it from the run's input.
     yield* bestEffort(
@@ -643,25 +645,27 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     const childThreadId = yield* Effect.uninterruptible(
       Effect.gen(function* () {
         const launched = yield* Effect.result(
-          threadLaunch.launch({
-            commandId: commandIdFor(run.id, step.id, attempt),
-            projectId: run.projectId,
-            title:
-              `${run.definition.name} · ${step.name}` +
-              (attempt > 1 ? ` (attempt ${attempt})` : ""),
-            modelSelection: step.modelSelection,
-            runtimeMode: step.runtimeMode,
-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-            workspaceStrategy: launch.workspaceStrategy,
-            initialMessage: {
-              messageId: MessageId.make(`pipeline-run-message:${run.id}:${step.id}:${attempt}`),
-              text: launch.prompt,
-              ...stepInputMessage(run, cursor),
-            },
-            pipeline: { runId: run.id, stepId: step.id },
-            createdBy: run.createdBy,
-            creationSource: run.creationSource,
-          }),
+          Effect.flatMap(stepInputMessage(run, cursor), (inputMessage) =>
+            threadLaunch.launch({
+              commandId: commandIdFor(run.id, step.id, attempt),
+              projectId: run.projectId,
+              title:
+                `${run.definition.name} · ${step.name}` +
+                (attempt > 1 ? ` (attempt ${attempt})` : ""),
+              modelSelection: step.modelSelection,
+              runtimeMode: step.runtimeMode,
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              workspaceStrategy: launch.workspaceStrategy,
+              initialMessage: {
+                messageId: MessageId.make(`pipeline-run-message:${run.id}:${step.id}:${attempt}`),
+                text: launch.prompt,
+                ...inputMessage,
+              },
+              pipeline: { runId: run.id, stepId: step.id },
+              createdBy: run.createdBy,
+              creationSource: run.creationSource,
+            }),
+          ),
         );
         if (Result.isFailure(launched)) {
           yield* endStep(
@@ -793,18 +797,20 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
       Effect.gen(function* () {
         // Same ids as a launch's first message, so a replay after a restart sends nothing twice.
         const sent = yield* Effect.result(
-          threads.sendToThread({
-            projectId: run.projectId,
-            commandId: commandIdFor(run.id, "revise-message", step.stepId, step.attempt),
-            threadId: childThreadId,
-            messageId: MessageId.make(
-              `pipeline-run-message:${run.id}:${step.stepId}:${step.attempt}`,
-            ),
-            text: saved.prompt,
-            ...stepInputMessage(run, step.index),
-            mode: "auto",
-            ...sender,
-          }),
+          Effect.flatMap(stepInputMessage(run, step.index), (inputMessage) =>
+            threads.sendToThread({
+              projectId: run.projectId,
+              commandId: commandIdFor(run.id, "revise-message", step.stepId, step.attempt),
+              threadId: childThreadId,
+              messageId: MessageId.make(
+                `pipeline-run-message:${run.id}:${step.stepId}:${step.attempt}`,
+              ),
+              text: saved.prompt,
+              ...inputMessage,
+              mode: "auto",
+              ...sender,
+            }),
+          ),
         );
         if (Result.isFailure(sent)) {
           yield* endStep(
@@ -1308,6 +1314,11 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
               parentThreadId,
               input: input.input,
               attachments: claimed.attachments,
+              contextChips: (context?.records ?? []).map(({ contextId, kind, label }) => ({
+                contextId,
+                kind,
+                label,
+              })),
               ...(context === undefined ? {} : { context }),
               workspaceStrategy: input.workspaceStrategy,
               status: gated ? "paused" : "running",
@@ -1340,7 +1351,10 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
           yield* releaseClaims(claimed.claimedPaths);
           return yield* result(runId);
         }
-        yield* launchRun(yield* readRun(runId));
+        // A start whose parent could not be created is cancelled before any step saw its files.
+        yield* launchRun(yield* readRun(runId)).pipe(
+          Effect.tapError(() => releaseClaims(claimed.claimedPaths)),
+        );
         return yield* result(runId);
       }),
     );
@@ -2070,7 +2084,16 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
       "Could not cancel pipeline run for deleted parent",
       Effect.gen(function* () {
         const run = yield* store.getRunByParentThreadId(threadId);
-        if (run !== null) yield* cancelForDeletedParent(run.id);
+        if (run === null) return;
+        yield* cancelForDeletedParent(run.id);
+        // The run's files live in its parent's folder and go with it, like a thread's own files.
+        // Ids from elsewhere passed through the claim unchanged; another thread owns those.
+        const ownSegment = toSafeThreadAttachmentSegment(threadId);
+        yield* resourceCleanup.cleanupAttachments(
+          run.attachments
+            .map((attachment) => attachment.id)
+            .filter((id) => parseThreadSegmentFromAttachmentId(id) === ownSegment),
+        );
       }),
     );
   });
