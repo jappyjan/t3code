@@ -41,6 +41,9 @@ import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useQuietThreadVisibleTurnItems } from "../../state/use-thread-detail";
+import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { MessageAttachmentList } from "./ThreadFeed";
 import { pipelineStepTone, stepRevisions, type PipelineStepTone } from "./pipeline-run-view";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
@@ -103,6 +106,8 @@ function runProgressLabel(run: PipelineRun): string {
  * Compact run header for the coordinator sheet: step n/N, name and status. It reads the run
  * without a panel, so the sheet's body stays the coordinator's own chat.
  */
+const noop = () => {};
+
 export function PipelineRunSummaryHeader(props: {
   readonly environmentId: EnvironmentId;
   readonly runId: PipelineRunId;
@@ -159,6 +164,7 @@ export function PipelineRunPanel(props: {
   const waitingOnPullRequest = useRunWaitingOnPullRequest(environmentId, run);
   const [expanded, setExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FilePreviewSource | null>(null);
   const openThread = useOpenLinkedThread();
 
   const canContinue = useAtomValue(
@@ -257,6 +263,12 @@ export function PipelineRunPanel(props: {
   const stepIndex = run.currentStepIndex;
   const tone = runTone(run, waitingOnPullRequest);
   const stepInput = { runId: run.id, stepIndex };
+  // Inline markers stand for context chips, which show apart from the text; images and files
+  // bind through the attachments list.
+  const startingText = replaceComposerContextReferences(run.input, () => "").trim();
+  const contextRecords = (run.context?.records ?? []).filter(
+    (record) => record.kind !== "image" && record.kind !== "file",
+  );
   const currentStepName = stepName(run, Math.min(stepIndex, run.steps.length - 1));
   const actionsVisible = actions.continue || actions.retry || actions.skip || actions.cancel;
 
@@ -403,9 +415,30 @@ export function PipelineRunPanel(props: {
               numberOfLines={promptExpanded ? undefined : 4}
               selectable={promptExpanded}
             >
-              {run.input}
+              {startingText}
             </Text>
           </Pressable>
+          {run.attachments.length > 0 ? (
+            <View className="gap-1 px-1">
+              <MessageAttachmentList
+                attachments={run.attachments}
+                environmentId={environmentId}
+                onPressPreview={setPreviewFile}
+                onPlaybackStart={noop}
+              />
+            </View>
+          ) : null}
+          {contextRecords.length > 0 ? (
+            <View className="flex-row flex-wrap gap-1.5 px-1">
+              {contextRecords.map((record) => (
+                <View key={record.contextId} className="rounded-full bg-subtle px-2.5 py-1">
+                  <Text textRole="footnote" className="text-foreground-muted" numberOfLines={1}>
+                    {record.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
           {run.steps.map((step) => (
             <PipelineStepRow
               key={step.stepId}
@@ -439,6 +472,7 @@ export function PipelineRunPanel(props: {
           ))}
         </ScrollView>
       ) : null}
+      <FilePreviewModal source={previewFile} onRequestClose={() => setPreviewFile(null)} />
       <View className="h-1" />
     </>,
   );

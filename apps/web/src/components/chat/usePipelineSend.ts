@@ -1,5 +1,7 @@
 import {
+  type ChatAttachment,
   type EnvironmentId,
+  type OrchestrationMessageContext,
   type PipelineId,
   type ProjectId,
   type ThreadId,
@@ -60,6 +62,8 @@ export function usePipelineSend(input: PipelineSendInput) {
     projectId,
     text,
     promptAtSend,
+    attachments,
+    context,
     workspaceStrategy,
   }: {
     readonly threadId: ThreadId;
@@ -68,11 +72,14 @@ export function usePipelineSend(input: PipelineSendInput) {
     readonly text: string;
     /** The draft's prompt when sent; a draft edited since is left alone. */
     readonly promptAtSend: string;
+    /** Uploaded attachments, as a chat message would send them. */
+    readonly attachments: ReadonlyArray<ChatAttachment>;
+    readonly context: OrchestrationMessageContext | undefined;
     readonly workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy;
   }) => {
     const attempt = (pipelineStartRef.current = nextPipelineStartAttempt(
       pipelineStartRef.current,
-      { pipelineId, projectId, input: text, workspace: workspaceStrategy },
+      { pipelineId, projectId, input: text, workspace: workspaceStrategy, attachments, context },
       randomUUID,
     ));
     setThreadError(threadId, null);
@@ -83,6 +90,8 @@ export function usePipelineSend(input: PipelineSendInput) {
         pipelineId,
         projectId,
         input: text,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(context === undefined ? {} : { context }),
         workspaceStrategy,
         creationSource: "web",
       },

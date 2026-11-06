@@ -16,6 +16,7 @@ import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { ensurePipelineSchema } from "../persistence/PipelineSchema.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as PipelineStore from "./PipelineStore.ts";
 
@@ -338,4 +339,36 @@ it.effect("fails getRun with a typed error for a corrupt run", () =>
     // Other runs and the status index stay usable.
     assert.deepStrictEqual(yield* store.listRunIdsByStatus(["running"]), [runId]);
   }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect(
+  "keeps the starting prompt's attachments and context, and reads older rows without them",
+  () =>
+    Effect.gen(function* () {
+      const store = yield* PipelineStore.PipelineStore;
+      const sql = yield* SqlClient.SqlClient;
+      const attachment = {
+        type: "image" as const,
+        id: "thread-parent-00000000-0000-4000-8000-000000000001",
+        name: "shot.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+      };
+      const context = { version: 1 as const, records: [] };
+      yield* store.insertRunWithSteps(
+        { ...newRun(), attachments: [attachment], context },
+        newSteps(["plan", "build"]),
+      );
+      const stored = yield* store.getRun(runId);
+      assert.deepStrictEqual(stored?.attachments, [attachment]);
+      assert.deepStrictEqual(stored?.context, context);
+
+      // A database from before the columns existed gains them with empty defaults.
+      yield* sql`ALTER TABLE pipeline_runs DROP COLUMN input_attachments_json`;
+      yield* sql`ALTER TABLE pipeline_runs DROP COLUMN input_context_json`;
+      yield* ensurePipelineSchema;
+      const older = yield* store.getRun(runId);
+      assert.deepStrictEqual(older?.attachments, []);
+      assert.isUndefined(older?.context);
+    }).pipe(Effect.provide(testLayer)),
 );

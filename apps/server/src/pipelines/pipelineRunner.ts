@@ -8,6 +8,7 @@ import {
   PipelineError,
   PipelineRunId,
   pipelineDefinitionIssues,
+  pipelineTemplateReferences,
   resolvePipelineStepCompaction,
   type OrchestrationV2Actor,
   type OrchestrationV2Run,
@@ -30,6 +31,7 @@ import {
   type RunId,
   type ThreadId,
 } from "@t3tools/contracts";
+import { remapComposerContextAttachments } from "@t3tools/shared/composerContextReferences";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { subagentResultForRun } from "@t3tools/provider-core/server/subagentProjection";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
@@ -40,6 +42,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FiberMap from "effect/FiberMap";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schedule from "effect/Schedule";
@@ -51,11 +54,14 @@ import {
   type DispatchModes,
 } from "../orchestration-v2/DispatchModeLimit.ts";
 import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
+import * as AttachmentClaims from "../orchestration-v2/AttachmentClaims.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { isPullRequestWatchWake } from "../orchestration-v2/pullRequestWatch.ts";
 import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingErrors.ts";
+import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import * as ServerConfig from "../config.ts";
 import { forkParked } from "../serverActivation.ts";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import * as PipelineStore from "./PipelineStore.ts";
@@ -154,6 +160,20 @@ const advancePatch = (run: PipelineRun, now: string): PipelineStore.PipelineRunP
   };
 };
 
+/** Only a step that reads `{{input}}` carries the run's attachments and context. */
+const stepInputMessage = (run: PipelineRun, cursor: number) => {
+  const step = run.definition.steps[cursor];
+  const usesInput =
+    step !== undefined &&
+    pipelineTemplateReferences(step.promptTemplate).some((reference) => reference.kind === "input");
+  return usesInput
+    ? {
+        attachments: run.attachments,
+        ...(run.context === undefined ? {} : { context: run.context }),
+      }
+    : { attachments: [] };
+};
+
 /** Placeholder until the generated title lands, and the fallback if generation fails. */
 const parentTitle = (run: PipelineRun) => {
   const firstLine = run.input.split(/\r?\n/).find((line) => line.trim().length > 0) ?? "";
@@ -172,6 +192,9 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
   const random = yield* SecureRandom.SecureRandom;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const workspace = yield* makePipelineWorkspace();
+  const claimServices = yield* Effect.context<
+    ServerConfig.ServerConfig | FileSystem.FileSystem | DocumentText.DocumentText
+  >();
 
   const permit = yield* Semaphore.make(1);
   const drivers = yield* FiberMap.make<PipelineRunId>();
@@ -621,7 +644,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
             initialMessage: {
               messageId: MessageId.make(`pipeline-run-message:${run.id}:${step.id}:${attempt}`),
               text: launch.prompt,
-              attachments: [],
+              ...stepInputMessage(run, cursor),
             },
             pipeline: { runId: run.id, stepId: step.id },
             createdBy: run.createdBy,
@@ -766,7 +789,7 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
               `pipeline-run-message:${run.id}:${step.stepId}:${step.attempt}`,
             ),
             text: saved.prompt,
-            attachments: [],
+            ...stepInputMessage(run, step.index),
             mode: "auto",
             ...sender,
           }),
@@ -1181,6 +1204,9 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     return yield* result(run.id);
   });
 
+  const releaseClaims = (paths: ReadonlyArray<string>) =>
+    AttachmentClaims.releaseClaimedAttachments(paths).pipe(Effect.provideContext(claimServices));
+
   const start = Effect.fn("PipelineRunner.start")(function* (
     input: PipelineRunStartInput,
     options?: {
@@ -1246,6 +1272,20 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
     // From the insert on, a disconnecting client must not leave a run without a parent or driver.
     return yield* Effect.uninterruptible(
       Effect.gen(function* () {
+        // The run owns its files: claimed into the parent thread, they outlive the pending sweep and
+        // any single step thread. A rejected start claims nothing and creates no run.
+        const submitted = input.attachments ?? [];
+        const claimed = yield* AttachmentClaims.claimPendingAttachments({
+          threadId: parentThreadId,
+          attachments: submitted,
+        }).pipe(
+          Effect.provideContext(claimServices),
+          Effect.mapError((cause) => pipelineError(cause.message, { runId, cause })),
+        );
+        const context =
+          input.context === undefined || input.context.records.length === 0
+            ? undefined
+            : remapComposerContextAttachments(input.context, submitted, claimed.attachments);
         const inserted = yield* store
           .insertRunWithSteps(
             {
@@ -1255,6 +1295,8 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
               projectId: input.projectId,
               parentThreadId,
               input: input.input,
+              attachments: claimed.attachments,
+              ...(context === undefined ? {} : { context }),
               workspaceStrategy: input.workspaceStrategy,
               status: gated ? "paused" : "running",
               pauseReason: gated ? "awaiting_continue" : null,
@@ -1280,8 +1322,12 @@ export const makePipelineRunner = Effect.fn("PipelineRunner.make")(function* (
                   ),
                 ),
             ),
+            Effect.tapError(() => releaseClaims(claimed.claimedPaths)),
           );
-        if (!inserted) return yield* result(runId);
+        if (!inserted) {
+          yield* releaseClaims(claimed.claimedPaths);
+          return yield* result(runId);
+        }
         yield* launchRun(yield* readRun(runId));
         return yield* result(runId);
       }),
