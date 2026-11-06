@@ -28,7 +28,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { formatModelSlugName } from "@t3tools/shared/model";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { StatusPill, type StatusTone } from "../../components/StatusPill";
@@ -45,7 +45,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useQuietThreadVisibleTurnItems } from "../../state/use-thread-detail";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { composerContextProse } from "@t3tools/shared/composerContextReferences";
 import { MessageAttachmentList } from "./ThreadFeed";
 import { pipelineStepTone, stepRevisions, type PipelineStepTone } from "./pipeline-run-view";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
@@ -109,12 +109,39 @@ function runProgressLabel(run: PipelineRun): string {
   return `Step ${Math.min(run.currentStepIndex + 1, total)}/${total}`;
 }
 
+const noop = () => {};
+
+/** Every run push brings a new attachments array; keep up to 100 images from re-rendering. */
+const StartingAttachments = memo(
+  function StartingAttachments(props: {
+    readonly attachments: PipelineRun["attachments"];
+    readonly environmentId: EnvironmentId;
+    readonly onPressPreview: (source: FilePreviewSource) => void;
+  }) {
+    return (
+      <View className="gap-1 px-1">
+        <MessageAttachmentList
+          attachments={props.attachments}
+          environmentId={props.environmentId}
+          onPressPreview={props.onPressPreview}
+          onPlaybackStart={noop}
+        />
+      </View>
+    );
+  },
+  (previous, next) =>
+    previous.environmentId === next.environmentId &&
+    previous.onPressPreview === next.onPressPreview &&
+    previous.attachments.length === next.attachments.length &&
+    previous.attachments.every(
+      (attachment, index) => attachment.id === next.attachments[index]?.id,
+    ),
+);
+
 /**
  * Compact run header for the coordinator sheet: step n/N, name and status. It reads the run
  * without a panel, so the sheet's body stays the coordinator's own chat.
  */
-const noop = () => {};
-
 export function PipelineRunSummaryHeader(props: {
   readonly environmentId: EnvironmentId;
   readonly runId: PipelineRunId;
@@ -271,11 +298,10 @@ export function PipelineRunPanel(props: {
   const stepIndex = run.currentStepIndex;
   const tone = runTone(run, waitingOnPullRequest);
   const stepInput = { runId: run.id, stepIndex };
-  // Inline markers stand for context chips, which show apart from the text; images and files
-  // bind through the attachments list.
-  const startingText = replaceComposerContextReferences(run.input, () => "").trim();
-  const contextRecords = (run.context?.records ?? []).filter(
-    (record) => record.kind !== "image" && record.kind !== "file",
+  const startingText = composerContextProse(run.input);
+  // Image and file chips only bind the attachments listed above them.
+  const contextChips = run.contextChips.filter(
+    (chip) => chip.kind !== "image" && chip.kind !== "file",
   );
   const currentStepName = stepName(run, Math.min(stepIndex, run.steps.length - 1));
   const actionsVisible = actions.continue || actions.retry || actions.skip || actions.cancel;
@@ -430,42 +456,45 @@ export function PipelineRunPanel(props: {
           contentContainerClassName="gap-3 px-3 pb-3"
           showsVerticalScrollIndicator={false}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              promptExpanded ? "Collapse starting prompt" : "Expand starting prompt"
-            }
-            onPress={() => setPromptExpanded((value) => !value)}
-            className="gap-1 px-1 active:opacity-70"
-          >
-            <Text textRole="footnote" className="font-t3-medium text-foreground-muted">
+          {startingText.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                promptExpanded ? "Collapse starting prompt" : "Expand starting prompt"
+              }
+              onPress={() => setPromptExpanded((value) => !value)}
+              className="gap-1 px-1 active:opacity-70"
+            >
+              <Text textRole="footnote" className="font-t3-medium text-foreground-muted">
+                Starting prompt
+              </Text>
+              <Text
+                textRole="body"
+                className="text-foreground"
+                numberOfLines={promptExpanded ? undefined : 4}
+                selectable={promptExpanded}
+              >
+                {startingText}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text textRole="footnote" className="px-1 font-t3-medium text-foreground-muted">
               Starting prompt
             </Text>
-            <Text
-              textRole="body"
-              className="text-foreground"
-              numberOfLines={promptExpanded ? undefined : 4}
-              selectable={promptExpanded}
-            >
-              {startingText}
-            </Text>
-          </Pressable>
+          )}
           {run.attachments.length > 0 ? (
-            <View className="gap-1 px-1">
-              <MessageAttachmentList
-                attachments={run.attachments}
-                environmentId={environmentId}
-                onPressPreview={setPreviewFile}
-                onPlaybackStart={noop}
-              />
-            </View>
+            <StartingAttachments
+              attachments={run.attachments}
+              environmentId={environmentId}
+              onPressPreview={setPreviewFile}
+            />
           ) : null}
-          {contextRecords.length > 0 ? (
+          {contextChips.length > 0 ? (
             <View className="flex-row flex-wrap gap-1.5 px-1">
-              {contextRecords.map((record) => (
-                <View key={record.contextId} className="rounded-full bg-subtle px-2.5 py-1">
+              {contextChips.map((chip) => (
+                <View key={chip.contextId} className="rounded-full bg-subtle px-2.5 py-1">
                   <Text textRole="footnote" className="text-foreground-muted" numberOfLines={1}>
-                    {record.label}
+                    {chip.label}
                   </Text>
                 </View>
               ))}

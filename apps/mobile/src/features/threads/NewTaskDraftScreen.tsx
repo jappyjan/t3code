@@ -46,6 +46,7 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   resolveEnvironmentMachineKind,
+  type EnvironmentId,
 } from "@t3tools/contracts";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
@@ -169,6 +170,20 @@ function NewTaskWorkspaceIcon(props: {
       </View>
     </View>
   );
+}
+
+type UploadedReference = Exclude<UploadedMobileAttachment, { readonly dataUrl: string }>;
+
+/** Pipeline starts force uploads, so an inline data-URL image is a bug, never a fallback. */
+function uploadedReferencesOnly(
+  attachments: ReadonlyArray<UploadedMobileAttachment>,
+): ReadonlyArray<UploadedReference> | null {
+  const references: UploadedReference[] = [];
+  for (const attachment of attachments) {
+    if ("dataUrl" in attachment) return null;
+    references.push(attachment);
+  }
+  return references;
 }
 
 export function NewTaskDraftScreen(props: {
@@ -626,11 +641,43 @@ export function NewTaskDraftScreen(props: {
     locked: isComposerInteractionLocked,
   });
 
-  // Uploads return references; inline images (only on servers without uploads) carry a data URL.
-  const isUploadedReference = (
-    attachment: UploadedMobileAttachment,
-  ): attachment is Exclude<UploadedMobileAttachment, { readonly dataUrl: string }> =>
-    !("dataUrl" in attachment);
+  /** Alerts and returns true when the draft's attachments or context cannot be sent. */
+  function draftContentBlocked(
+    draft: ReturnType<typeof getComposerDraftSnapshot>,
+    environmentId: EnvironmentId,
+  ): boolean {
+    // Recovery may retain over-cap attachments; block send before uploading a turn the server would reject.
+    if (draft.attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+      Dialog.alert(
+        "Too many attachments",
+        `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
+      );
+      return true;
+    }
+    const contextBlockReason = composerContextSendBlockReason(draft.context);
+    if (contextBlockReason) {
+      Dialog.alert("Too much context", contextBlockReason);
+      return true;
+    }
+    const strandedThread = threadContextsOutsideEnvironment({
+      text: draft.text,
+      records: draft.context?.records ?? [],
+      environmentId,
+      linkedEnvironments: flow.linkedEnvironments,
+    })[0];
+    if (strandedThread) {
+      const owner =
+        flow.environments.find(
+          (environment) => environment.environmentId === strandedThread.environmentId,
+        )?.environmentLabel ?? "its machine";
+      Dialog.alert(
+        "Attached thread unavailable",
+        `"${strandedThread.title}" is on another machine. Switch back to ${owner} or remove it from the draft.`,
+      );
+      return true;
+    }
+    return false;
+  }
 
   async function handleStart(): Promise<import("@t3tools/contracts").MessageId | null> {
     const selectedProject = flow.selectedProject;
@@ -665,8 +712,8 @@ export function NewTaskDraftScreen(props: {
     const initialMessageText = draft.text.trim();
 
     if (pipelineId !== null) {
-      // A pipeline run starts on the server: no outbox and no model; the server keeps its attachments and context. A chosen pipeline
-      // never degrades to a normal thread: block when it cannot be started right now.
+      // A pipeline run starts on the server: no outbox and no model. A chosen pipeline never
+      // degrades to a normal thread: block when it cannot be started right now.
       if (!selectedPipeline) {
         Dialog.alert(
           "Pipeline unavailable",
@@ -682,41 +729,13 @@ export function NewTaskDraftScreen(props: {
       if (hasExtras && !attachmentsSupported) {
         Dialog.alert(
           "Pipelines take text only",
-          "Remove attachments and context to start a pipeline.",
+          "This server takes text only for pipelines. Update T3 Code there to attach files, or remove attachments and context.",
         );
         return null;
       }
       if (initialMessageText.length === 0 && !hasExtras) return null;
       if (attachmentBlockReason !== null) return null;
-      if (draft.attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-        Dialog.alert(
-          "Too many attachments",
-          `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
-        );
-        return null;
-      }
-      const pipelineContextBlock = composerContextSendBlockReason(draft.context);
-      if (pipelineContextBlock) {
-        Dialog.alert("Too much context", pipelineContextBlock);
-        return null;
-      }
-      const pipelineStranded = threadContextsOutsideEnvironment({
-        text: draft.text,
-        records: draft.context?.records ?? [],
-        environmentId: selectedProject.environmentId,
-        linkedEnvironments: flow.linkedEnvironments,
-      })[0];
-      if (pipelineStranded) {
-        const owner =
-          flow.environments.find(
-            (environment) => environment.environmentId === pipelineStranded.environmentId,
-          )?.environmentLabel ?? "its machine";
-        Dialog.alert(
-          "Attached thread unavailable",
-          `"${pipelineStranded.title}" is on another machine. Switch back to ${owner} or remove it from the draft.`,
-        );
-        return null;
-      }
+      if (draftContentBlocked(draft, selectedProject.environmentId)) return null;
       if (workspaceSelection.pullRequestReference) {
         Dialog.alert(
           "Pipelines cannot start from a pull request",
@@ -772,7 +791,14 @@ export function NewTaskDraftScreen(props: {
         }
         return null;
       }
-      const uploaded = prepared?.value.status === "ready" ? prepared.value.attachments : [];
+      const uploaded = uploadedReferencesOnly(
+        prepared?.value.status === "ready" ? prepared.value.attachments : [],
+      );
+      if (uploaded === null) {
+        flow.setSubmitting(false);
+        Dialog.alert("Could not upload attachments", "An image was not uploaded to the server.");
+        return null;
+      }
       const pipelineContext = uploadedComposerContext(draft.context, draft.attachments, uploaded);
       const started = await startPipelineRun({
         environmentId: selectedProject.environmentId,
@@ -781,7 +807,7 @@ export function NewTaskDraftScreen(props: {
           pipelineId: selectedPipeline.id,
           projectId: selectedProject.id,
           input: pipelineText,
-          ...(uploaded.length > 0 ? { attachments: uploaded.filter(isUploadedReference) } : {}),
+          ...(uploaded.length > 0 ? { attachments: uploaded } : {}),
           ...(pipelineContext && pipelineContext.records.length > 0
             ? { context: pipelineContext }
             : {}),
@@ -880,37 +906,7 @@ export function NewTaskDraftScreen(props: {
       Dialog.alert(title, detail);
       return null;
     }
-    // Recovery may retain over-cap attachments; block send before uploading a turn the server would reject.
-    if (draft.attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-      Dialog.alert(
-        "Too many attachments",
-        `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
-      );
-      return null;
-    }
-
-    const contextBlockReason = composerContextSendBlockReason(draft.context);
-    if (contextBlockReason) {
-      Dialog.alert("Too much context", contextBlockReason);
-      return null;
-    }
-    const strandedThread = threadContextsOutsideEnvironment({
-      text: draft.text,
-      records: draft.context?.records ?? [],
-      environmentId: selectedProject.environmentId,
-      linkedEnvironments: flow.linkedEnvironments,
-    })[0];
-    if (strandedThread) {
-      const owner =
-        flow.environments.find(
-          (environment) => environment.environmentId === strandedThread.environmentId,
-        )?.environmentLabel ?? "its machine";
-      Dialog.alert(
-        "Attached thread unavailable",
-        `"${strandedThread.title}" is on another machine. Switch back to ${owner} or remove it from the draft.`,
-      );
-      return null;
-    }
+    if (draftContentBlocked(draft, selectedProject.environmentId)) return null;
 
     const message = flow.buildPendingTaskMessage(creationMetadata, {
       currentCheckoutBranch: queuesInsteadOfStarting ? null : flow.currentCheckoutBranchName,

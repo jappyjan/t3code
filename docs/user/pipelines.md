@@ -51,7 +51,9 @@ Pick a pipeline when you start a new thread, or choose **Start pipeline…** in 
 You can also ask an agent to start one for you. Agents can list your pipelines, start, check on,
 continue, and cancel runs when you ask them to.
 
-The starting prompt takes what a chat message takes: images, files and added context (terminal output, review comments, preview annotations, threads, environments). They go with the prompt to every step whose template uses `{{input}}`, each time that step starts, including retries and reruns. Steps that do not use `{{input}}` get none. A server that predates this keeps the text-only limit.
+The starting prompt takes what a chat message takes: images, files and added context (terminal output, review comments, preview annotations, threads, environments). They go with the prompt to every step whose template uses `{{input}}`, each time that step starts, including retries, reruns and feedback. Steps that do not use `{{input}}` get none.
+
+Servers on older versions of T3 Code take text only for pipelines.
 
 ## Work with a run
 

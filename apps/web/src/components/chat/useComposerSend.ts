@@ -96,7 +96,7 @@ import {
   pipelineSendBlock,
   referencedThreadContexts,
 } from "./composerSend.logic";
-import { usePipelineSend } from "./usePipelineSend";
+import { pipelineDraftContentKey, usePipelineSend } from "./usePipelineSend";
 import { useMultipleModelSend } from "./useMultipleModelSend";
 import { type ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import {
@@ -579,6 +579,12 @@ export function useComposerSend(input: ComposerSendInput) {
           previewAnnotationContextReference(directAnnotation.annotation),
         ])
       : promptRef.current;
+    const pipelineDraftAtSend =
+      selectedPipelineId === null
+        ? ""
+        : pipelineDraftContentKey(
+            useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
+          );
     const strandedThread = threadContextsOutsideEnvironment({
       text: promptForSend,
       records: composerThreadContexts,
@@ -885,11 +891,6 @@ export function useComposerSend(input: ComposerSendInput) {
     }
 
     if (selectedPipelineId !== null) {
-      if (composerAttachmentsSnapshot.length > 0 && !turnUsesAttachmentUploads) {
-        sendInFlightRef.current = false;
-        setThreadError(threadIdForSend, "This server cannot upload attachments for a pipeline.");
-        return;
-      }
       const workspaceStrategy = draftWorkspaceStrategy(
         { branch: activeThreadBranch, worktreePath: activeThread.worktreePath },
         baseBranchForWorktree
@@ -935,7 +936,7 @@ export function useComposerSend(input: ComposerSendInput) {
         pipelineId: selectedPipelineId,
         projectId: activeProject.id,
         text: messageTextForSend,
-        promptAtSend: promptForSend,
+        draftAtSend: pipelineDraftAtSend,
         attachments: pipelineAttachments.value,
         context: buildOutgoingMessageContext(
           boundAttachmentIds(pipelineAttachments.value, composerAttachmentsSnapshot),

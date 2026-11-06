@@ -1,31 +1,39 @@
-import type {
-  ChatAttachment,
-  EnvironmentId,
-  OrchestrationMessageContext,
+import {
+  COMPOSER_CONTEXT_KINDS,
+  type ChatAttachment,
+  type EnvironmentId,
+  type KnownComposerContextKind,
+  type PipelineRunContextChip,
 } from "@t3tools/contracts";
 
 import { useAssetUrls } from "../../assets/assetUrls";
-import { formatBytes } from "../../lib/formatBytes";
 import { selectMessageImageResources } from "../../session-logic";
+import { type ChatFileAttachment, isFileAttachment, isImageAttachment } from "../../types";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
-import { AttachmentImage } from "../media/AttachmentImage";
+import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
+import { GuestMessageAttachments } from "./GuestMessageAttachments";
 
-const RECORD_CHIP_KINDS: Partial<Record<string, ContextChipKind>> = {
-  terminal: "terminal",
-  "review-comment": "review-comment",
-  "preview-annotation": "preview-annotation",
-  thread: "thread",
-  environment: "environment",
-};
+const isKnownContextKind = (kind: string): kind is KnownComposerContextKind =>
+  (COMPOSER_CONTEXT_KINDS as ReadonlyArray<string>).includes(kind);
+
+/** Every known context kind has a chip colour of the same name. */
+const chipKind = (kind: string): ContextChipKind => (isKnownContextKind(kind) ? kind : "neutral");
 
 /** The images, files and context that came with a run's starting prompt. */
 export function PipelineStartAttachments(props: {
   readonly environmentId: EnvironmentId;
   readonly attachments: ReadonlyArray<ChatAttachment>;
-  readonly context: OrchestrationMessageContext | undefined;
+  readonly contextChips: ReadonlyArray<PipelineRunContextChip>;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+  readonly onFileOpen: (attachment: ChatFileAttachment) => void;
 }) {
-  const images = props.attachments.filter((attachment) => attachment.type === "image");
-  const files = props.attachments.filter((attachment) => attachment.type !== "image");
+  // An annotation's screenshot belongs to its annotation chip, as in a user message.
+  const shown = props.attachments.filter(
+    (attachment) =>
+      isFileAttachment(attachment) ||
+      (isImageAttachment(attachment) && !attachment.name.startsWith("preview-annotation-")),
+  );
+  const images = shown.filter(isImageAttachment);
   const resources = selectMessageImageResources(images);
   const urls = useAssetUrls(props.environmentId, resources);
   const urlsById = new Map(
@@ -34,47 +42,28 @@ export function PipelineStartAttachments(props: {
       return url ? [[resource.attachmentId, url] as const] : [];
     }),
   );
-  // Image and file records only bind the attachments shown above.
-  const records = (props.context?.records ?? []).filter(
-    (record) => record.kind !== "image" && record.kind !== "file",
-  );
-  if (images.length + files.length + records.length === 0) return null;
+  // Image and file chips only bind the attachments shown above.
+  const chips = props.contextChips.filter((chip) => chip.kind !== "image" && chip.kind !== "file");
+  if (shown.length + chips.length === 0) return null;
   return (
     <div className="flex flex-col items-end gap-1.5">
-      {images.length > 0 ? (
+      <GuestMessageAttachments
+        attachments={shown}
+        imageUrl={(attachment) => urlsById.get(attachment.id)}
+        onOpenImage={(attachment) => {
+          const preview = buildExpandedImagePreview(
+            images.map((image) => ({ ...image, previewUrl: urlsById.get(image.id) ?? "" })),
+            attachment.id,
+          );
+          if (preview) props.onImageExpand(preview);
+        }}
+        onOpenFile={props.onFileOpen}
+      />
+      {chips.length > 0 ? (
         <div className="flex flex-wrap justify-end gap-1.5">
-          {images.map((image) => (
-            <div key={image.id} className="overflow-hidden rounded-xl bg-message">
-              <AttachmentImage
-                name={image.name}
-                mimeType={image.mimeType}
-                src={urlsById.get(image.id)}
-                alt={image.name}
-                decoding="async"
-                loading="lazy"
-                className="block h-24 w-auto min-w-16 max-w-48 transform-gpu object-cover"
-              />
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {files.map((file) => (
-        <ContextChip key={file.id} kind="file" shape="bubble">
-          <ContextChipLabel>{file.name}</ContextChipLabel>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {formatBytes(file.sizeBytes)}
-          </span>
-        </ContextChip>
-      ))}
-      {records.length > 0 ? (
-        <div className="flex flex-wrap justify-end gap-1.5">
-          {records.map((record) => (
-            <ContextChip
-              key={record.contextId}
-              kind={RECORD_CHIP_KINDS[record.kind] ?? "neutral"}
-              shape="inline"
-            >
-              <ContextChipLabel>{record.label}</ContextChipLabel>
+          {chips.map((chip) => (
+            <ContextChip key={chip.contextId} kind={chipKind(chip.kind)} shape="inline">
+              <ContextChipLabel>{chip.label}</ContextChipLabel>
             </ContextChip>
           ))}
         </div>

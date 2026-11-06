@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { composerContextProse } from "@t3tools/shared/composerContextReferences";
 import {
   availablePipelineActions,
   pipelineFeedingStep,
@@ -54,8 +55,9 @@ import { buildThreadRouteParams } from "../../threadRoutes";
 import { cn } from "../../lib/utils";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 import ChatMarkdown from "../ChatMarkdown";
-import { stripInlineContextReferences } from "../../lib/composerContextReferences";
 import { PipelineStartAttachments } from "./PipelineStartAttachments";
+import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import type { ChatFileAttachment } from "../../types";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -112,6 +114,8 @@ export function PipelineRunView(props: {
   readonly environmentId: EnvironmentId;
   readonly runId: PipelineRun["id"];
   readonly cwd: string | undefined;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+  readonly onFileOpen: (attachment: ChatFileAttachment) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const query = useEnvironmentQuery(
@@ -141,6 +145,8 @@ export function PipelineRunView(props: {
           liveRun={run}
           cwd={props.cwd}
           expanded={expanded}
+          onImageExpand={props.onImageExpand}
+          onFileOpen={props.onFileOpen}
         />
       )}
     </div>
@@ -153,6 +159,8 @@ function PipelineRunBody(props: {
   readonly cwd: string | undefined;
   /** Collapsed, only the run's error and actions show. */
   readonly expanded: boolean;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+  readonly onFileOpen: (attachment: ChatFileAttachment) => void;
 }) {
   const { environmentId } = props;
   const openThread = useOpenThread(environmentId);
@@ -160,8 +168,8 @@ function PipelineRunBody(props: {
   // buttons never render from the pre-command state once the lock releases.
   const [commandRun, setCommandRun] = useState<PipelineRun | null>(null);
   const run = newerPipelineRun(props.liveRun, commandRun);
-  // Inline markers stand for context chips, which the starting prompt shows apart from its text.
-  const startingText = stripInlineContextReferences(run.input).trim();
+  // The chips show apart from the text, so each inline marker reads as its label.
+  const startingText = composerContextProse(run.input);
   const actions = availablePipelineActions(run);
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
@@ -375,7 +383,9 @@ function PipelineRunBody(props: {
               <PipelineStartAttachments
                 environmentId={environmentId}
                 attachments={run.attachments}
-                context={run.context}
+                contextChips={run.contextChips}
+                onImageExpand={props.onImageExpand}
+                onFileOpen={props.onFileOpen}
               />
               {startingText.length > 0 ? (
                 <div className="min-w-0 max-w-[80%] rounded-2xl bg-message px-4 py-3 text-message-foreground">
