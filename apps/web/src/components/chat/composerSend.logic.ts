@@ -100,7 +100,7 @@ export function activeDraftPipelineId(
 }
 
 export const PIPELINE_TEXT_ONLY_HINT =
-  "Pipelines take text only. Remove attachments and added context, or choose No pipeline.";
+  "This server takes text only for pipelines. Update T3 Code there to attach files and context, or remove them, or choose No pipeline.";
 
 /**
  * Why a pipeline cannot start from this draft: it carries more than text and the server would
