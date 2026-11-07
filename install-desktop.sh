@@ -86,6 +86,19 @@ relaunch_after_failure() {
 
 log "Installing $new_app over $target"
 
+# Only the newest build should install: a waiting install of an older build gives way to this one.
+PIDFILE="$BUILDS/install.pid"
+if [[ -f "$PIDFILE" ]]; then
+  older="$(cat "$PIDFILE" 2>/dev/null || true)"
+  if [[ -n "$older" && "$older" != "$$" ]] && ps -p "$older" -o command= 2>/dev/null | grep -q "install-desktop.sh"; then
+    log "Superseded: pending install (pid $older) stopped in favour of $new_app"
+    kill "$older" 2>/dev/null || true
+  fi
+fi
+echo "$$" >"$PIDFILE"
+# A superseded run must not delete the newer run's pidfile when it exits.
+trap '[[ "$(cat "$PIDFILE" 2>/dev/null)" == "$$" ]] && rm -f "$PIDFILE"; true' EXIT
+
 if [[ $now -eq 0 ]]; then
   sleep "$START_DELAY_S"
   waited=0
