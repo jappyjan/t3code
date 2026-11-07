@@ -30,7 +30,10 @@ import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import {
   countFinishedPipelineSegments,
+  isPipelineAttentionStatus,
   mergePipelineParentStatus,
+  pipelineAttentionNoun,
+  pipelineStepLabelWithoutAttempt,
   type PipelineProgressStatus,
   type PipelineStepStatus,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
@@ -885,12 +888,17 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
     !nested &&
     props.attentionTarget !== undefined &&
     props.stepStatus != null &&
+    props.stepStatus !== "working" &&
     status === props.stepStatus;
   const attentionTargetThread = props.attentionTarget ?? thread;
   const attentionBadgeLabel =
-    props.attentionLabel === undefined
+    props.attentionLabel === undefined || !isPipelineAttentionStatus(status)
       ? `${thread.title} needs your attention`
-      : `${props.attentionLabel} needs your ${status === "approval" ? "approval" : status === "request" ? "response" : "input"}`;
+      : `${props.attentionLabel} needs your ${pipelineAttentionNoun(status)}`;
+  const earlierAttemptLabel =
+    nested && props.earlierAttempt !== undefined
+      ? pipelineStepLabelWithoutAttempt(props.stepLabel ?? thread.title)
+      : null;
   const openAttention = useCallback(
     () => onSelectThread(attentionTargetThread),
     [onSelectThread, attentionTargetThread],
@@ -920,7 +928,9 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
     [attentionBadge, props.attentionLabel, prBadgeLabel, showsWoke, pipelineAccessibilityActions],
   );
   const rowAccessibilityLabel = [
-    thread.title,
+    earlierAttemptLabel === null
+      ? thread.title
+      : `${earlierAttemptLabel}, attempt ${props.earlierAttempt}`,
     attentionBadge
       ? props.attentionLabel === undefined
         ? "needs your attention"
@@ -1324,6 +1334,38 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
   const titleTextInset = props.project ? projectIconSize + 8 : 0;
   // The slim row's horizontal padding (px-3 in the sidebar, px-5 on screen).
   const rowInset = sidebarPane ? 12 : 20;
+  const titleClassName = cn(
+    "text-base",
+    selected ? selectedThreadRowColors.foregroundClassName : rowAppearance.mutedForegroundClassName,
+    isRegeneratingTitle && "opacity-55",
+  );
+  const statusContent = statusLabel ? (
+    <>
+      <SymbolView
+        name={statusLabel.icon}
+        size={13}
+        tintColorClassName={
+          selected ? selectedThreadRowColors.iconTintClassName : statusLabel.iconTintClassName
+        }
+        type="monochrome"
+        weight="semibold"
+      />
+      <Text
+        className={cn(
+          "text-xs font-t3-bold",
+          (status === "working" || status === "waiting") && "tabular-nums",
+          selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
+        )}
+      >
+        {statusLabel.label}
+        {status === "working" ? (
+          <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
+        ) : status === "waiting" ? (
+          <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
+        ) : null}
+      </Text>
+    </>
+  ) : null;
   const cardContent = (
     <>
       <View className="flex-row items-start gap-2">
@@ -1402,43 +1444,22 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
               </Text>
             </Pressable>
           ) : statusLabel ? (
-            <Pressable
-              // Padding cancelled by negative margin grows the touch target to about 44pt without moving the badge.
-              className={cn("flex-row items-center gap-1", attentionBadge && "-m-3 p-3")}
-              disabled={!attentionBadge}
-              accessibilityRole={attentionBadge ? "button" : undefined}
-              accessibilityLabel={attentionBadge ? attentionBadgeLabel : undefined}
-              onPress={attentionBadge ? openAttention : undefined}
-              // Handle long-press so opening the iOS row menu cannot also open the step on release.
-              onLongPress={attentionBadge ? () => undefined : undefined}
-              style={({ pressed }) => ({ opacity: pressed && attentionBadge ? 0.6 : 1 })}
-            >
-              <SymbolView
-                name={statusLabel.icon}
-                size={13}
-                tintColorClassName={
-                  selected
-                    ? selectedThreadRowColors.iconTintClassName
-                    : statusLabel.iconTintClassName
-                }
-                type="monochrome"
-                weight="semibold"
-              />
-              <Text
-                className={cn(
-                  "text-xs font-t3-bold",
-                  (status === "working" || status === "waiting") && "tabular-nums",
-                  selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
-                )}
+            attentionBadge ? (
+              <Pressable
+                // Padding cancelled by negative margin grows the touch target to about 44pt without moving the badge.
+                className="-m-3 flex-row items-center gap-1 p-3"
+                accessibilityRole="button"
+                accessibilityLabel={attentionBadgeLabel}
+                onPress={openAttention}
+                // Handle long-press so opening the iOS row menu cannot also open the step on release.
+                onLongPress={() => undefined}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
               >
-                {statusLabel.label}
-                {status === "working" ? (
-                  <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
-                ) : status === "waiting" ? (
-                  <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
-                ) : null}
-              </Text>
-            </Pressable>
+                {statusContent}
+              </Pressable>
+            ) : (
+              <View className="flex-row items-center gap-1">{statusContent}</View>
+            )
           ) : (
             <Text
               className={cn(
@@ -1674,22 +1695,21 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
             </View>
           ) : null}
           <View className="min-w-0 flex-1">
-            <Text
-              className={cn(
-                "text-base",
-                selected
-                  ? selectedThreadRowColors.foregroundClassName
-                  : rowAppearance.mutedForegroundClassName,
-                isRegeneratingTitle && "opacity-55",
-              )}
-              numberOfLines={1}
-            >
-              {nested
-                ? props.earlierAttempt === undefined
-                  ? (props.stepLabel ?? thread.title)
-                  : `${props.stepLabel ?? thread.title} · attempt ${props.earlierAttempt}`
-                : thread.title}
-            </Text>
+            {earlierAttemptLabel === null ? (
+              <Text className={titleClassName} numberOfLines={1}>
+                {nested ? (props.stepLabel ?? thread.title) : thread.title}
+              </Text>
+            ) : (
+              // The step name truncates first so the attempt number stays readable.
+              <View className="flex-row">
+                <Text className={cn(titleClassName, "shrink")} numberOfLines={1}>
+                  {earlierAttemptLabel}
+                </Text>
+                <Text className={cn(titleClassName, "shrink-0")} numberOfLines={1}>
+                  {` · attempt ${props.earlierAttempt}`}
+                </Text>
+              </View>
+            )}
             {props.searchMatch ? (
               <ThreadSearchMatchExcerpt
                 sidebar={sidebarPane}
@@ -1840,7 +1860,7 @@ function ThreadListV2EarlierAttemptsRow(props: {
       <View
         className={cn(
           THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME,
-          "min-h-[36px] flex-row items-center gap-1.5 py-1.5",
+          "min-h-[44px] flex-row items-center gap-1.5 py-2",
           sidebarPane && "px-3",
         )}
         style={{ paddingLeft: rowInset + projectIconSize + 8 }}

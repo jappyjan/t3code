@@ -510,6 +510,8 @@ describe("buildThreadListV2Items", () => {
       ["flow", null],
       ["plan-1", 1],
     ]);
+    const listItems = buildThreadListV2ListItems({ items: open.items, pendingTasks: [] });
+    expect(threadJumpTarget(listItems, "thread.jump.4")?.id).toBe("plan-1");
   });
 
   it("keeps a pipeline on the Working shelf while any step works", () => {
