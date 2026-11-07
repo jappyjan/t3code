@@ -37,9 +37,10 @@ longer opens until it is reinstalled, so this task renews it.
 
 In the fork checkout, `git fetch origin fork-tools`. For each of `rebuild-main.md`,
 `scheduled-update.md`, `build-desktop.sh`, `install-desktop.sh`, `build-ios.sh` and
-`install-ios.sh`, run `git show origin/fork-tools:<file> > ~/code/t3dotgg/t3code-fork-tools/<file>`,
-then `chmod +x` the four scripts. Keep following the copy of this file you already read; the
-refreshed one applies from the next run.
+`install-ios.sh`, run `git show origin/fork-tools:<file> > ~/code/t3dotgg/t3code-fork-tools/<file>.new`
+and then `mv` it over `<file>`, then `chmod +x` the four scripts. Never write into a script in place:
+a queued install is still running from it, and bash would read the new text at the old offset. Keep
+following the copy of this file you already read; the refreshed one applies from the next run.
 
 ## 1. Discussion news
 

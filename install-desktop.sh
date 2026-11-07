@@ -76,28 +76,50 @@ active_runs() {
         AND t.updated_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-$STALE_RUN_S seconds')" \
     2>/dev/null || echo 1
 }
-# Once the app is quit, any failure must bring the old one back instead of leaving T3 Code closed.
-relaunch_after_failure() {
+# Once the app is quit, any failure must bring the previous app back instead of leaving T3 Code closed.
+swapped=0
+recover_after_failure() {
+  trap - ERR
+  local prev
+  prev="$PREVIOUS/$(basename "$target")"
+  if [[ $swapped -eq 1 && -d "$prev" ]]; then
+    log "Restoring the previous app"
+    rm -rf "$target" || true
+    ditto "$prev" "$target" || true
+  fi
   if ! app_running && [[ -d "$target" ]]; then
-    log "Failed after quitting $name; relaunching the installed app"
     open "$target" || true
   fi
+  finish "${1:-Not installed: a step failed after quitting $name; the previous app was relaunched. Log: $LOG}"
 }
+is_install() { [[ -n "$1" && "$1" != "$$" ]] && ps -p "$1" -o command= 2>/dev/null | grep -q "install-desktop.sh"; }
 
 log "Installing $new_app over $target"
 
-# Only the newest build should install: a waiting install of an older build gives way to this one.
+# Only the newest build installs. A run still waiting for idle gives way to a newer one; a run that
+# has claimed BUSYFILE is quitting or swapping the app, so the newer one waits for it to end.
+# Each side writes its own file before reading the other's, so one of them always sees the other.
 PIDFILE="$BUILDS/install.pid"
-if [[ -f "$PIDFILE" ]]; then
-  older="$(cat "$PIDFILE" 2>/dev/null || true)"
-  if [[ -n "$older" && "$older" != "$$" ]] && ps -p "$older" -o command= 2>/dev/null | grep -q "install-desktop.sh"; then
-    log "Superseded: pending install (pid $older) stopped in favour of $new_app"
-    kill "$older" 2>/dev/null || true
-  fi
-fi
+BUSYFILE="$BUILDS/install.busy"
+older="$(cat "$PIDFILE" 2>/dev/null || true)"
 echo "$$" >"$PIDFILE"
-# A superseded run must not delete the newer run's pidfile when it exits.
-trap '[[ "$(cat "$PIDFILE" 2>/dev/null)" == "$$" ]] && rm -f "$PIDFILE"; true' EXIT
+release_claims() {
+  local f
+  for f in "$PIDFILE" "$BUSYFILE"; do
+    [[ "$(cat "$f" 2>/dev/null)" == "$$" ]] && rm -f "$f"
+  done
+  true
+}
+trap release_claims EXIT
+busy="$(cat "$BUSYFILE" 2>/dev/null || true)"
+if [[ "$older" != "$busy" ]] && is_install "$older"; then
+  log "Superseded: pending install (pid $older) stopped in favour of $new_app"
+  kill "$older" 2>/dev/null || true
+fi
+if is_install "$busy"; then
+  log "Waiting for the install in progress (pid $busy) to finish"
+  while ps -p "$busy" >/dev/null 2>&1; do sleep 5; done
+fi
 
 if [[ $now -eq 0 ]]; then
   sleep "$START_DELAY_S"
@@ -121,7 +143,12 @@ if [[ $now -eq 0 ]]; then
   log "T3 Code is idle"
 fi
 
-trap relaunch_after_failure ERR
+echo "$$" >"$BUSYFILE"
+if [[ "$(cat "$PIDFILE" 2>/dev/null)" != "$$" ]]; then
+  log "A newer install took over; exiting"
+  exit 0
+fi
+trap recover_after_failure ERR
 if app_running; then
   log "Quitting $name"
   osascript -e "quit app \"$name\"" >/dev/null 2>&1 || true
@@ -155,12 +182,9 @@ for attempt in 1 2 3; do
   sleep 10
 done
 if [[ $backed_up -eq 0 ]]; then
-  trap - ERR
-  relaunch_after_failure
-  finish "Not installed: the state database could not be backed up (it stayed locked). The old app was relaunched. The build is ready: $0 \"$new_app\""
+  recover_after_failure "Not installed: the state database could not be backed up (it stayed locked). The old app was relaunched. The build is ready: $0 \"$new_app\""
   exit 1
 fi
-trap - ERR
 ls -1t "$BACKUPS"/statev2-*.sqlite | tail -n "+$((KEEP_BACKUPS + 1))" | while read -r old; do rm -f "$old"; done
 
 # The cask is no longer managed by nix; uninstall it (never --zap: that deletes ~/.t3/userdata).
@@ -170,6 +194,7 @@ if command -v brew >/dev/null 2>&1 || [[ -x /opt/homebrew/bin/brew ]]; then
     log "Moving the cask's app aside, then removing the cask record"
     rm -rf "$PREVIOUS" && mkdir -p "$PREVIOUS"
     [[ -d "$target" ]] && ditto "$target" "$PREVIOUS/$(basename "$target")"
+    swapped=1
     "$brew_bin" uninstall --cask "$CASK" || log "brew uninstall failed; continuing"
   fi
 fi
@@ -177,6 +202,7 @@ fi
 if [[ -d "$target" ]]; then
   rm -rf "$PREVIOUS" && mkdir -p "$PREVIOUS"
   mv "$target" "$PREVIOUS/"
+  swapped=1
 fi
 log "Copying the new app into /Applications"
 ditto "$new_app" "$target"
@@ -184,6 +210,7 @@ xattr -dr com.apple.quarantine "$target" 2>/dev/null || true
 
 log "Launching $name"
 open "$target"
+trap - ERR
 sleep 45
 if app_running; then
   [[ -f "$(dirname "$new_app")/commit" ]] && cp "$(dirname "$new_app")/commit" "$BUILDS/installed-commit"

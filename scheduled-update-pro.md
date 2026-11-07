@@ -34,8 +34,9 @@ In the fork checkout:
    once. If it is any other branch, stop and report it. Never stash or discard work.
 2. `git fetch origin`. Refresh the tools from the `fork-tools` branch: for each of
    `build-desktop.sh`, `install-desktop.sh`, `rebuild-main.md` and `scheduled-update-pro.md`, run
-   `git show origin/fork-tools:<file> > ~/code/t3dotgg/t3code-fork-tools/<file>`, then `chmod +x`
-   the two scripts.
+   `git show origin/fork-tools:<file> > ~/code/t3dotgg/t3code-fork-tools/<file>.new` and then
+   `mv` it over `<file>`, then `chmod +x` the two scripts. Never write into a script in place: a
+   queued install is still running from it, and bash would read the new text at the old offset.
 
 ## 2. Rebase and rebuild main
 

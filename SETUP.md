@@ -43,7 +43,8 @@ Missing tools:
    ```bash
    mkdir -p ~/code/t3dotgg/t3code-fork-tools
    for f in build-desktop.sh install-desktop.sh scheduled-update-pro.md; do
-     git -C ~/code/t3dotgg/t3code show "origin/fork-tools:$f" > ~/code/t3dotgg/t3code-fork-tools/$f
+     git -C ~/code/t3dotgg/t3code show "origin/fork-tools:$f" > ~/code/t3dotgg/t3code-fork-tools/$f.new
+     mv ~/code/t3dotgg/t3code-fork-tools/$f.new ~/code/t3dotgg/t3code-fork-tools/$f
    done
    chmod +x ~/code/t3dotgg/t3code-fork-tools/*.sh
    ```
