@@ -2,6 +2,7 @@ import { Debouncer } from "@tanstack/react-pacer";
 import { PullRequestMergeMethod } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { create } from "zustand";
+import { withPipelineExpanded } from "@t3tools/client-runtime/state/pipeline-nesting";
 import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
@@ -332,9 +333,12 @@ function setPipelineExpanded(state: UiState, threadKey: string, expanded: boolea
   }
   return {
     ...state,
-    expandedPipelineThreadKeys: expanded
-      ? [...current, threadKey].slice(-MAX_EXPANDED_PIPELINES)
-      : current.filter((key) => key !== threadKey),
+    expandedPipelineThreadKeys: withPipelineExpanded(
+      current,
+      threadKey,
+      expanded,
+      MAX_EXPANDED_PIPELINES,
+    ),
   };
 }
 
