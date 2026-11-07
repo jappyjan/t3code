@@ -25,7 +25,11 @@ import {
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type PipelineStepStatus,
+  isPipelineAttentionStatus,
   mergePipelineParentStatus,
+  pipelineAttentionNoun,
+  pipelineEarlierFoldKey,
+  pipelineStepLabelWithoutAttempt,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
 import {
   AuthOrchestrationOperateScope,
@@ -525,7 +529,7 @@ function SidebarPipelineSteps(props: {
             event.stopPropagation();
             props.onToggleEarlier();
           }}
-          className="flex h-7 w-full cursor-pointer items-center gap-1 ps-9 pe-2.5 text-start text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="flex h-8 w-full cursor-pointer items-center gap-1 ps-9 pe-2.5 text-start text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <ChevronRightIcon
             aria-hidden
@@ -881,7 +885,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         earlierIndex={props.pipelineEarlierIndex ?? pipelineStepProps.length}
         onToggleEarlier={() =>
           props.onPipelineExpandedChange?.(
-            `${threadKey}#earlier`,
+            pipelineEarlierFoldKey(threadKey),
             props.pipelineEarlierExpanded !== true,
           )
         }
@@ -976,15 +980,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     props.stepStatus ?? null,
   );
   // A run's attention badge opens the step that needs the user, or the parent when it has no thread yet.
+  // Slim rows show a time, not a status, so there is no badge to tap.
   const attentionBadge =
-    variant === "card" &&
+    variant !== "step" &&
+    variant !== "slim" &&
     props.attentionThreadId !== undefined &&
-    props.stepStatus != null &&
+    isPipelineAttentionStatus(status) &&
     status === props.stepStatus;
   const attentionBadgeLabel =
-    props.attentionLabel === undefined
+    props.attentionLabel === undefined || !isPipelineAttentionStatus(status)
       ? `${thread.title} needs your attention`
-      : `${props.attentionLabel} needs your ${status === "approval" ? "approval" : status === "request" ? "response" : "input"}. Open ${props.attentionLabel}`;
+      : `${props.attentionLabel} needs your ${pipelineAttentionNoun(status)}. Open ${props.attentionLabel}`;
   const handleAttentionClick = (event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1068,6 +1074,30 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           className: "text-success-foreground",
                         }
                       : null;
+  const attentionBadgeButton = (badge: NonNullable<typeof topStatus>, iconClassName: string) => (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            data-sidebar-action-for={threadKey}
+            aria-label={attentionBadgeLabel}
+            onClick={handleAttentionClick}
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              badge.className,
+            )}
+          >
+            <TopStatusIcon icon={badge.icon} className={iconClassName} />
+            {badge.label}
+          </button>
+        }
+      />
+      <TooltipPopup side="top">
+        {props.attentionLabel === undefined ? "Open thread" : `Open ${props.attentionLabel}`}
+      </TooltipPopup>
+    </Tooltip>
+  );
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
@@ -1288,10 +1318,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       </span>
     ) : null;
 
+  const earlierAttemptLabel =
+    variant === "step" && props.earlierAttempt !== undefined
+      ? pipelineStepLabelWithoutAttempt(props.stepLabel ?? thread.title)
+      : null;
   const rowTitle =
-    variant === "step" && props.earlierAttempt !== undefined && !/attempt \d/.test(thread.title)
-      ? `${thread.title} · attempt ${props.earlierAttempt}`
-      : thread.title;
+    earlierAttemptLabel === null
+      ? thread.title
+      : `${earlierAttemptLabel} · attempt ${props.earlierAttempt}`;
   const accessibility = resolveSidebarRowAccessibility({
     title: rowTitle,
     statusLabel: topStatus?.label ?? null,
@@ -1337,11 +1371,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       dir={textDirection(thread.title)}
     >
       {variant === "step" ? (
-        props.earlierAttempt === undefined ? (
+        earlierAttemptLabel === null ? (
           (props.stepLabel ?? thread.title)
         ) : (
           <>
-            <span className="min-w-0 truncate">{props.stepLabel ?? thread.title}</span>
+            <span className="min-w-0 truncate">{earlierAttemptLabel}</span>
             <span className="shrink-0 whitespace-pre"> · attempt {props.earlierAttempt}</span>
           </>
         )
@@ -1583,7 +1617,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   <span
                     className={cn(
                       "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-                      !isWoke && "group-any-hover/sidebar-row:opacity-0",
+                      !isWoke && !attentionBadge && "group-any-hover/sidebar-row:opacity-0",
+                      attentionBadge && "order-last text-xs",
                     )}
                   >
                     {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
@@ -1609,6 +1644,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         />
                         <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
                       </Tooltip>
+                    ) : attentionBadge && topStatus ? (
+                      attentionBadgeButton(topStatus, "size-3")
                     ) : inFolder && topStatus ? (
                       // Folder rows have no status line, so the status takes the time slot.
                       <span
@@ -1678,7 +1715,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             onPointerDown={handleActionPointerDown}
                             className={cn(
                               "pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                              isWoke && "group-any-hover/sidebar-row:static",
+                              (isWoke || attentionBadge) && "group-any-hover/sidebar-row:static",
                             )}
                           />
                         }
@@ -1778,35 +1815,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         ? "pointer-events-auto"
                         : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:absolute group-any-hover/sidebar-row:right-0 group-any-hover/sidebar-row:opacity-0",
                       "flex items-center self-center justify-self-end tabular-nums text-secondary-label",
+                      // Row controls appear beside the badge, not where it sat.
+                      attentionBadge && "order-last",
                       snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
                     )}
                   >
                     {topStatus ? (
                       attentionBadge ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                data-sidebar-action-for={threadKey}
-                                aria-label={attentionBadgeLabel}
-                                onClick={handleAttentionClick}
-                                className={cn(
-                                  "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                                  topStatus.className,
-                                )}
-                              >
-                                <TopStatusIcon icon={topStatus.icon} className="size-4" />
-                                {topStatus.label}
-                              </button>
-                            }
-                          />
-                          <TooltipPopup side="top">
-                            {props.attentionLabel === undefined
-                              ? "Open thread"
-                              : `Open ${props.attentionLabel}`}
-                          </TooltipPopup>
-                        </Tooltip>
+                        attentionBadgeButton(topStatus, "size-4")
                       ) : isWokeStatus ? (
                         <Tooltip>
                           <TooltipTrigger
