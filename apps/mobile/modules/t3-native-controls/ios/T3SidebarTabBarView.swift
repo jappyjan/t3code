@@ -11,7 +11,11 @@ private final class WorkspaceTabBar: UITabBar {
     let candidates = identified.isEmpty ? tabButtons(in: self) { _ in true } : identified
     // Pressing a tab adds a magnified copy of the row for the glass lens, without identifiers.
     // Sizing compose from it leaves compose enlarged until the bar lays out again.
-    let buttons = candidates.filter { convert($0.bounds, from: $0).size == $0.bounds.size }
+    // Converted sizes carry float noise, so exact equality would drop real tabs.
+    let buttons = candidates.filter {
+      let converted = convert($0.bounds, from: $0).size
+      return abs(converted.width - $0.bounds.width) < 0.5 && abs(converted.height - $0.bounds.height) < 0.5
+    }
     let row = buttons.reduce(CGRect.null) { $0.union(convert($1.bounds, from: $1)) }
     if !row.isNull { onContentLayout?(row) }
   }
@@ -52,6 +56,8 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
       composeButton.isHidden = !showsCompose
       tabBarTrailing.constant = showsCompose ? (compact ? -64 : -76) : 0
       setNeedsLayout()
+      // Compose is placed only from the bar's layout pass, which skips it while hidden.
+      tabBar.setNeedsLayout()
     }
   }
   var appearance = "light" {
