@@ -16,9 +16,11 @@ import {
   pipelineAttentionTargets,
   pipelineParentsOfSteps,
   pipelineProgressSegments,
+  pipelineShownSteps,
   pipelineStepAttempts,
   pipelineStepLabel,
   pipelineStepsOfParents,
+  withPipelineExpanded,
 } from "./pipelineNesting.ts";
 
 const env = EnvironmentId.make("env-1");
@@ -411,10 +413,12 @@ describe("pipelineAttentionTargets and pipelineStepAttempts", () => {
     status: "running" | "paused",
     currentStepIndex: number,
     entries: ReadonlyArray<[string, string, string | null]>,
+    pauseReason: string | null = status === "paused" ? "awaiting_handoff" : null,
   ) =>
     ({
       id: PipelineRunId.make("r1"),
       status,
+      pauseReason,
       currentStepIndex,
       steps: entries.map(([stepId, entryStatus, childThreadId]) => ({
         stepId,
@@ -490,8 +494,31 @@ describe("pipelineAttentionTargets and pipelineStepAttempts", () => {
       status: () => "ready",
       expected: { marked: [], target: null },
     },
-  ])("$name", ({ run, status, expected }) => {
-    const started = threads.filter((s) => run.steps.some((e) => e.childThreadId === s.id));
+    {
+      name: "marks no older thread of a gated step the run is paused before",
+      run: runOf(
+        "paused",
+        1,
+        [
+          ["plan", "completed", "s1"],
+          ["build", "pending", null],
+          ["qa", "pending", null],
+        ],
+        "awaiting_continue",
+      ),
+      steps: threads,
+      status: () => "ready",
+      expected: { marked: [], target: null },
+    },
+    {
+      name: "ignores an earlier attempt asking for approval",
+      run: runOf("running", 2, entries),
+      steps: [titled("s0", "qa", "2026-01-01T00:00:30Z"), ...threads],
+      status: (s: { id: string }) => (s.id === "s0" ? "approval" : "working"),
+      expected: { marked: [], target: null },
+    },
+  ])("$name", ({ run, steps, status, expected }) => {
+    const started = steps ?? threads.filter((s) => run.steps.some((e) => e.childThreadId === s.id));
     expect(summarize(pipelineAttentionTargets(run, started, status))).toEqual(expected);
   });
 
@@ -524,5 +551,44 @@ describe("pipelineAttentionTargets and pipelineStepAttempts", () => {
       "s2",
       "s3",
     ]);
+  });
+
+  it("shows the open step when collapsed, even an earlier attempt, and folds the rest", () => {
+    const attempts = pipelineStepAttempts(undefined, [
+      titled("a1", "plan", "2026-01-01T00:01:00Z"),
+      titled("a2", "plan", "2026-01-01T00:02:00Z"),
+      titled("b1", "build", "2026-01-01T00:03:00Z"),
+    ]);
+    const shown = (expanded: boolean, foldExpanded: boolean, open: string | null) => {
+      const result = pipelineShownSteps(attempts, {
+        expanded,
+        foldExpanded,
+        isOpen: (thread) => thread.id === open,
+      });
+      return {
+        current: result.current.map((t) => t.id),
+        earlier: result.earlier.map((e) => e.thread.id),
+        foldCount: result.foldCount,
+      };
+    };
+    expect(shown(false, true, "a1")).toEqual({ current: [], earlier: ["a1"], foldCount: 0 });
+    expect(shown(false, false, "b1")).toEqual({ current: ["b1"], earlier: [], foldCount: 0 });
+    expect(shown(true, false, "a1")).toEqual({
+      current: ["a2", "b1"],
+      earlier: ["a1"],
+      foldCount: 1,
+    });
+    expect(shown(true, true, null)).toEqual({
+      current: ["a2", "b1"],
+      earlier: ["a1"],
+      foldCount: 1,
+    });
+  });
+
+  it("closes a run's earlier-attempts fold when the run collapses", () => {
+    const keys = withPipelineExpanded(["a", "b"], "b#earlier", true, 3);
+    expect(keys).toEqual(["a", "b", "b#earlier"]);
+    expect(withPipelineExpanded(keys, "c", true, 3)).toEqual(["b", "b#earlier", "c"]);
+    expect(withPipelineExpanded(keys, "b", false, 3)).toEqual(["a"]);
   });
 });

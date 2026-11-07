@@ -486,10 +486,7 @@ describe("pipelineRunNeedsYou", () => {
     },
     {
       name: "a failed step",
-      run: withThreads(
-        run({ pauseReason: "step_failed", steps: run({}).steps.map((s) => ({ ...s })) }),
-        ["t0", "t1", null],
-      ),
+      run: withThreads(run({ pauseReason: "step_failed" }), ["t0", "t1", null]),
       status: () => "failed",
       expected: { text: "Implement failed", threadId: "t1" },
     },
@@ -498,6 +495,12 @@ describe("pipelineRunNeedsYou", () => {
       run: withThreads(run({ status: "running", pauseReason: null }), ["t0", "t1", null]),
       status: (s: { id: string }) => (s.id === "t0" ? "approval" : "working"),
       expected: { text: "Plan is asking for approval", threadId: "t0" },
+    },
+    {
+      name: "an earlier step's request while the paused step works again",
+      run: withThreads(run({}), ["t0", "t1", null]),
+      status: (s: { id: string }) => (s.id === "t0" ? "request" : "working"),
+      expected: { text: "Plan is waiting for your response", threadId: "t0" },
     },
     {
       name: "a pause before a gated step with no thread",

@@ -17,8 +17,10 @@ import {
   livePipelineRunOf,
   nestPipelineSteps,
   pipelineAttentionTargets,
+  pipelineEarlierFoldKey,
   pipelineParentsOfSteps,
   pipelineProgressSegments,
+  pipelineShownSteps,
   pipelineStepAttempts,
   pipelineStepLabel,
   pipelineStepsOfParents,
@@ -1005,21 +1007,16 @@ export function buildThreadListV2Items(input: {
     const attention = isRun
       ? pipelineAttentionTargets(run, steps ?? [], resolveThreadListV2Status)
       : undefined;
-    const foldKey = `${key}#earlier`;
+    const foldKey = pipelineEarlierFoldKey(key);
     const foldExpanded = expandedPipelines.has(foldKey);
-    // Collapsed, only the open step shows; an open earlier attempt stays visible under a closed fold.
-    const isOpen = (step: EnvironmentThreadShell) =>
-      `${step.environmentId}:${step.id}` === selectedThreadKey;
-    const shownCurrent = expanded
-      ? (attempts?.current ?? [])
-      : (attempts?.current.filter(isOpen) ?? []);
-    const earlierAll = attempts?.earlier ?? [];
-    const shownEarlier = expanded
-      ? foldExpanded
-        ? earlierAll
-        : earlierAll.filter((entry) => isOpen(entry.thread))
-      : earlierAll.filter((entry) => isOpen(entry.thread));
-    const showFold = expanded && earlierAll.length > 0;
+    const shown =
+      attempts === undefined
+        ? undefined
+        : pipelineShownSteps(attempts, {
+            expanded,
+            foldExpanded,
+            isOpen: (step) => `${step.environmentId}:${step.id}` === selectedThreadKey,
+          });
     const attentionStepLabel =
       attention?.target == null
         ? undefined
@@ -1059,8 +1056,8 @@ export function buildThreadListV2Items(input: {
       };
     };
     const stepItems = [
-      ...shownCurrent.map((step) => stepItem(step)),
-      ...(showFold
+      ...(shown?.current.map((step) => stepItem(step)) ?? []),
+      ...(shown !== undefined && shown.foldCount > 0
         ? [
             {
               thread,
@@ -1070,11 +1067,11 @@ export function buildThreadListV2Items(input: {
               wokeAt: null,
               isLast: false,
               nested: true,
-              earlierFold: { foldKey, count: earlierAll.length, expanded: foldExpanded },
+              earlierFold: { foldKey, count: shown.foldCount, expanded: foldExpanded },
             } satisfies ThreadListV2Item,
           ]
         : []),
-      ...shownEarlier.map((entry) => stepItem(entry.thread, entry.attempt)),
+      ...(shown?.earlier.map((entry) => stepItem(entry.thread, entry.attempt)) ?? []),
     ];
     stepItems.forEach((stepEntry, index) => {
       items.push({ ...stepEntry, isLastStep: index === stepItems.length - 1 });

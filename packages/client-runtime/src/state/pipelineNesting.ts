@@ -173,11 +173,7 @@ export function nestPipelineSteps<T extends PipelineNestable>(
     stepsByParentKey.set(parentKey, steps);
   }
   for (const [parentKey, steps] of stepsByParentKey) {
-    steps.sort(
-      (left, right) =>
-        timestampMs(left.createdAt) - timestampMs(right.createdAt) ||
-        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
-    );
+    steps.sort(compareCreated);
     const parent = shells[indexByKey.get(parentKey)!]!;
     const parentIndex = indexByKey.get(parentKey)!;
     slotByParentKey.set(
@@ -346,9 +342,23 @@ export function countFinishedPipelineSegments(
   ).length;
 }
 
+export type PipelineAttentionStatus = Exclude<PipelineStepStatus, "working">;
+
+/** Whether a row's status is one that waits on the user, so its badge leads to the step. */
+export function isPipelineAttentionStatus(
+  status: string | null,
+): status is PipelineAttentionStatus {
+  return status !== null && ATTENTION_THREAD_STATUSES.has(status);
+}
+
+/** What a step waiting on the user wants, for "<Step> needs your …". */
+export function pipelineAttentionNoun(status: PipelineAttentionStatus): string {
+  return status === "approval" ? "approval" : status === "request" ? "response" : "input";
+}
+
 export interface PipelineAttentionTargets<T> {
   /** Step threads that need the user, by `scopedThreadKey`, with the status their row shows. */
-  readonly attentionThreads: ReadonlyMap<string, PipelineStepStatus>;
+  readonly attentionThreads: ReadonlyMap<string, PipelineAttentionStatus>;
   /** The thread the run's attention badge opens; null opens the parent. */
   readonly target: T | null;
 }
@@ -356,27 +366,30 @@ export interface PipelineAttentionTargets<T> {
 /**
  * Which current-attempt step threads need the user: a paused run's current step while it is
  * not busy (including a failed or stopped one), or a step thread asking for approval or input.
- * A row shows its own status when it is one of those, else `input` like the parent.
+ * A run paused before a step has not started it, so that step's older thread is not the one.
  */
 export function pipelineAttentionTargets<T extends PipelineNestable & { readonly title: string }>(
-  run: PausedRunInput | undefined,
+  run: (PausedRunInput & Pick<PipelineRunSummary, "pauseReason">) | undefined,
   steps: readonly T[],
   threadStatus: (step: T) => string,
 ): PipelineAttentionTargets<T> {
-  const attentionThreads = new Map<string, PipelineStepStatus>();
+  const attentionThreads = new Map<string, PipelineAttentionStatus>();
   let current: T | null = null;
   let first: T | null = null;
   pipelineProgressSegments(run, steps, threadStatus).forEach((segment, index) => {
     const thread = segment.thread;
     if (thread === null) return;
     const own = threadStatus(thread);
-    const asksUser = ATTENTION_THREAD_STATUSES.has(own);
+    const isCurrent = run !== undefined && index === run.currentStepIndex;
     const pausedHere =
-      run?.status === "paused" && index === run.currentStepIndex && !BUSY_THREAD_STATUSES.has(own);
-    if (!asksUser && !pausedHere && segment.status !== "attention") return;
-    attentionThreads.set(shellKey(thread), asksUser ? (own as PipelineStepStatus) : "input");
+      isCurrent &&
+      run.status === "paused" &&
+      run.pauseReason !== "awaiting_continue" &&
+      !BUSY_THREAD_STATUSES.has(own);
+    if (!isPipelineAttentionStatus(own) && !pausedHere) return;
+    attentionThreads.set(shellKey(thread), isPipelineAttentionStatus(own) ? own : "input");
     first ??= thread;
-    if (run !== undefined && index === run.currentStepIndex) current = thread;
+    if (isCurrent) current = thread;
   });
   return { attentionThreads, target: current ?? first };
 }
@@ -388,6 +401,29 @@ export interface PipelineStepAttempts<T> {
   readonly earlier: ReadonlyArray<{ readonly thread: T; readonly attempt: number }>;
   /** Threads of steps a live run will redo (`pending`); their finished state is not news. */
   readonly redoKeys: ReadonlySet<string>;
+}
+
+function compareCreated(left: PipelineNestable, right: PipelineNestable): number {
+  return (
+    timestampMs(left.createdAt) - timestampMs(right.createdAt) ||
+    (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+  );
+}
+
+/** One run's step threads, oldest first, as the sidebar orders them. */
+export function pipelineRunStepShells<T extends PipelineNestable>(
+  shells: readonly T[],
+  environmentId: EnvironmentId,
+  runId: string,
+): readonly T[] {
+  return shells
+    .filter(
+      (shell) =>
+        shell.environmentId === environmentId &&
+        shell.pipeline?.runId === runId &&
+        shell.pipeline.stepId !== null,
+    )
+    .sort(compareCreated);
 }
 
 /** Splits a run's step threads (oldest first) into current and earlier attempts, as the progress bar reads them. */
@@ -424,10 +460,49 @@ export function pipelineStepAttempts<T extends PipelineNestable>(
     });
   }
   for (const [stepId, list] of byStepId) if (!order.includes(stepId)) loose.push(...list);
-  loose.sort(
-    (left, right) =>
-      timestampMs(left.createdAt) - timestampMs(right.createdAt) ||
-      (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
-  );
+  loose.sort(compareCreated);
   return { current: [...current, ...loose], earlier, redoKeys };
+}
+
+/** The persisted expansion key of a run's earlier-attempts fold. */
+export function pipelineEarlierFoldKey(parentKey: string): string {
+  return `${parentKey}#earlier`;
+}
+
+/** Expanded run keys, newest last and at most `max`. Collapsing a run also closes its fold. */
+export function withPipelineExpanded(
+  keys: readonly string[],
+  key: string,
+  expanded: boolean,
+  max: number,
+): string[] {
+  if (expanded) return [...keys.filter((candidate) => candidate !== key), key].slice(-max);
+  const foldKey = pipelineEarlierFoldKey(key);
+  return keys.filter((candidate) => candidate !== key && candidate !== foldKey);
+}
+
+/**
+ * The step rows a run shows. Collapsed, only the open step does; expanded, its current attempts
+ * and a fold of earlier ones. An open earlier attempt stays visible under a closed fold.
+ */
+export function pipelineShownSteps<T>(
+  attempts: PipelineStepAttempts<T>,
+  options: {
+    readonly expanded: boolean;
+    readonly foldExpanded: boolean;
+    readonly isOpen: (thread: T) => boolean;
+  },
+) {
+  const { expanded, isOpen } = options;
+  const foldExpanded = expanded && options.foldExpanded;
+  return {
+    current: expanded ? attempts.current : attempts.current.filter(isOpen),
+    earlier: attempts.earlier.filter((entry) => foldExpanded || isOpen(entry.thread)),
+    foldCount: expanded ? attempts.earlier.length : 0,
+  };
+}
+
+/** A step label without the server title's " (attempt n)", for rows that show their attempt. */
+export function pipelineStepLabelWithoutAttempt(label: string): string {
+  return label.replace(/ \(attempt \d+\)$/, "");
 }

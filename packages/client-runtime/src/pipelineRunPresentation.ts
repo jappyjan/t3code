@@ -373,11 +373,12 @@ export interface PipelineNeedsYou {
   /** The step's thread, or null when the run waits before a step that has no thread yet. */
   readonly threadId: ThreadId | null;
   readonly stepName: string;
+  readonly stepIndex: number;
 }
 
 /**
  * What the run's overview leads with when it needs the user: the step `pipelineAttentionTargets`
- * picks, as the sidebar's badge does. `steps` are the run's step thread shells.
+ * picks, as the sidebar's badge does. `steps` are the run's step thread shells, oldest first.
  */
 export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly title: string }>(
   run: PipelineRun,
@@ -387,6 +388,7 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
   const { target } = pipelineAttentionTargets(
     {
       status: run.status,
+      pauseReason: run.pauseReason,
       currentStepIndex: run.currentStepIndex,
       steps: run.steps.map((step) => ({
         stepId: step.stepId,
@@ -401,30 +403,36 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
   if (target === null) {
     if (run.status === "paused" && run.pauseReason === "awaiting_continue") {
       const name = stepName(run, run.currentStepIndex);
-      return { text: `Paused before ${name}`, threadId: null, stepName: name };
+      return {
+        text: `Paused before ${name}`,
+        threadId: null,
+        stepName: name,
+        stepIndex: run.currentStepIndex,
+      };
     }
     return null;
   }
-  const entry =
-    run.steps.find((step) => step.childThreadId === target.id) ??
-    run.steps.find((step) => step.stepId === target.pipeline?.stepId);
-  const name = stepName(run, entry?.index ?? run.currentStepIndex);
+  const stepIndex =
+    (
+      run.steps.find((step) => step.childThreadId === target.id) ??
+      run.steps.find((step) => step.stepId === target.pipeline?.stepId)
+    )?.index ?? run.currentStepIndex;
+  const name = stepName(run, stepIndex);
   const own = threadStatus(target);
+  const pausedHere = run.status === "paused" && stepIndex === run.currentStepIndex;
   const reason =
     own === "approval"
       ? "is asking for approval"
       : own === "input"
         ? "is asking for input"
-        : run.pauseReason === "awaiting_handoff"
-          ? "ended without handing off"
-          : run.pauseReason === "step_failed"
-            ? "failed"
-            : run.pauseReason === "step_stopped"
-              ? "stopped"
-              : "needs you";
-  return {
-    text: `${name} ${reason}`,
-    threadId: target.id,
-    stepName: name,
-  };
+        : own === "request"
+          ? "is waiting for your response"
+          : pausedHere && run.pauseReason === "awaiting_handoff"
+            ? "ended without handing off"
+            : pausedHere && run.pauseReason === "step_failed"
+              ? "failed"
+              : pausedHere && run.pauseReason === "step_stopped"
+                ? "stopped"
+                : "needs you";
+  return { text: `${name} ${reason}`, threadId: target.id, stepName: name, stepIndex };
 }

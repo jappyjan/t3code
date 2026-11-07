@@ -40,6 +40,8 @@ import {
   livePipelineRunOf,
   nestPipelineSteps,
   pipelineParentsOfSteps,
+  pipelineEarlierFoldKey,
+  pipelineShownSteps,
   pipelineStepAttempts,
   pipelineStepLabel,
   pipelineStepsOfParents,
@@ -592,26 +594,23 @@ function useSidebarThreads(input: {
       readonly attempts: PipelineStepAttempts<EnvironmentThreadShell>;
       readonly earlierExpanded: boolean;
       readonly currentShown: number;
+      readonly foldCount: number;
     }
   >();
   for (const [parentKey, steps] of pipelineStepsByParentKey) {
     const attempts = pipelineStepAttempts(livePipelineRunOf(pipelineLiveRuns, steps[0]!), steps);
-    const isOpen = (step: EnvironmentThreadShell) => threadShellKey(step) === routeRowThreadKey;
-    const earlierExpanded = expandedPipelines.has(`${parentKey}#earlier`);
-    // Collapsed, only the open step shows; an open earlier attempt stays visible under a closed fold.
-    const currentShown = expandedPipelines.has(parentKey)
-      ? attempts.current
-      : attempts.current.filter(isOpen);
-    const earlierShown = attempts.earlier
-      .map((entry) => entry.thread)
-      .filter((step) =>
-        expandedPipelines.has(parentKey) && earlierExpanded ? true : isOpen(step),
-      );
-    const shown = [...currentShown, ...earlierShown];
+    const earlierExpanded = expandedPipelines.has(pipelineEarlierFoldKey(parentKey));
+    const shownSteps = pipelineShownSteps(attempts, {
+      expanded: expandedPipelines.has(parentKey),
+      foldExpanded: earlierExpanded,
+      isOpen: (step) => threadShellKey(step) === routeRowThreadKey,
+    });
+    const shown = [...shownSteps.current, ...shownSteps.earlier.map((entry) => entry.thread)];
     pipelineAttemptsByParentKey.set(parentKey, {
       attempts,
       earlierExpanded,
-      currentShown: currentShown.length,
+      currentShown: shownSteps.current.length,
+      foldCount: shownSteps.foldCount,
     });
     if (shown.length > 0) shownPipelineStepsByParentKey.set(parentKey, shown);
   }
@@ -3666,11 +3665,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 ? undefined
                                 : pipelineStepLabel(pipelineLiveRuns, attention.target)
                             }
-                            pipelineEarlierCount={
-                              expandedPipelines.has(threadKey)
-                                ? attemptInfo?.attempts.earlier.length
-                                : undefined
-                            }
+                            pipelineEarlierCount={attemptInfo?.foldCount}
                             pipelineEarlierExpanded={attemptInfo?.earlierExpanded}
                             pipelineEarlierIndex={attemptInfo?.currentShown}
                             pipelineProgress={

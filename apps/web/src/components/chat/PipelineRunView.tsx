@@ -11,6 +11,7 @@ import {
   threadWatchesPullRequest,
   stepName,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
+import { pipelineRunStepShells } from "@t3tools/client-runtime/state/pipeline-nesting";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -257,14 +258,7 @@ function PipelineRunBody(props: {
   const shells = useQuietThreadShells();
   const needsYou = pipelineRunNeedsYou(
     run,
-    shells
-      .filter(
-        (shell) =>
-          shell.environmentId === environmentId &&
-          shell.pipeline?.runId === run.id &&
-          shell.pipeline.stepId !== null,
-      )
-      .toSorted((left, right) => left.createdAt.localeCompare(right.createdAt)),
+    pipelineRunStepShells(shells, environmentId, run.id),
     resolveSidebarThreadStatus,
   );
   const needsYouThreadId = needsYou?.threadId ?? null;
