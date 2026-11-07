@@ -118,10 +118,12 @@ End with a short report:
   use (Pipelines: orchestration, thread shells, sidebar, MCP toolkit, settings, mobile threads;
   Linear: the pull request page and source control, composer context, settings secrets, routes;
   multi-repo: projects/settings, checkpointing, worktrees/TaskFolderService, diff/review, Git
-  actions, provider adapters, mobile review/Git).
+  actions, provider adapters, mobile review/Git; host capacity: resource telemetry/HostResources,
+  agent scope, run admission and the run queue, settings, sidebar, mobile home).
 - **Rebase**: per feature branch, conflicts and how you resolved them, fixes you committed and
   check results; then the pushed SHAs of `feat/pipelines`, `feat/linear`,
-  `feat/multi-repo-projects` and `main`.
+  `feat/multi-repo-projects`, `feat/host-capacity` and `main`. Say whether upstream PR #27253
+  merged or got new commits.
 - **App**: the built version and whether its install is queued, plus the previous install's
   outcome from `install-status`.
 - **iOS**: the built version and whether its installs are queued, or why no build was needed.
@@ -130,5 +132,5 @@ End with a short report:
   whose install was rejected for signing needs `build-ios.sh --register-device <udid>` once, with
   it plugged in: say so.
 - **MacBook Pro**: chat launched (link), not needed (main unchanged), or why the launch failed.
-- **Main**: unchanged, or pushed <short sha> (and whether #26254 landed or a branch needed a
+- **Main**: unchanged, or pushed <short sha> (and whether #26254 or #27253 landed or a branch needed a
   conflict fix), or why skipped.

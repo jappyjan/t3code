@@ -79,7 +79,7 @@ report: the Air's own 00:00 run installs it later.
 
 One line each:
 
-- **Main**: unchanged, or pushed `<short sha>` (and whether #26254 landed or a branch needed a
+- **Main**: unchanged, or pushed `<short sha>` (and whether #26254 or #27253 landed or a branch needed a
   conflict fix), or why it was skipped or failed.
 - **MacBook Pro**: the built version and commit with "install queued", or why it was skipped or
   failed, plus the previous install's outcome from `install-status`.
