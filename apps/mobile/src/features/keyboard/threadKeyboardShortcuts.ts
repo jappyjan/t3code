@@ -22,6 +22,8 @@ export function threadJumpTarget(
   if (index < 0) return null;
   for (const item of items) {
     if (item.type !== "v2-thread" && item.type !== "v2-pending") continue;
+    // The earlier-attempts fold row carries its parent but opens nothing.
+    if (item.type === "v2-thread" && item.item.earlierFold !== undefined) continue;
     if (index-- === 0) return item;
   }
   return null;

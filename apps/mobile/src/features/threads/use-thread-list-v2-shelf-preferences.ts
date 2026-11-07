@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { withPipelineExpanded } from "@t3tools/client-runtime/state/pipeline-nesting";
 import { AsyncResult } from "effect/reactivity";
 
 import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
@@ -50,13 +51,16 @@ export function useThreadListV2ShelfPreferences() {
   };
   const togglePipelineExpanded = (threadKey: string) => {
     if (!loaded) return;
-    savePreferences({
+    void savePreferences({
       transform: (current) => {
         const keys = current.threadListExpandedPipelines ?? [];
         return {
-          threadListExpandedPipelines: keys.includes(threadKey)
-            ? keys.filter((key) => key !== threadKey)
-            : [...keys, threadKey].slice(-MAX_EXPANDED_PIPELINES),
+          threadListExpandedPipelines: withPipelineExpanded(
+            keys,
+            threadKey,
+            !keys.includes(threadKey),
+            MAX_EXPANDED_PIPELINES,
+          ),
         };
       },
     });
