@@ -28,6 +28,10 @@ KEEP_BACKUPS=2
 START_DELAY_S=120         # lets the calling agent finish its turn first
 IDLE_POLL_S=60
 MAX_IDLE_WAIT_S=$((8 * 3600))
+# A run row that says "running" but whose thread has been silent this long is a leftover (an
+# interrupted turn or pipeline step that was never closed), not work to protect. Counting them made
+# the install wait forever.
+STALE_RUN_S=$((2 * 3600))
 
 detach=0
 now=0
@@ -65,9 +69,19 @@ finish() {
 app_pids() { ps -axo pid=,comm= | grep -F "$1" | awk '{print $1}' || true; }
 app_running() { [[ -n "$(app_pids "$target/Contents/MacOS/")" ]]; }
 active_runs() {
-  sqlite3 -readonly "$USERDATA/statev2.sqlite" \
-    "SELECT COUNT(*) FROM orchestration_v2_projection_runs WHERE status IN ('preparing','queued','starting','running','waiting')" \
+  sqlite3 -readonly -cmd ".timeout 10000" "$USERDATA/statev2.sqlite" \
+    "SELECT COUNT(*) FROM orchestration_v2_projection_runs r
+       JOIN orchestration_v2_projection_threads t ON t.thread_id = r.thread_id
+      WHERE r.status IN ('preparing','queued','starting','running','waiting')
+        AND t.updated_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-$STALE_RUN_S seconds')" \
     2>/dev/null || echo 1
+}
+# Once the app is quit, any failure must bring the old one back instead of leaving T3 Code closed.
+relaunch_after_failure() {
+  if ! app_running && [[ -d "$target" ]]; then
+    log "Failed after quitting $name; relaunching the installed app"
+    open "$target" || true
+  fi
 }
 
 log "Installing $new_app over $target"
@@ -94,6 +108,7 @@ if [[ $now -eq 0 ]]; then
   log "T3 Code is idle"
 fi
 
+trap relaunch_after_failure ERR
 if app_running; then
   log "Quitting $name"
   osascript -e "quit app \"$name\"" >/dev/null 2>&1 || true
@@ -116,7 +131,23 @@ for _ in $(seq 1 30); do [[ -z "$(app_pids "$target/Contents/")" ]] && break; sl
 mkdir -p "$BACKUPS"
 backup="$BACKUPS/statev2-$(date +%Y%m%d-%H%M%S).sqlite"
 log "Backing up the state database to $backup"
-sqlite3 "$USERDATA/statev2.sqlite" ".backup '$backup'"
+# A helper that outlives the app can still hold the database; wait for it instead of failing at once.
+backed_up=0
+for attempt in 1 2 3; do
+  if sqlite3 -cmd ".timeout 60000" "$USERDATA/statev2.sqlite" ".backup '$backup'"; then
+    backed_up=1
+    break
+  fi
+  log "Backup attempt $attempt failed; retrying"
+  sleep 10
+done
+if [[ $backed_up -eq 0 ]]; then
+  trap - ERR
+  relaunch_after_failure
+  finish "Not installed: the state database could not be backed up (it stayed locked). The old app was relaunched. The build is ready: $0 \"$new_app\""
+  exit 1
+fi
+trap - ERR
 ls -1t "$BACKUPS"/statev2-*.sqlite | tail -n "+$((KEEP_BACKUPS + 1))" | while read -r old; do rm -f "$old"; done
 
 # The cask is no longer managed by nix; uninstall it (never --zap: that deletes ~/.t3/userdata).
