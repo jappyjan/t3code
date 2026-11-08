@@ -107,6 +107,7 @@ T3 Code is an open-source control plane for coding agents. It gives the coding a
 - [Running T3 Code in the background](./background-service.md) — Background user service, `service.env`, Linux OOM protection, and `t3 doctor`.
 - [Updating T3 Code](./updating.md) — Updating desktop, servers, providers, Stable/Nightly tracks, and restart continuation.
 - [Usage and limits](./usage.md) — Token/cost tracking, custom model pricing, pooled subscription quotas, CLIProxyAPI hubs, and HTTP quota sources.
+- [Host capacity](./host-capacity.md) — Memory pressure warnings and how many turns a machine runs at once.
 - [Maintenance, power, and diagnostics](./diagnostics.md) — Background activity profiles, keep awake, Diagnostics UI, and `t3 trace`.
 - [CLI reference (`t3`)](./cli.md) — Complete overview of `t3` subcommands.
 - [Product usage data and diagnostics](./telemetry.md) — Telemetry opt-outs, agent feedback, mobile diagnostics, and OTLP export.
