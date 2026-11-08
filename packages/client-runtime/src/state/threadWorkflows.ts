@@ -32,6 +32,8 @@ export interface QueuedThreadRun {
   readonly context?: Message["context"];
   /** Carries the attribution a sent message shows: automation, agent sender, or guest. */
   readonly message?: Message;
+  /** The host holds this run and the thread is free, so `queued-run.start` may bypass the hold. */
+  readonly canStartNow: boolean;
 }
 
 export interface ThreadQueueWorkflowState {
@@ -199,6 +201,10 @@ export function deriveThreadQueueWorkflowState(
     projection.providerTurns.some(
       (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
     );
+  const canSendNow =
+    activeRun === null &&
+    projection.thread.archivedAt == null &&
+    projection.thread.deletedAt == null;
   const queuedRuns = copySorted(
     getUserQueuedThreadRuns(projection),
     (left, right) =>
@@ -214,6 +220,7 @@ export function deriveThreadQueueWorkflowState(
       messageId: run.userMessageId,
       ...(message?.context ? { context: message.context } : {}),
       ...(message ? { message } : {}),
+      canStartNow: canSendNow && run.admissionWait !== undefined,
     };
   });
 
@@ -221,10 +228,7 @@ export function deriveThreadQueueWorkflowState(
     activeRun,
     queuedRuns,
     isHeld: projection.runs.some((run) => run.status === "queued" && run.queueHeld === true),
-    canSendNow:
-      activeRun === null &&
-      projection.thread.archivedAt == null &&
-      projection.thread.deletedAt == null,
+    canSendNow,
     canPromoteToSteer:
       promoteSkipsCompaction ||
       ((activeRun?.status === "preparing" || activeRun?.status === "starting") &&

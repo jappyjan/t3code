@@ -3,6 +3,7 @@ import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environ
 import {
   resolveThreadConnectionStatus,
   resolveThreadWorkingStartedAt,
+  threadRuntimeAwaitsTurn,
 } from "@t3tools/client-runtime/state/models";
 import {
   aggregatePipelineStepStatus,
@@ -697,8 +698,6 @@ type ThreadStatusInput = Pick<
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
   blockedOnThreadWait?: boolean | undefined;
-  /** The thread's queued run waits for the host to admit it. */
-  waitingForHostAdmission?: boolean | undefined;
 };
 
 // Read at event time: subscribing Sidebar to terminal or modifier state re-renders every row.
@@ -1008,8 +1007,6 @@ type SidebarThreadStatusInput = Pick<
   | "connectionPhase"
 > & {
   readonly pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"];
-  /** The thread's queued run waits for the host to admit it. */
-  waitingForHostAdmission?: boolean | undefined;
 };
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
@@ -1031,7 +1028,7 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   if (thread.runtime?.status === "preparing") {
     return "preparing";
   }
-  if (thread.runtime?.status === "queued" && thread.waitingForHostAdmission === true) {
+  if (threadRuntimeAwaitsTurn(thread.runtime)) {
     return "queued";
   }
   if (
@@ -1392,7 +1389,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.runtime?.status === "queued" && thread.waitingForHostAdmission === true) {
+  if (threadRuntimeAwaitsTurn(thread.runtime)) {
     return {
       label: msg("Queued", { $context: "thread status: waiting for the host" }),
       colorClass: "text-sidebar-muted-foreground",

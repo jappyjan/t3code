@@ -116,6 +116,11 @@ const SETTINGS_SEARCH_TERMS = {
     msg("usage limits", { $context: "settings search keyword" }),
     msg("auto-resume", { $context: "settings search keyword" }),
     msg("thread behavior", { $context: "settings search keyword" }),
+    msg("host capacity", { $context: "settings search keyword" }),
+    msg("pace new turns", { $context: "settings search keyword" }),
+    msg("host load", { $context: "settings search keyword" }),
+    msg("limit running turns", { $context: "settings search keyword" }),
+    msg("maximum running turns", { $context: "settings search keyword" }),
   ],
   SettingsFollowUp: [
     msg("follow-ups", { $context: "settings search keyword" }),

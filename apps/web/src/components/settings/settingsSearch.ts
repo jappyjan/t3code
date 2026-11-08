@@ -75,6 +75,7 @@ export interface SettingsSearchItem {
   readonly fastWorktreeCheckoutOnly?: boolean;
   readonly agentFeedbackOnly?: boolean;
   readonly textGeneratorsOnly?: boolean;
+  readonly hostAdmissionOnly?: boolean;
   readonly secondary?: boolean;
   readonly requiresThreadAutoSettlement?: boolean;
 }
@@ -95,6 +96,7 @@ export interface SettingsSearchAvailability {
   readonly hasTextGeneratorsEnvironment?: boolean;
   readonly hasPrimaryEnvironment?: boolean;
   readonly hasSecretProvidersEnvironment?: boolean;
+  readonly hasHostAdmission?: boolean;
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
@@ -513,6 +515,31 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: msg("Mark threads as possibly stuck after"),
     to: "/settings/threads",
     searchTerms: [msg("stale stuck background work hours monitor dev server sidebar group")],
+  },
+  {
+    id: "pace-new-turns-by-host-load",
+    title: "Pace new turns by host load",
+    to: "/settings/threads",
+    searchTerms: ["host capacity memory cpu busy throttle admission queue"],
+    hostAdmissionOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "limit-running-turns",
+    title: "Limit running turns",
+    to: "/settings/threads",
+    searchTerms: ["host capacity concurrent parallel agents maximum cap queue waiting"],
+    hostAdmissionOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "maximum-running-turns",
+    title: "Maximum running turns",
+    to: "/settings/threads",
+    targetId: "limit-running-turns",
+    searchTerms: ["host capacity concurrent parallel agents cap number"],
+    hostAdmissionOnly: true,
+    scope: "environment-defaults",
   },
   {
     id: "working-shelf",
@@ -1746,7 +1773,8 @@ export function filterAvailableSettingsSearchItems(
         availability.hasFastWorktreeCheckoutEnvironment === true) &&
       (!item.agentFeedbackOnly || availability.hasAgentFeedbackEnvironment === true) &&
       (!item.textGeneratorsOnly || availability.hasTextGeneratorsEnvironment === true) &&
-      (!item.secretProvidersOnly || availability.hasSecretProvidersEnvironment === true),
+      (!item.secretProvidersOnly || availability.hasSecretProvidersEnvironment === true) &&
+      (!item.hostAdmissionOnly || availability.hasHostAdmission === true),
   );
 }
 

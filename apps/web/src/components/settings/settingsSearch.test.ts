@@ -221,6 +221,7 @@ describe("searchSettings", () => {
       "days-before-auto-settle",
       "linked-environments",
       "agent-feedback",
+      "limit-running-turns",
     ]);
     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
   });

@@ -14,7 +14,11 @@ import {
   type SnoozePreset,
 } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { resolveThreadConnectionStatus } from "@t3tools/client-runtime/state/models";
+import {
+  resolveThreadConnectionStatus,
+  resolveThreadProviderStack,
+  threadRuntimeAwaitsTurn,
+} from "@t3tools/client-runtime/state/models";
 import {
   aggregatePipelineStepStatus,
   isPipelineGroupActive,
@@ -315,8 +319,7 @@ export function resolveThreadListV2Status(
   if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) {
     return "waiting";
   }
-  // Nothing of the thread is running, so only the host's admission holds its queued run back.
-  if (thread.runtime?.status === "queued" && thread.runtime.activeRunId === null) {
+  if (threadRuntimeAwaitsTurn(thread.runtime)) {
     return "queued";
   }
   if (
