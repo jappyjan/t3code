@@ -126,7 +126,7 @@ import {
   ThreadSearchPullRequestNumber,
 } from "../ThreadStatusIndicators";
 import { pickSnoozePreset, resolveSnoozePresets, type SnoozePreset } from "../Sidebar.snooze";
-import { useThreadShell } from "../../state/entities";
+import { useThreadShell, useThreadWaitingForHostAdmission } from "../../state/entities";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
@@ -696,6 +696,7 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 };
 
 const TOP_STATUS_ICONS = {
+  queued: ClockIcon,
   working: CircleDashedIcon,
   waiting: CircleDotDashedIcon,
   input: MessageCircleQuestionIcon,
@@ -1038,8 +1039,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   const isUnread =
     props.suppressUnseenDone !== true && hasUnseenCompletion({ ...thread, lastVisitedAt });
+  const waitingForHostAdmission = useThreadWaitingForHostAdmission(threadRef);
   const status = mergePipelineParentStatus(
-    resolveSidebarRowStatus({ ...thread, lastVisitedAt }, props.possiblyStuck === true),
+    resolveSidebarRowStatus(
+      { ...thread, lastVisitedAt, waitingForHostAdmission },
+      props.possiblyStuck === true,
+    ),
     props.stepStatus ?? null,
   );
   // A run's attention badge opens the step that needs the user, or the parent when it has no thread yet.
@@ -1094,55 +1099,61 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             icon: "waiting" as const,
             className: "text-warning-foreground",
           }
-        : status === "waiting"
+        : status === "queued"
           ? {
-              label: gt("Waiting", { $context: "thread status" }),
-              icon: "waiting" as const,
+              label: gt("Queued", { $context: "thread status: waiting for the host" }),
+              icon: "queued" as const,
               className: "text-muted-foreground",
             }
-          : status === "approval"
+          : status === "waiting"
             ? {
-                label: gt("Approval", { $context: "thread status: needs approval" }),
-                icon: "approval" as const,
-                className: "text-warning-foreground",
+                label: gt("Waiting", { $context: "thread status" }),
+                icon: "waiting" as const,
+                className: "text-muted-foreground",
               }
-            : status === "input"
+            : status === "approval"
               ? {
-                  label: gt("Input", { $context: "thread status: needs user input" }),
-                  icon: "input" as const,
-                  className: "text-indigo-600 dark:text-indigo-300",
+                  label: gt("Approval", { $context: "thread status: needs approval" }),
+                  icon: "approval" as const,
+                  className: "text-warning-foreground",
                 }
-              : status === "request"
+              : status === "input"
                 ? {
-                    label: gt("Request", { $context: "thread status: guest request" }),
-                    icon: "request" as const,
-                    className: "text-guest-foreground",
+                    label: gt("Input", { $context: "thread status: needs user input" }),
+                    icon: "input" as const,
+                    className: "text-indigo-600 dark:text-indigo-300",
                   }
-                : status === "limited"
+                : status === "request"
                   ? {
-                      label: gt("Limited", { $context: "thread status: usage limited" }),
-                      icon: "failed" as const,
-                      className: "text-warning-foreground",
+                      label: gt("Request", { $context: "thread status: guest request" }),
+                      icon: "request" as const,
+                      className: "text-guest-foreground",
                     }
-                  : status === "failed"
+                  : status === "limited"
                     ? {
-                        label: gt("Failed", { $context: "thread status" }),
+                        label: gt("Limited", { $context: "thread status: usage limited" }),
                         icon: "failed" as const,
-                        className: "text-error-foreground",
+                        className: "text-warning-foreground",
                       }
-                    : isWoke
+                    : status === "failed"
                       ? {
-                          label: gt("Woke", { $context: "thread status: woke from snooze" }),
-                          icon: "woke" as const,
-                          className: "text-warning-foreground",
+                          label: gt("Failed", { $context: "thread status" }),
+                          icon: "failed" as const,
+                          className: "text-error-foreground",
                         }
-                      : isUnread
+                      : isWoke
                         ? {
-                            label: gt("Done", { $context: "thread status" }),
-                            icon: "done" as const,
-                            className: "text-success-foreground",
+                            label: gt("Woke", { $context: "thread status: woke from snooze" }),
+                            icon: "woke" as const,
+                            className: "text-warning-foreground",
                           }
-                        : null;
+                        : isUnread
+                          ? {
+                              label: gt("Done", { $context: "thread status" }),
+                              icon: "done" as const,
+                              className: "text-success-foreground",
+                            }
+                          : null;
   const attentionBadgeButton = (badge: NonNullable<typeof topStatus>, iconClassName: string) => (
     <Tooltip>
       <TooltipTrigger
