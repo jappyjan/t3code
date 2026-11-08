@@ -32,7 +32,7 @@ import { Menu } from "../../components/ui/Menu";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useAssetUrl } from "../../state/assets";
-import { useQuietThreadShell } from "../../state/entities";
+import { useQuietThreadShell, useServerConfigs } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { assetImageSource } from "../../lib/assetImageSource";
@@ -42,6 +42,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import {
   REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
   buildCancelQueuedRunCommand,
+  resolveAdmissionWaitReason,
   resolveThreadQueueRowControls,
 } from "./threadQueueControlPresentation";
 
@@ -145,6 +146,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
   const busyRef = useRef(false);
   const queuedRuns = workflow?.queuedRuns ?? [];
+  const hostAdmission = useServerConfigs().get(target.environmentId)?.hostAdmission;
 
   const hadQueuedRuns = useRef(queuedRuns.length > 0);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pops the navigator once the server-side queue empties after it had runs
@@ -191,7 +193,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     void Haptics.selectionAsync();
     if (action === "remove") {
       await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
-    } else if (workflow?.canSendNow) {
+    } else if (workflow?.canSendNow || queuedRuns[index]!.run.admissionWait !== undefined) {
       await resume({ ...target, input: { threadId: target.threadId, runId } });
     } else if (workflow?.activeRun && workflow.canPromoteToSteer) {
       await promote({
@@ -259,12 +261,15 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           canPromoteToSteer:
             (workflow?.canPromoteToSteer ?? false) &&
             (run.freshContext !== true || workflow?.promoteSkipsCompaction === true),
-          canSendNow: workflow?.canSendNow ?? false,
+          // A run held for the host can start now whatever its thread is doing.
+          canSendNow: (workflow?.canSendNow ?? false) || run.admissionWait !== undefined,
           editBlocked: editBlockedReason !== null,
           isEditing: editing?.runId === run.id,
           isGuestMessage: context?.guest !== undefined,
           text,
         });
+        const admissionReason = resolveAdmissionWaitReason(run.admissionWait, hostAdmission);
+        const canStartNow = run.admissionWait !== undefined;
         const title =
           controls.displayText || (attachments.length > 0 ? "Attachments" : "Queued message");
         return (
@@ -280,11 +285,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                   shouldOpenOnLongPress
                   style={{ flex: 1 }}
                   actions={[
-                    ...(workflow?.canPromoteToSteer || workflow?.canSendNow
+                    ...(workflow?.canPromoteToSteer || workflow?.canSendNow || canStartNow
                       ? [
                           {
                             id: "steer",
-                            title: "Send now",
+                            title: canStartNow ? "Start now" : "Send now",
                             attributes: { disabled: !controls.canSend },
                             image: "arrow.up",
                           },
@@ -341,6 +346,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                         )}
                         {title}
                       </Text>
+                      {admissionReason !== null ? (
+                        <Text className="text-xs text-foreground-muted" numberOfLines={2}>
+                          {admissionReason}
+                        </Text>
+                      ) : null}
                     </View>
                     {controls.isEditing ? (
                       <Text className="shrink-0 text-2xs uppercase tracking-wide text-primary">
@@ -349,11 +359,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                     ) : null}
                   </Pressable>
                 </Menu>
-                {workflow?.canPromoteToSteer || workflow?.canSendNow ? (
+                {workflow?.canPromoteToSteer || workflow?.canSendNow || canStartNow ? (
                   // Outside the edit row and full row height, so a near miss never opens the editor.
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Send now, queued message ${index + 1}`}
+                    accessibilityLabel={`${canStartNow ? "Start now" : "Send now"}, queued message ${index + 1}`}
                     disabled={!controls.canSend}
                     onPress={() => void act(run.id, "steer")}
                     className="shrink-0 justify-center self-stretch pl-4 active:opacity-70 disabled:opacity-40"
@@ -365,7 +375,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                         tintColorClassName="accent-primary-foreground"
                       />
                       <Text className="font-t3-medium text-sm text-primary-foreground">
-                        Send now
+                        {canStartNow ? "Start now" : "Send now"}
                       </Text>
                     </View>
                   </Pressable>
