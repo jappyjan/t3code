@@ -148,6 +148,7 @@ import type {
   ThreadTitleGenerationKind,
 } from "./EffectOutbox.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as HostAdmission from "./HostAdmission.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import {
   DispatchModeLimit,
@@ -1137,6 +1138,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const runtimePolicy = yield* RuntimePolicyV2;
   const threadForkService = yield* ThreadForkServiceV2;
   const threadDispatch = yield* ThreadCommandExecutor.ThreadCommandExecutor;
+  // Absent in layers that do not limit turns: every run is admitted.
+  const hostAdmission = yield* Effect.serviceOption(HostAdmission.HostAdmission);
+  const decideAdmission = (runId: RunId, threadId: ThreadId) =>
+    hostAdmission._tag === "Some"
+      ? hostAdmission.value.decide({ runId, threadId })
+      : Effect.succeed({ admit: true } as const);
+  const withAdmissionReservations = <A, E, R>(self: Effect.Effect<A, E, R>) =>
+    hostAdmission._tag === "Some" ? hostAdmission.value.scopedReservations(self) : self;
   // Read once: the policy is fixed for the server's life, and dispatch takes it as an input.
   const { managedPolicy } = serverSettings;
   const runtimeModeCeiling: RuntimeModeCeiling | undefined =
@@ -1721,6 +1730,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         readonly failedRunId?: RunId;
         readonly endedRunId?: RunId;
         readonly queuedRunId?: RunId;
+        /** The user's "Start now": skips host admission for this run. */
+        readonly bypassAdmission?: boolean;
       },
     ) {
       if (!(yield* projectionStore.canStartQueuedRun(threadId))) return;
@@ -1805,6 +1816,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             })),
         );
         return;
+      }
+      // Admission runs after every hold above, so a run that cannot start for another reason
+      // never takes a slot. A denial keeps the run queued; it never fails the start.
+      if (options?.bypassAdmission !== true) {
+        const admission = yield* decideAdmission(queuedRun.id, threadId);
+        if (!admission.admit) {
+          if (storedQueuedRun.admissionWait !== admission.wait) {
+            yield* writeSystemEvents([
+              {
+                type: "run.updated" as const,
+                threadId,
+                runId: storedQueuedRun.id,
+                providerInstanceId: storedQueuedRun.providerInstanceId,
+                occurredAt: yield* DateTime.now,
+                payload: { ...storedQueuedRun, admissionWait: admission.wait },
+              },
+            ]);
+          }
+          return "deferred" as const;
+        }
       }
       // Move queued ordinals after runs that started while they waited to preserve transcript and checkpoint order.
       // Started runs have prompts; cancelled queued messages do not.
@@ -2204,6 +2235,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       };
       const startingRun: OrchestrationV2Run = {
         ...queuedRun,
+        admissionWait: undefined,
         providerThreadId: queuedProviderThread.id,
         ordinal,
         status: "starting",
@@ -2497,8 +2529,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       );
     },
     (effect, threadId, options?) =>
-      effect.pipe(
-        Effect.catch((cause) => failQueuedRunStart(threadId, cause, options?.queuedRunId)),
+      withAdmissionReservations(
+        effect.pipe(
+          Effect.catch((cause) => failQueuedRunStart(threadId, cause, options?.queuedRunId)),
+        ),
       ),
   );
 
@@ -6125,7 +6159,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       dispatchMode.type === "defer_start" ||
       dispatchMode.type === "start_immediately" ||
       dispatchMode.type === "queue_after_active";
-    const shouldQueue = queueBehindRun !== undefined && startsOrQueuesRun;
+    // Thread launches deferred for workspace setup are admitted when they are released.
+    const admissionDecision =
+      queueBehindRun === undefined &&
+      startsOrQueuesRun &&
+      dispatchMode.type !== "defer_start" &&
+      pendingMergeBackTransfers.length === 0
+        ? yield* decideAdmission(
+            idAllocator.derive.run({
+              threadId: command.threadId,
+              ordinal: nextRunOrdinal(projection),
+            }),
+            command.threadId,
+          )
+        : ({ admit: true } as const);
+    const admissionWait = admissionDecision.admit ? undefined : admissionDecision.wait;
+    const shouldQueue =
+      (queueBehindRun !== undefined || admissionWait !== undefined) && startsOrQueuesRun;
     // Client messages resume held queues; server continuations and scheduled tasks do not.
     // Provider failure or usage limits re-hold the queue.
     const worktreeSetupUnresolved = worktreeSetupPending(projection);
@@ -6162,9 +6212,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const queueProviderThread =
         activeProviderThread ??
         projection.providerThreads.find(
-          (candidate) => candidate.id === queueBehindRun.providerThreadId,
+          (candidate) => candidate.id === queueBehindRun?.providerThreadId,
         );
-      if (queueProviderThread === undefined) {
+      if (queueProviderThread === undefined && queueBehindRun !== undefined) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
@@ -6176,7 +6226,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const runId = idAllocator.derive.run({ threadId: command.threadId, ordinal });
       const targetProviderThread = freshContext
         ? undefined
-        : modelSelection.instanceId === queueProviderThread.providerInstanceId
+        : modelSelection.instanceId === queueProviderThread?.providerInstanceId
           ? queueProviderThread
           : rootProviderThreadsForProvider(projection, modelSelection.instanceId)[0];
       const queuedAdapter = yield* providerAdapters
@@ -6192,14 +6242,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const queuedCapabilities =
         selectedProviderSession?.capabilities ??
         (yield* queuedAdapter.getCapabilities().pipe(mapDispatchError(command)));
-      yield* mapDispatchError(command)(
-        commandPolicy.ensureQueuedMessages({
-          commandId: command.commandId,
-          threadId: command.threadId,
-          providerInstanceId: modelSelection.instanceId,
-          capabilities: queuedCapabilities,
-        }),
-      );
+      // A run waiting on host admission is not a message queued behind a turn, so providers
+      // without queued messages still wait for a slot.
+      if (queueBehindRun !== undefined) {
+        yield* mapDispatchError(command)(
+          commandPolicy.ensureQueuedMessages({
+            commandId: command.commandId,
+            threadId: command.threadId,
+            providerInstanceId: modelSelection.instanceId,
+            capabilities: queuedCapabilities,
+          }),
+        );
+      }
       const queuedProviderThread: OrchestrationV2ProviderThread = targetProviderThread ?? {
         id: idAllocator.derive.providerThread({
           driver: queuedAdapter.driver,
@@ -6223,7 +6277,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const attemptId = idAllocator.derive.runAttempt({ runId, attemptOrdinal: 1 });
       const rootNodeId = idAllocator.derive.rootNode({ runId });
       const checkpointScope =
-        queueBehindRun.status === "preparing" || worktreeMissingRun !== undefined
+        queueBehindRun?.status === "preparing" || worktreeMissingRun !== undefined
           ? null
           : yield* runtimePolicy.resolve({ thread: projection.thread, modelSelection }).pipe(
               Effect.flatMap((resolvedRuntimePolicy) =>
@@ -6275,7 +6329,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(worktreeMissingRun !== undefined ||
         (heldRunsToRelease.length === 0 && queueIsHeld && !wakeSkipsHold)
           ? { queueHeld: true }
-          : {}),
+          : admissionWait === undefined
+            ? {}
+            : { admissionWait }),
         queuePosition:
           goalStopRunId !== undefined
             ? 1
@@ -10384,6 +10440,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       const now = yield* DateTime.now;
+      // The run counted as running while its workspace was prepared; the provider turn is the
+      // heavy part, so the release is where the host decides whether it may start.
+      const admission = yield* decideAdmission(state.run.id, command.threadId);
       const resolvedRuntimePolicy = yield* runtimePolicy
         .resolve({ thread: projection.thread, modelSelection: state.run.modelSelection })
         .pipe(mapDispatchError(command));
@@ -10440,8 +10499,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         nodeId: state.rootNode.id,
         providerInstanceId: state.run.providerInstanceId,
         occurredAt: now,
-        payload: { ...state.run, status: "starting" },
+        payload: admission.admit
+          ? { ...state.run, status: "starting" }
+          : {
+              ...state.run,
+              status: "queued",
+              admissionWait: admission.wait,
+              queuePosition:
+                Math.max(
+                  0,
+                  ...projection.runs
+                    .filter((candidate) => candidate.status === "queued")
+                    .map((candidate) => candidate.queuePosition ?? candidate.ordinal),
+                ) + 1,
+            },
       });
+      if (!admission.admit) return;
       yield* Ref.update(effects, (existing) => [
         ...existing,
         {
@@ -13821,7 +13894,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       yield* mapDispatchError(command)(
         startNextQueuedRun(
           command.threadId,
-          command.type === "queued-run.start" ? { queuedRunId: command.runId } : undefined,
+          command.type === "queued-run.start"
+            ? { queuedRunId: command.runId, bypassAdmission: true }
+            : undefined,
         ),
       );
     }
@@ -14040,7 +14115,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       yield* mapDispatchError(command)(
         startNextQueuedRun(
           command.threadId,
-          command.type === "queued-run.start" ? { queuedRunId: command.runId } : undefined,
+          command.type === "queued-run.start"
+            ? { queuedRunId: command.runId, bypassAdmission: true }
+            : undefined,
         ),
       );
     }
@@ -14065,7 +14142,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const dispatchWithReceipt = Effect.fnUntraced(function* (command: OrchestrationV2ServerCommand) {
     const dispatch = threadDispatch.withLock(
       commandThreadId(command),
-      dispatchWithReceiptEffect(command),
+      withAdmissionReservations(dispatchWithReceiptEffect(command)),
     );
     // A parent's lock comes before its side chats' locks, so a delete cascade and a side chat
     // fork or command never interleave. A fork from a side chat or onto an existing thread would
@@ -14088,7 +14165,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           Effect.flatMap((sideChatIds) =>
             sideChatIds.reduce(
               (locked, sideChatId) => threadDispatch.withLock(sideChatId, locked),
-              dispatchWithReceiptEffect(command, sideChatIds),
+              withAdmissionReservations(dispatchWithReceiptEffect(command, sideChatIds)),
             ),
           ),
         ),
@@ -14214,6 +14291,62 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
     return providerThreadsWithBackgroundWork.delete(event.payload.id);
   };
+  // Host admission has no per-thread trigger: a run that ends frees a slot for any thread, so
+  // each trigger starts the oldest waiting runs across threads until one is denied again.
+  if (hostAdmission._tag === "Some") {
+    const admission = hostAdmission.value;
+    const pumpHostAdmission = Effect.fn("Orchestrator.pumpHostAdmission")(function* () {
+      if (!(yield* admission.pumpNeeded)) return;
+      const snapshot = yield* projectionStore.getHostAdmissionSnapshot();
+      const visited = new Set<ThreadId>();
+      for (const waiting of snapshot.waiting) {
+        if (!waiting.ready || visited.has(waiting.threadId)) continue;
+        visited.add(waiting.threadId);
+        const outcome = yield* threadDispatch
+          .withLock(waiting.threadId, startNextQueuedRun(waiting.threadId))
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to start a run waiting on host admission", {
+                threadId: waiting.threadId,
+                cause,
+              }).pipe(Effect.as(undefined)),
+            ),
+          );
+        if (outcome === "deferred") break;
+      }
+      yield* admission.setWaiters(snapshot.waiting.length > 0);
+      yield* admission.publishState;
+    });
+    yield* eventSink
+      .stream({ afterSequence: terminalEventsAfterSequence, eventType: "run.updated" })
+      .pipe(
+        Stream.filter(
+          (stored) =>
+            stored.event.type === "run.updated" &&
+            (stored.event.payload.status === "queued" ||
+              stored.event.payload.status === "starting" ||
+              stored.event.payload.status === "waiting" ||
+              stored.event.payload.status === "completed" ||
+              stored.event.payload.status === "interrupted" ||
+              stored.event.payload.status === "failed" ||
+              stored.event.payload.status === "cancelled" ||
+              stored.event.payload.status === "rolled_back"),
+        ),
+        Stream.runForEach(() => admission.requestPump),
+        Effect.forkScoped,
+      );
+    yield* admission.pumpRequests.pipe(
+      Stream.runForEach(() =>
+        pumpHostAdmission().pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Failed to pump host admission", { cause }),
+          ),
+        ),
+      ),
+      Effect.forkScoped,
+    );
+  }
+
   yield* Stream.merge(
     eventSink.stream({
       afterSequence: terminalEventsAfterSequence,
