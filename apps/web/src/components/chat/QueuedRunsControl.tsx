@@ -1,4 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { hostAdmissionWaitReason } from "@t3tools/client-runtime/host-admission-presentation";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -12,7 +13,6 @@ import {
 import type {
   ChatAttachment as ContractChatAttachment,
   EnvironmentId,
-  HostAdmissionState,
   MessageId,
   RunId,
   ThreadId,
@@ -82,20 +82,6 @@ function queuedImageResources(projection: ThreadQueueProjection | undefined) {
   );
 }
 
-function admissionWaitReason(
-  wait: "capacity" | "host_load",
-  admission: HostAdmissionState | undefined,
-): string {
-  if (wait === "capacity") {
-    return admission?.maxRunningTurns
-      ? `Waiting for a free slot (${admission.runningTurns}/${admission.maxRunningTurns} running)`
-      : "Waiting for a free slot";
-  }
-  return admission?.pacing === "severe"
-    ? "Waiting for the host: memory is critically low"
-    : "Starting turns one at a time while the host is busy";
-}
-
 export function QueuedRunsControl({
   ref,
   ...props
@@ -155,13 +141,14 @@ export function QueuedRunsControl({
     (message) => message.inputIntent === "queued_turn" && !acknowledgedMessageIds.has(message.id),
   );
   const items = [
-    ...queued.map(({ run, text, attachments, context, message }, serverIndex) => ({
+    ...queued.map(({ run, text, attachments, context, message, canStartNow }, serverIndex) => ({
       key: run.id,
       message,
       runId: run.id,
       messageId: run.userMessageId,
       freshContext: run.freshContext === true,
-      admissionWait: run.status === "queued" ? run.admissionWait : undefined,
+      admissionWait: run.admissionWait,
+      canStartNow,
       serverIndex,
       text,
       // A guest's message keeps the guest's words; the owner can cancel it, not rewrite it.
@@ -184,6 +171,7 @@ export function QueuedRunsControl({
       messageId: null,
       freshContext: false,
       admissionWait: undefined,
+      canStartNow: false,
       serverIndex: null,
       text: message.text,
       editable: true,
@@ -332,7 +320,7 @@ export function QueuedRunsControl({
                           }}
                         >
                           <ArrowUpIcon />
-                          {item.admissionWait ? <T>Start now</T> : <T>Send now</T>}
+                          {item.canStartNow ? <T>Start now</T> : <T>Send now</T>}
                         </Button>
                       </TooltipTrigger>
                       <TooltipPopup>
@@ -359,7 +347,7 @@ export function QueuedRunsControl({
                 ) : null}
                 {item.admissionWait ? (
                   <span className="px-1">
-                    {admissionWaitReason(item.admissionWait, hostAdmission)}
+                    {hostAdmissionWaitReason(item.admissionWait, hostAdmission)}
                   </span>
                 ) : null}
                 {item.pending ? (
