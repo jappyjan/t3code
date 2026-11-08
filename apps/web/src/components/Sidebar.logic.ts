@@ -1,6 +1,9 @@
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import {
+  resolveThreadWorkingStartedAt,
+  threadRuntimeAwaitsTurn,
+} from "@t3tools/client-runtime/state/models";
 import {
   aggregatePipelineStepStatus,
   pipelineAttentionTargets,
@@ -678,8 +681,6 @@ type ThreadStatusInput = Pick<
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
   blockedOnThreadWait?: boolean | undefined;
-  /** The thread's queued run waits for the host to admit it. */
-  waitingForHostAdmission?: boolean | undefined;
 };
 
 /**
@@ -874,10 +875,7 @@ type SidebarThreadStatusInput = Pick<
   | "pendingGuestMessageCount"
   | "runtime"
   | "blockedOnThreadWait"
-> & {
-  /** The thread's queued run waits for the host to admit it. */
-  waitingForHostAdmission?: boolean | undefined;
-};
+>;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
@@ -896,7 +894,7 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   if (thread.runtime?.status === "preparing") {
     return "preparing";
   }
-  if (thread.runtime?.status === "queued" && thread.waitingForHostAdmission === true) {
+  if (threadRuntimeAwaitsTurn(thread.runtime)) {
     return "queued";
   }
   if (
@@ -1197,7 +1195,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.runtime?.status === "queued" && thread.waitingForHostAdmission === true) {
+  if (threadRuntimeAwaitsTurn(thread.runtime)) {
     return {
       label: "Queued",
       colorClass: "text-sidebar-muted-foreground",
