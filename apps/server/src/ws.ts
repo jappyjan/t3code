@@ -113,6 +113,7 @@ import {
 import { RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
+import * as HostAdmission from "./orchestration-v2/HostAdmission.ts";
 import * as NativeChildWorkQuery from "./orchestration-v2/NativeChildWorkQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
@@ -1564,6 +1565,7 @@ export const layerWsRpc = (
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const triage = yield* TriageService.TriageService;
       const hostResources = yield* HostResources.HostResources;
+      const hostAdmission = yield* Effect.serviceOption(HostAdmission.HostAdmission);
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
       const relayClient = yield* RelayClient.RelayClient;
@@ -3529,6 +3531,16 @@ export const layerWsRpc = (
                       })),
                     )
                   : Stream.empty;
+              const hostAdmissionUpdates =
+                input.hostAdmission === true && hostAdmission._tag === "Some"
+                  ? hostAdmission.value.stateChanges.pipe(
+                      Stream.map((payload) => ({
+                        version: 1 as const,
+                        type: "hostAdmissionUpdated" as const,
+                        payload,
+                      })),
+                    )
+                  : Stream.empty;
               const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) =>
                   ServerSettings.redactServerSettingsForClient(settings, settingsClient),
@@ -3548,7 +3560,10 @@ export const layerWsRpc = (
                     settingsUpdates,
                     Stream.merge(
                       environmentThemeUpdates,
-                      Stream.merge(usageLimitSourceUpdates, memoryPressureUpdates),
+                      Stream.merge(
+                        usageLimitSourceUpdates,
+                        Stream.merge(memoryPressureUpdates, hostAdmissionUpdates),
+                      ),
                     ),
                   ),
                 ),
