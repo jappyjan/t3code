@@ -133,7 +133,7 @@ import {
   ThreadSearchPullRequestNumber,
 } from "../ThreadStatusIndicators";
 import { pickSnoozePreset, resolveSnoozePresets, type SnoozePreset } from "../Sidebar.snooze";
-import { useThreadShell } from "../../state/entities";
+import { useThreadShell, useThreadWaitingForHostAdmission } from "../../state/entities";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
@@ -713,6 +713,7 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 
 const TOP_STATUS_ICONS = {
   connection: UnplugIcon,
+  queued: ClockIcon,
   working: CircleDashedIcon,
   waiting: CircleDotDashedIcon,
   input: MessageCircleQuestionIcon,
@@ -1063,8 +1064,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   const isUnread =
     props.suppressUnseenDone !== true && hasUnseenCompletion({ ...thread, lastVisitedAt });
+  const waitingForHostAdmission = useThreadWaitingForHostAdmission(threadRef);
   const status = mergePipelineParentStatus(
-    resolveSidebarRowStatus({ ...thread, lastVisitedAt }, props.possiblyStuck === true),
+    resolveSidebarRowStatus(
+      { ...thread, lastVisitedAt, waitingForHostAdmission },
+      props.possiblyStuck === true,
+    ),
     props.stepStatus ?? null,
   );
   // A run's attention badge opens the step that needs the user, or the parent when it has no thread yet.
@@ -1119,6 +1124,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             icon: "waiting" as const,
             className: "text-warning-foreground",
           }
+        : status === "queued"
+          ? {
+              label: gt("Queued", { $context: "thread status: waiting for the host" }),
+              icon: "queued" as const,
+              className: "text-muted-foreground",
+            }
         : status === "waiting"
           ? {
               label: gt("Waiting", { $context: "thread status" }),

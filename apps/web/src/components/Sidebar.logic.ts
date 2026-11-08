@@ -960,6 +960,7 @@ export type SidebarThreadStatus =
   | "input"
   | "request"
   | "preparing"
+  | "queued"
   | "working"
   | "waiting"
   | "stuck"
@@ -982,7 +983,12 @@ export function shouldRecedeSidebarThread(input: {
   ) {
     return false;
   }
-  if (input.status === "preparing" || input.status === "working" || input.status === "waiting") {
+  if (
+    input.status === "preparing" ||
+    input.status === "queued" ||
+    input.status === "working" ||
+    input.status === "waiting"
+  ) {
     return true;
   }
   if (input.status === "ready" || input.status === "approval") {
@@ -1002,6 +1008,8 @@ type SidebarThreadStatusInput = Pick<
   | "connectionPhase"
 > & {
   readonly pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"];
+  /** The thread's queued run waits for the host to admit it. */
+  waitingForHostAdmission?: boolean | undefined;
 };
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
@@ -1022,6 +1030,9 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   }
   if (thread.runtime?.status === "preparing") {
     return "preparing";
+  }
+  if (thread.runtime?.status === "queued" && thread.waitingForHostAdmission === true) {
+    return "queued";
   }
   if (
     thread.runtime !== null &&
