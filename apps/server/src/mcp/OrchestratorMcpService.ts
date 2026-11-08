@@ -1152,6 +1152,17 @@ const make = Effect.gen(function* () {
   const random = yield* SecureRandom.SecureRandom;
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
   const hostAdmission = yield* Effect.serviceOption(HostAdmission.HostAdmission);
+  // A turn blocked in a wait must not hold a slot, or a parent waiting on its queued child deadlocks.
+  const freeingSlot =
+    (callerThreadId: ThreadId | undefined) =>
+    <A, E, R>(wait: Effect.Effect<A, E, R>) =>
+      hostAdmission._tag === "Some" && callerThreadId !== undefined
+        ? Effect.acquireUseRelease(
+            hostAdmission.value.threadWaitStarted(callerThreadId),
+            () => wait,
+            () => hostAdmission.value.threadWaitEnded(callerThreadId),
+          )
+        : wait;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const providerAdapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
   const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
@@ -2009,8 +2020,12 @@ const make = Effect.gen(function* () {
         Stream.runHead,
       );
     },
-    (effect, _scope, _taskId, timeoutMs) =>
-      effect.pipe(Effect.timeoutOption(Duration.millis(timeoutMs)), Effect.map(Option.flatten)),
+    (effect, scope, _taskId, timeoutMs) =>
+      effect.pipe(
+        Effect.timeoutOption(Duration.millis(timeoutMs)),
+        Effect.map(Option.flatten),
+        freeingSlot(scope.thread.threadId),
+      ),
   );
 
   const refExists = (cwd: string, revision: string) =>
@@ -3701,17 +3716,7 @@ const make = Effect.gen(function* () {
     }),
     waitForThread: Effect.fn("OrchestratorMcpService.waitForThread")(function* (scope, input) {
       const { parent, target } = yield* loadScopedThread(scope, input.threadId, false);
-      const callerThreadId = scope.thread?.threadId;
-      // A turn blocked here must not hold a slot, or a parent waiting on its queued child deadlocks.
-      const freeingSlot = <A, E, R>(wait: Effect.Effect<A, E, R>) =>
-        hostAdmission._tag === "Some" && callerThreadId !== undefined
-          ? Effect.acquireUseRelease(
-              hostAdmission.value.threadWaitStarted(callerThreadId),
-              () => wait,
-              () => hostAdmission.value.threadWaitEnded(callerThreadId),
-            )
-          : wait;
-      const result = yield* freeingSlot(
+      const result = yield* freeingSlot(scope.thread?.threadId)(
         threadManagement.waitForThread({
           projectId: target.thread.projectId,
           threadId: input.threadId,

@@ -1142,14 +1142,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const runtimePolicy = yield* RuntimePolicyV2;
   const threadForkService = yield* ThreadForkServiceV2;
   const threadDispatch = yield* ThreadCommandExecutor.ThreadCommandExecutor;
-  // Absent in layers that do not limit turns: every run is admitted.
-  const hostAdmission = yield* Effect.serviceOption(HostAdmission.HostAdmission);
-  const decideAdmission = (runId: RunId, threadId: ThreadId) =>
-    hostAdmission._tag === "Some"
-      ? hostAdmission.value.decide({ runId, threadId })
-      : Effect.succeed({ admit: true } as const);
-  const withAdmissionReservations = <A, E, R>(self: Effect.Effect<A, E, R>) =>
-    hostAdmission._tag === "Some" ? hostAdmission.value.scopedReservations(self) : self;
+  const hostAdmission = yield* HostAdmission.HostAdmission;
+  const decideAdmission = (runId: RunId, threadId: ThreadId, requestedAt: DateTime.Utc | null) =>
+    hostAdmission.decide({ runId, threadId, requestedAt });
+  const withAdmissionReservations = hostAdmission.scopedReservations;
   // Read once: the policy is fixed for the server's life, and dispatch takes it as an input.
   const { managedPolicy } = serverSettings;
   const runtimeModeCeiling: RuntimeModeCeiling | undefined =
@@ -1813,13 +1809,32 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         modelSelection,
         providerInstanceId: modelSelection.instanceId,
       };
+      const admissionWaitingRuns = projection.runs.filter(
+        (run) => run.status === "queued" && run.admissionWait !== undefined && !run.queueHeld,
+      );
+      // A thread held back for another reason no longer waits on the host; left marked, its runs
+      // would stay ahead of every newer waiting run.
+      const clearAdmissionWait = Effect.fn("Orchestrator.clearAdmissionWait")(function* () {
+        if (admissionWaitingRuns.length === 0) return;
+        const now = yield* DateTime.now;
+        yield* writeSystemEvents(
+          admissionWaitingRuns.map((run) => ({
+            type: "run.updated" as const,
+            threadId,
+            runId: run.id,
+            providerInstanceId: run.providerInstanceId,
+            occurredAt: now,
+            payload: { ...run, admissionWait: undefined },
+          })),
+        );
+      });
       // A limited provider would fail and consume every waiting message.
       if (usageLimitHoldsQueue(projection, queuedRun.providerInstanceId)) {
-        return;
+        return yield* clearAdmissionWait();
       }
       // Waits without a hold: lowering the thread's mode starts the queue again.
       if (isRuntimeModeAbove(projection.thread.runtimeMode, runtimeModeCeiling?.maxRuntimeMode)) {
-        return;
+        return yield* clearAdmissionWait();
       }
       // Failed worktree creation would run queued work in the project checkout; wait for the user.
       const failedRun = latestExecutedRun(projection.runs);
@@ -1863,7 +1878,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               runId: run.id,
               providerInstanceId: run.providerInstanceId,
               occurredAt: now,
-              payload: { ...run, queueHeld: true },
+              payload: { ...run, queueHeld: true, admissionWait: undefined },
             })),
         );
         return;
@@ -1871,7 +1886,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       // Admission runs after every hold above, so a run that cannot start for another reason
       // never takes a slot. A denial keeps the run queued; it never fails the start.
       if (options?.bypassAdmission !== true) {
-        const admission = yield* decideAdmission(queuedRun.id, threadId);
+        // A delivery can go ahead of the thread's own waiting run; the thread keeps that run's age.
+        const admission = yield* decideAdmission(
+          queuedRun.id,
+          threadId,
+          [storedQueuedRun, ...admissionWaitingRuns]
+            .map((run) => run.requestedAt)
+            .reduce((oldest, candidate) =>
+              DateTime.isLessThan(candidate, oldest) ? candidate : oldest,
+            ),
+        );
         if (!admission.admit) {
           if (storedQueuedRun.admissionWait !== admission.wait) {
             yield* writeSystemEvents([
@@ -6262,23 +6286,35 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       dispatchMode.type === "defer_start" ||
       dispatchMode.type === "start_immediately" ||
       dispatchMode.type === "queue_after_active";
-    // Thread launches deferred for workspace setup are admitted when they are released.
+    // A queued run does not make the thread active, but a message sent after it must not start first.
+    const queuesBehindAdmission =
+      queueBehindRun === undefined &&
+      projection.runs.some(
+        (run) =>
+          run.status === "queued" && run.admissionWait !== undefined && run.queueHeld !== true,
+      );
+    // Thread launches deferred for workspace setup are admitted when they are released. Fork and
+    // merge-back transfers are consumed only by a run that starts in this dispatch.
     const admissionDecision =
       queueBehindRun === undefined &&
+      !queuesBehindAdmission &&
       startsOrQueuesRun &&
       dispatchMode.type !== "defer_start" &&
-      pendingMergeBackTransfers.length === 0
+      pendingMergeBackTransfers.length === 0 &&
+      pendingForkTransferForThread(projection) === undefined
         ? yield* decideAdmission(
             idAllocator.derive.run({
               threadId: command.threadId,
               ordinal: nextRunOrdinal(projection),
             }),
             command.threadId,
+            null,
           )
         : ({ admit: true } as const);
     const admissionWait = admissionDecision.admit ? undefined : admissionDecision.wait;
     const shouldQueue =
-      (queueBehindRun !== undefined || admissionWait !== undefined) && startsOrQueuesRun;
+      (queueBehindRun !== undefined || queuesBehindAdmission || admissionWait !== undefined) &&
+      startsOrQueuesRun;
     // Client messages resume held queues; server continuations and scheduled tasks do not.
     // Provider failure or usage limits re-hold the queue.
     const worktreeSetupUnresolved = worktreeSetupPending(projection);
@@ -6429,8 +6465,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         rootNodeId,
         activeAttemptId: attemptId,
         status: "queued",
+        // Without admission this run would have started, held queue or not.
         ...(worktreeMissingRun !== undefined ||
-        (heldRunsToRelease.length === 0 && queueIsHeld && !wakeSkipsHold)
+        (queueBehindRun !== undefined &&
+          heldRunsToRelease.length === 0 &&
+          queueIsHeld &&
+          !wakeSkipsHold)
           ? { queueHeld: true }
           : admissionWait === undefined
             ? {}
@@ -10532,7 +10572,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const now = yield* DateTime.now;
       // The run counted as running while its workspace was prepared; the provider turn is the
       // heavy part, so the release is where the host decides whether it may start.
-      const admission = yield* decideAdmission(state.run.id, command.threadId);
+      const admission = yield* decideAdmission(
+        state.run.id,
+        command.threadId,
+        state.run.requestedAt,
+      );
       const resolvedRuntimePolicy = yield* runtimePolicy
         .resolve({ thread: projection.thread, modelSelection: state.run.modelSelection })
         .pipe(mapDispatchError(command));
@@ -10591,18 +10635,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         occurredAt: now,
         payload: admission.admit
           ? { ...state.run, status: "starting" }
-          : {
-              ...state.run,
-              status: "queued",
-              admissionWait: admission.wait,
-              queuePosition:
-                Math.max(
-                  0,
-                  ...projection.runs
-                    .filter((candidate) => candidate.status === "queued")
-                    .map((candidate) => candidate.queuePosition ?? candidate.ordinal),
-                ) + 1,
-            },
+          : // Position 1 with the lowest ordinal keeps the launch prompt ahead of messages sent
+            // while its workspace was prepared.
+            { ...state.run, status: "queued", admissionWait: admission.wait, queuePosition: 1 },
       });
       if (!admission.admit) return;
       yield* Ref.update(effects, (existing) => [
@@ -14357,59 +14392,51 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   };
   // Host admission has no per-thread trigger: a run that ends frees a slot for any thread, so
   // each trigger starts the oldest waiting runs across threads until one is denied again.
-  if (hostAdmission._tag === "Some") {
-    const admission = hostAdmission.value;
-    const pumpHostAdmission = Effect.fn("Orchestrator.pumpHostAdmission")(function* () {
-      if (!(yield* admission.pumpNeeded)) return;
-      const snapshot = yield* projectionStore.getHostAdmissionSnapshot();
-      const visited = new Set<ThreadId>();
-      for (const waiting of snapshot.waiting) {
-        if (!waiting.ready || visited.has(waiting.threadId)) continue;
-        visited.add(waiting.threadId);
-        const outcome = yield* threadDispatch
-          .withLock(waiting.threadId, startNextQueuedRun(waiting.threadId))
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to start a run waiting on host admission", {
-                threadId: waiting.threadId,
-                cause,
-              }).pipe(Effect.as(undefined)),
-            ),
-          );
-        if (outcome === "deferred") break;
-      }
-      yield* admission.setWaiters(snapshot.waiting.length > 0);
-      yield* admission.publishState;
-    });
-    yield* eventSink
-      .stream({ afterSequence: terminalEventsAfterSequence, eventType: "run.updated" })
-      .pipe(
-        Stream.filter(
-          (stored) =>
-            stored.event.type === "run.updated" &&
-            (stored.event.payload.status === "queued" ||
-              stored.event.payload.status === "starting" ||
-              stored.event.payload.status === "waiting" ||
-              stored.event.payload.status === "completed" ||
-              stored.event.payload.status === "interrupted" ||
-              stored.event.payload.status === "failed" ||
-              stored.event.payload.status === "cancelled" ||
-              stored.event.payload.status === "rolled_back"),
-        ),
-        Stream.runForEach(() => admission.requestPump),
-        Effect.forkScoped,
-      );
-    yield* admission.pumpRequests.pipe(
-      Stream.runForEach(() =>
-        pumpHostAdmission().pipe(
+  const pumpHostAdmission = Effect.fn("Orchestrator.pumpHostAdmission")(function* () {
+    if (!(yield* hostAdmission.pumpNeeded)) return;
+    const snapshot = yield* projectionStore.getHostAdmissionSnapshot();
+    const visited = new Set<ThreadId>();
+    for (const waiting of snapshot.waiting) {
+      if (!waiting.ready || visited.has(waiting.threadId)) continue;
+      visited.add(waiting.threadId);
+      const outcome = yield* threadDispatch
+        .withLock(waiting.threadId, startNextQueuedRun(waiting.threadId))
+        .pipe(
           Effect.catchCause((cause) =>
-            Effect.logWarning("Failed to pump host admission", { cause }),
+            Effect.logWarning("Failed to start a run waiting on host admission", {
+              threadId: waiting.threadId,
+              cause,
+            }).pipe(Effect.as(undefined)),
           ),
-        ),
+        );
+      if (outcome === "deferred") break;
+    }
+    yield* hostAdmission.setWaiters(snapshot.waiting.length > 0);
+    yield* hostAdmission.publishState;
+  });
+  const admissionTriggers = (eventType: "run.created" | "run.updated") =>
+    eventSink.stream({ afterSequence: terminalEventsAfterSequence, eventType });
+  yield* Stream.merge(admissionTriggers("run.created"), admissionTriggers("run.updated")).pipe(
+    Stream.filter(
+      (stored) =>
+        (stored.event.type === "run.created" ||
+          (stored.event.type === "run.updated" &&
+            stored.event.payload.status !== "preparing" &&
+            stored.event.payload.status !== "running")) &&
+        // Recovery's own writes; the pump resumes once recovery is done.
+        !String(stored.commandId).startsWith("command:runtime-reconcile:"),
+    ),
+    Stream.runForEach(() => hostAdmission.requestPump),
+    Effect.forkScoped,
+  );
+  yield* hostAdmission.pumpRequests.pipe(
+    Stream.runForEach(() =>
+      pumpHostAdmission().pipe(
+        Effect.catchCause((cause) => Effect.logWarning("Failed to pump host admission", { cause })),
       ),
-      Effect.forkScoped,
-    );
-  }
+    ),
+    Effect.forkScoped,
+  );
 
   yield* Stream.merge(
     eventSink.stream({
@@ -14531,9 +14558,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
       ),
     );
-    // A run left waiting by the previous process gets no run event. Pumping before recovery
-    // finishes would start it into a reconcile that cancels unstarted runs.
-    if (hostAdmission._tag === "Some") yield* hostAdmission.value.requestPump;
+    // Recovery cancels or holds runs that start while it reconciles, so the pump waits for it. A
+    // run left waiting by the previous process gets no run event, hence the explicit request.
+    yield* hostAdmission.setPumpEnabled(true);
+    yield* hostAdmission.requestPump;
   });
 
   const delegatedTaskResultPending = Effect.fn("Orchestrator.delegatedTaskResultPending")(
@@ -14810,6 +14838,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 export const layer: Layer.Layer<
   OrchestratorV2,
   never,
+  | HostAdmission.HostAdmission
   | CheckpointServiceV2
   | FileSystem.FileSystem
   | Path.Path
