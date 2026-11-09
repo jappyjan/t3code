@@ -330,7 +330,7 @@ it yourself, use the row menu in the **Linked pull requests** panel. In the thre
 watched pull request shows an eye; click it to stop watching.
 
 A watched thread counts as working between wakes, so it stays in the **Working** section and does
-not auto-settle. After a merge, it auto-settles only once the agent has handled the merge wake. Agents stop watching when they hand the work back to you, and the thread then
+not auto-settle. After a merge or close, it auto-settles only once the agent has handled that wake. Agents stop watching when they hand the work back to you, and the thread then
 returns to your inbox.
 
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked

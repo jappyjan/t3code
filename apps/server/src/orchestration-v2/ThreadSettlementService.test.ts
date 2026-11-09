@@ -404,6 +404,17 @@ describe("resolveAutoSettlementAt", () => {
       });
     expect(settles([link])).toEqual(at(-90 * 60 * 1_000));
     expect(settles([{ ...link, watch }])).toBeNull();
+    const closed = {
+      ...link,
+      snapshot: {
+        ...link.snapshot,
+        state: "closed" as const,
+        mergedAt: undefined,
+        closedAt: link.snapshot.mergedAt,
+      },
+    };
+    expect(settles([closed])).toEqual(at(-90 * 60 * 1_000));
+    expect(settles([{ ...closed, watch }])).toBeNull();
     const open = { ...persistedLink("open", at(-3 * 60 * 60 * 1_000)), number: 43 };
     const idle = (pullRequests: SettlementShell["pullRequests"]) =>
       ThreadSettlementService.resolveAutoSettlementAt({
