@@ -377,6 +377,34 @@ describe("resolveAutoSettlementAt", () => {
         autoSettleOnMerge: false,
       }),
     ).toEqual(shell().createdAt);
+    // Settling drops a watch, so a merged pull request still watched waits for its wake first.
+    const merged = persistedLink("open", at(-3 * 60 * 60 * 1_000));
+    const link = {
+      ...merged,
+      snapshot: {
+        ...merged.snapshot!,
+        state: "merged" as const,
+        mergedAt: DateTime.formatIso(at(-60 * 60 * 1_000)),
+      },
+    };
+    const watch = {
+      startedAt: DateTime.formatIso(at(-2 * 60 * 60 * 1_000)),
+      headSha: null,
+      failedChecks: [],
+      passed: false,
+      passedChecks: [],
+      remarksThrough: DateTime.formatIso(at(-2 * 60 * 60 * 1_000)),
+      remarkIds: [],
+      conflicting: false,
+      wakes: 0,
+    };
+    const settles = (pullRequests: SettlementShell["pullRequests"]) =>
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...thread, pullRequests },
+      });
+    expect(settles([link])).toEqual(at(-90 * 60 * 1_000));
+    expect(settles([{ ...link, watch }])).toBeNull();
   });
 
   it("settles on merge after agent-started runs, but not after the user writes again", () => {

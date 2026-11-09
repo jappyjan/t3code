@@ -211,6 +211,8 @@ export function resolveAutoSettlementAt(input: {
   if (hasOpenLink) {
     pullRequest = null;
   } else if (links.length > 0) {
+    // Settling drops the watch, so the merge or close wake would never reach the agent.
+    if (links.some((link) => link.watch !== undefined)) return null;
     const latest = links.reduce((current, candidate) =>
       linkTerminalAtMs(candidate) > linkTerminalAtMs(current) ? candidate : current,
     );
