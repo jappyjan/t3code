@@ -44,7 +44,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useQuietThreadVisibleTurnItems } from "../../state/use-thread-detail";
-import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
+import { FilePreviewModal, type FilePreviewSource } from "../../components/ui/FilePreviewModal";
 import { composerContextProse } from "@t3tools/shared/composerContextReferences";
 import { MessageAttachmentList } from "./ThreadFeed";
 import { pipelineStepTone, stepRevisions, type PipelineStepTone } from "./pipeline-run-view";
