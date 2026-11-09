@@ -3852,12 +3852,12 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
   it.effect("wakes once for a merge already in the link snapshot", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
-      const threadId = ThreadId.make("runtime-pull-request-watch-merged-settled");
-      const projectId = ProjectId.make("pr-watch-merged-settled-project");
+      const threadId = ThreadId.make("runtime-pull-request-watch-merged-snapshot");
+      const projectId = ProjectId.make("pr-watch-merged-snapshot-project");
       yield* seedProject({
         projectId,
-        title: "Watch merged settled",
-        workspaceRoot: "/workspace/watch-merged-settled",
+        title: "Watch merged snapshot",
+        workspaceRoot: "/workspace/watch-merged-snapshot",
         defaultModelSelection: null,
         createdAt: "2026-10-01T00:00:00.000Z",
       });
@@ -3865,10 +3865,10 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         type: "thread.create",
         createdBy: "user",
         creationSource: "web",
-        commandId: CommandId.make("pr-watch-merged-settled-create"),
+        commandId: CommandId.make("pr-watch-merged-snapshot-create"),
         threadId,
         projectId,
-        title: "Watch merged settled",
+        title: "Watch merged snapshot",
         modelSelection,
         runtimeMode: "full-access",
         interactionMode: "default",
@@ -3882,7 +3882,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       };
       yield* orchestrator.dispatch({
         type: "thread.pull-request.watch",
-        commandId: CommandId.make("pr-watch-merged-settled-start"),
+        commandId: CommandId.make("pr-watch-merged-snapshot-start"),
         threadId,
         ...key,
         watching: true,
@@ -3891,7 +3891,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       // The merge reached the link snapshot before the watch read it, as when sync runs first.
       yield* orchestrator.dispatch({
         type: "thread.pull-request-link.sync",
-        commandId: CommandId.make("pr-watch-merged-settled-sync"),
+        commandId: CommandId.make("pr-watch-merged-snapshot-sync"),
         threadId,
         ...key,
         snapshot: {
