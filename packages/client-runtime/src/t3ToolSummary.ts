@@ -330,7 +330,7 @@ export function summarizeT3ToolCalls(
       label = done
         ? resolve(
             msg(
-              "{count, plural, one {Requested deletion of {count} pipeline} other {Requested deletion of {count} pipelines}}",
+              "{count, plural, one {Deleted {count} pipeline} other {Deleted {count} pipelines}}",
               { count },
             ),
           )
