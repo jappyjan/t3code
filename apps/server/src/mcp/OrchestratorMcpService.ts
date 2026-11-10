@@ -2630,6 +2630,22 @@ const make = Effect.gen(function* () {
       ) {
         return yield* failure("invalid_request", "Pass `name`, `steps` or `stepEdits` to change.");
       }
+      const commandId =
+        existing === undefined && input.clientRequestId !== undefined
+          ? stableCommandId({
+              scope,
+              requestKey: input.clientRequestId,
+              operation: "save-pipeline",
+            })
+          : undefined;
+      if (commandId !== undefined) {
+        // PipelineService applies a replayed create as an edit; an agent's reused key must not.
+        const { pipelines: all } = yield* pipelines.list().pipe(Effect.mapError(pipelineFailure));
+        const replayed = all.find(
+          (pipeline) => pipeline.id === PipelineService.pipelineIdForCommand(commandId),
+        );
+        if (replayed !== undefined) return pipelineView(replayed);
+      }
 
       const problems: string[] = [];
       const problem = (message: string) => void problems.push(message);
@@ -2641,6 +2657,12 @@ const make = Effect.gen(function* () {
         runtimeModeRank(settings.defaultRuntimeMode) <= runtimeModeRank(limits.runtimeMode)
           ? settings.defaultRuntimeMode
           : limits.runtimeMode;
+      const providers = yield* loadProviders;
+      const capableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
+      const descriptorsOf = (instanceId: string, model: string) =>
+        providers
+          .find((provider) => provider.instanceId === instanceId)
+          ?.models.find((candidate) => candidate.slug === model)?.capabilities?.optionDescriptors;
       const stepList = (existing?.steps ?? [])
         .map((step) => `${step.id} (${step.name})`)
         .join(", ");
@@ -2698,9 +2720,16 @@ const make = Effect.gen(function* () {
           problem(`${label}: pass a model with providerInstanceId. See orchestrator_capabilities.`);
           return undefined;
         }
+        // Inherited options are cleaned the way delegate_task cleans them.
+        const descriptors = descriptorsOf(instanceId, model);
         const options =
           fields.options ??
-          (sameAsCaller && model === callerSelection?.model ? callerSelection?.options : undefined);
+          (sameAsCaller && model === callerSelection?.model
+            ? knownOptions(
+                withLegacyUltracodeEffort(descriptors, callerSelection.options),
+                descriptors,
+              )
+            : undefined);
         return {
           name: fields.name,
           promptTemplate: fields.promptTemplate,
@@ -2810,8 +2839,6 @@ const make = Effect.gen(function* () {
       });
       for (const issue of pipelineDefinitionIssues(steps)) problem(issue.message);
 
-      const providers = yield* loadProviders;
-      const capableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
       steps.forEach((step, index) => {
         const { instanceId, model, options = [] } = step.modelSelection;
         const before = existing?.steps.find((candidate) => candidate.id === step.id);
@@ -2830,8 +2857,13 @@ const make = Effect.gen(function* () {
           );
           return;
         }
+        const callersModel =
+          before === undefined &&
+          instanceId === callerSelection?.instanceId &&
+          model === callerSelection.model;
         if (
           modelChanged &&
+          !callersModel &&
           provider.models.length > 0 &&
           !provider.models.some((candidate) => candidate.slug === model)
         ) {
@@ -2840,9 +2872,7 @@ const make = Effect.gen(function* () {
           );
           return;
         }
-        const descriptors = provider.models.find((candidate) => candidate.slug === model)
-          ?.capabilities?.optionDescriptors;
-        const invalid = invalidOptionSelections(options, descriptors);
+        const invalid = invalidOptionSelections(options, descriptorsOf(instanceId, model));
         if (invalid.length > 0) problem(`${labels[index]}: ${invalid.join(" ")}`);
       });
       if (problems.length > 0) return yield* failure("invalid_request", problems.join(" "));
@@ -2862,15 +2892,9 @@ const make = Effect.gen(function* () {
       const upsert: PipelineUpsertInput = {
         ...(existing !== undefined
           ? { id: existing.id, requireExisting: true }
-          : input.clientRequestId === undefined
+          : commandId === undefined
             ? {}
-            : {
-                commandId: stableCommandId({
-                  scope,
-                  requestKey: input.clientRequestId,
-                  operation: "save-pipeline",
-                }),
-              }),
+            : { commandId }),
         name,
         steps,
       };
