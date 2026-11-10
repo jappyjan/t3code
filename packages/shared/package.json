@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./pipelineStepIds": {
+      "types": "./src/pipelineStepIds.ts",
+      "import": "./src/pipelineStepIds.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"
