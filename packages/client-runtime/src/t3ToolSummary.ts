@@ -291,6 +291,57 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "pipeline-get": {
+      const count = countEntities(entityIds("pipelineId"));
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Read {count} pipeline} other {Read {count} pipelines}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to read {count} pipeline} other {Tried to read {count} pipelines}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "pipeline-save": {
+      const count = countEntities(entityIds("pipelineId"));
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Saved {count} pipeline} other {Saved {count} pipelines}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to save {count} pipeline} other {Tried to save {count} pipelines}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "pipeline-delete": {
+      const count = countEntities(entityIds("pipelineId"));
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Requested deletion of {count} pipeline} other {Requested deletion of {count} pipelines}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to delete {count} pipeline} other {Tried to delete {count} pipelines}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "pipeline-start": {
       const count = countEntities(entityIds("runId"));
       label = done

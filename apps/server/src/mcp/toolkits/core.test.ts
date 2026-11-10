@@ -1329,7 +1329,7 @@ it.effect("run_scheduled_task_now reports why a started run failed to dispatch",
   ),
 );
 it.effect(
-  "pipeline tools: a read-only client lists and checks runs but cannot start, continue, revise or cancel",
+  "pipeline tools: a read-only client reads pipelines and checks runs but cannot change, start, continue, revise or cancel",
   () =>
     Effect.gen(function* () {
       const server = yield* McpServer.McpServer;
@@ -1347,6 +1347,9 @@ it.effect(
       const runId = "pipeline-run:core";
 
       expect((yield* call("read-only", "list_pipelines", {})).isError).toBe(false);
+      expect(
+        (yield* call("read-only", "get_pipeline", { pipeline: "Feature delivery" })).isError,
+      ).toBe(false);
       expect((yield* call("read-only", "pipeline_status", { runId })).isError).toBe(false);
       for (const [name, args] of [
         [
@@ -1356,6 +1359,11 @@ it.effect(
         ["continue_pipeline", { runId, stepIndex: 0 }],
         ["revise_pipeline_step", { runId, stepIndex: 0, feedback: "Cover dark mode" }],
         ["cancel_pipeline", { runId }],
+        [
+          "save_pipeline",
+          { name: "Review", steps: [{ name: "Look", promptTemplate: "{{input}}" }] },
+        ],
+        ["delete_pipeline", { pipeline: "Feature delivery" }],
       ] as const) {
         expect(declaredFailure(yield* call("read-only", name, args)), name).toMatchObject({
           code: "capability_denied",
@@ -1387,7 +1395,12 @@ it.effect(
               list: () =>
                 Effect.succeed({
                   pipelines: [
-                    { id: "pipeline:feature-delivery", name: "Feature delivery", steps: [] },
+                    {
+                      id: "pipeline:feature-delivery",
+                      name: "Feature delivery",
+                      steps: [],
+                      updatedAt: "2026-10-28T10:00:00.000Z",
+                    },
                   ],
                 } as never),
               getRun: () => Effect.succeed(pipelineRun as never),
