@@ -207,8 +207,10 @@ function useCompactComposerEditor(text: ScaledTextRole, value: string) {
 
 export interface ThreadComposerProps {
   readonly isDraft?: boolean;
-  /** A draft that starts a pipeline: the steps pick their own models, and the prompt is text only. */
+  /** A draft that starts a pipeline: the steps pick their own models. */
   readonly pipelineDraft?: boolean;
+  /** The server keeps attachments and context on a pipeline start; older ones take text only. */
+  readonly pipelineAttachments?: boolean;
   readonly canOperateThread: boolean;
   readonly placeholder: string;
   readonly contentMaxWidth?: number;
@@ -908,7 +910,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               compact
               hidden={showsCompactDictation}
             >
-              {props.pipelineDraft ? (
+              {props.pipelineDraft && props.pipelineAttachments !== true ? (
                 <View className="w-3 shrink-0" />
               ) : (
                 <ComposerAttachmentButton
