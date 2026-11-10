@@ -1177,7 +1177,7 @@ function UserMessageVideo(props: {
 }
 
 /** A message's files as its bubble shows them; a guest's waiting message uses it too. */
-function MessageAttachmentList(props: {
+export function MessageAttachmentList(props: {
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly environmentId: EnvironmentId;
   readonly onPressPreview: (source: FilePreviewSource) => void;
