@@ -44,6 +44,11 @@ Follow `~/code/t3dotgg/t3code-fork-tools/rebuild-main.md` in the fork checkout. 
 unchanged, pushed, or a problem to report. Note whether this run pushed a new `main`, and its
 short SHA.
 
+This Mac works on the fork as JappyMondo, not with the `jappyjan` credential: wherever
+`rebuild-main.md` gives its HTTPS push command, run `git push origin <refs>` instead, with the same
+`--force-with-lease` arguments. `origin` is `https://github.com/jappyjan/t3code.git` here, and the
+git config (nix-mac-setup) supplies JappyMondo's token and signs with the JappyMondo key.
+
 ## 3. Build
 
 Sync the checkout to what `origin/main` is now: `git fetch origin`, then `git reset --hard
