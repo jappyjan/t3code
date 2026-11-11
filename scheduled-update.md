@@ -103,7 +103,7 @@ that is still waiting. Don't wait for it.
 ## 4b. Tell the MacBook Pro (full run only)
 
 If section 2 pushed a new `main`, call the T3 tool `t3_thread_launch` with environmentId
-`da87875e-664d-4bc6-a377-1ba0ac4f7500`, projectId `mcp:af4eabd0-97dc-4df8-a519-b8a63101bc41`,
+`b0736160-1ad8-45dc-8415-664673b085d6`, projectId `5aa6ed13-cbec-4734-a899-890fc4a1167a`,
 title "T3 Code fork: update MacBook Pro" and this message, with the SHA filled in: "Install only.
 Follow ~/code/t3dotgg/t3code-fork-tools/scheduled-update-pro.md in install-only mode: the MacBook
 Air pushed a new main (<short sha>). Do not rebase, push or launch another chat." Do not wait for
