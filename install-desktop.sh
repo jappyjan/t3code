@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Replaces the installed T3 Code desktop app with a fork build, then relaunches it.
 #
-#   install-desktop.sh [--detach] [--now] <path/to/T3 Code (Nightly).app>
+#   install-desktop.sh [--detach] <path/to/T3 Code (Nightly).app>
 #
 # --detach  re-runs itself in the background, detached from the caller. Use it from inside
 #           T3 Code: quitting the app ends every agent running in it, including the caller.
-# --now     skips waiting until no agent run is active.
 #
-# Steps: wait until T3 Code is idle, quit it, back up the state database, swap the app (the
-# previous one is kept for rollback), relaunch, and roll back if the new app does not stay up.
+# Steps: give the caller a minute to finish its turn, quit T3 Code (running agents are stopped, not
+# waited for), back up the state database, swap the app (the previous one is kept for rollback),
+# relaunch, and roll back if the new app does not stay up.
 # Progress goes to $BUILDS/install.log; the outcome goes to $BUILDS/install-status and a
 # macOS notification.
 set -euo pipefail
@@ -25,33 +25,20 @@ LOG="$BUILDS/install.log"
 STATUS="$BUILDS/install-status"
 CASK="t3-code@nightly"
 KEEP_BACKUPS=2
-START_DELAY_S=120         # lets the calling agent finish its turn first
-IDLE_POLL_S=60
-MAX_IDLE_WAIT_S=$((8 * 3600))
-# A run row that says "running" but whose thread has been silent this long is a leftover (an
-# interrupted turn or pipeline step that was never closed), not work to protect. Counting them made
-# the install wait forever.
-STALE_RUN_S=$((2 * 3600))
+START_DELAY_S=60          # lets the calling agent finish its turn first
 
 detach=0
-now=0
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --detach) detach=1 ;;
-    --now) now=1 ;;
-    *) break ;;
-  esac
+if [[ "${1:-}" == --detach ]]; then
+  detach=1
   shift
-done
-new_app="${1:?usage: install-desktop.sh [--detach] [--now] <app>}"
+fi
+new_app="${1:?usage: install-desktop.sh [--detach] <app>}"
 new_app="$(cd "$(dirname "$new_app")" && pwd)/$(basename "$new_app")"
 [[ -d "$new_app/Contents" ]] || { echo "Not an app bundle: $new_app" >&2; exit 1; }
 mkdir -p "$BUILDS"
 
 if [[ $detach -eq 1 ]]; then
-  args=()
-  [[ $now -eq 1 ]] && args+=(--now)
-  nohup "$0" ${args[@]+"${args[@]}"} "$new_app" >>"$LOG" 2>&1 </dev/null &
+  nohup "$0" "$new_app" >>"$LOG" 2>&1 </dev/null &
   disown
   echo "Install running detached (pid $!); log: $LOG"
   exit 0
@@ -68,14 +55,6 @@ finish() {
 # pgrep cannot read the main process's arguments, and the app name holds regex characters.
 app_pids() { ps -axo pid=,comm= | grep -F "$1" | awk '{print $1}' || true; }
 app_running() { [[ -n "$(app_pids "$target/Contents/MacOS/")" ]]; }
-active_runs() {
-  sqlite3 -readonly -cmd ".timeout 10000" "$USERDATA/statev2.sqlite" \
-    "SELECT COUNT(*) FROM orchestration_v2_projection_runs r
-       JOIN orchestration_v2_projection_threads t ON t.thread_id = r.thread_id
-      WHERE r.status IN ('preparing','queued','starting','running','waiting')
-        AND t.updated_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-$STALE_RUN_S seconds')" \
-    2>/dev/null || echo 1
-}
 # Once the app is quit, any failure must bring the previous app back instead of leaving T3 Code closed.
 swapped=0
 recover_after_failure() {
@@ -96,7 +75,7 @@ is_install() { [[ -n "$1" && "$1" != "$$" ]] && ps -p "$1" -o command= 2>/dev/nu
 
 log "Installing $new_app over $target"
 
-# Only the newest build installs. A run still waiting for idle gives way to a newer one; a run that
+# Only the newest build installs. A run still in its start delay gives way to a newer one; a run that
 # has claimed BUSYFILE is quitting or swapping the app, so the newer one waits for it to end.
 # Each side writes its own file before reading the other's, so one of them always sees the other.
 PIDFILE="$BUILDS/install.pid"
@@ -121,27 +100,7 @@ if is_install "$busy"; then
   while ps -p "$busy" >/dev/null 2>&1; do sleep 5; done
 fi
 
-if [[ $now -eq 0 ]]; then
-  sleep "$START_DELAY_S"
-  waited=0
-  idle_checks=0
-  # Two idle checks in a row, so a run that is just starting is not cut off.
-  while [[ $idle_checks -lt 2 ]]; do
-    if [[ "$(active_runs)" == "0" ]]; then
-      idle_checks=$((idle_checks + 1))
-    else
-      idle_checks=0
-    fi
-    [[ $idle_checks -ge 2 ]] && break
-    if [[ $waited -ge $MAX_IDLE_WAIT_S ]]; then
-      finish "Not installed: T3 Code stayed busy for 8 hours. The build is ready: $0 --now \"$new_app\""
-      exit 1
-    fi
-    sleep "$IDLE_POLL_S"
-    waited=$((waited + IDLE_POLL_S))
-  done
-  log "T3 Code is idle"
-fi
+sleep "$START_DELAY_S"
 
 echo "$$" >"$BUSYFILE"
 if [[ "$(cat "$PIDFILE" 2>/dev/null)" != "$$" ]]; then

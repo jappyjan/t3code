@@ -1,8 +1,8 @@
 # T3 Code fork: rebase the feature branches and rebuild main
 
-Shared by both laptops. The MacBook Air runs it at 00:00 and the MacBook Pro at 12:00, so whichever
-runs first after a change does the work and the other usually finds nothing to do. Never open a
-pull request against `pingdotgg/t3code`, never post to the discussion, never pass `--zap` to brew.
+Run by t3-worker (`scheduled-update-worker.md`) twice a day. It is the only machine that rebases
+and pushes; the laptops only install what it pushed. Never open a pull request against
+`pingdotgg/t3code`, never post to the discussion.
 
 Paths: fork checkout `~/code/t3dotgg/t3code`, kept on branch `main`. Remotes: `origin` is
 `jappyjan/t3code`, `upstream` is `pingdotgg/t3code`.
@@ -32,8 +32,8 @@ feature branch they belong to. The apps are built from `main`.
 ## Steps
 
 "Checks" means: `pnpm install --frozen-lockfile`, then `pnpm exec vp run check:changed upstream/main`.
-Two failures are known and unrelated: `ServerEnvironment.test.ts` (macOS `/private/var` path) and
-anything that needs the missing Playwright Chromium. Any other failure counts.
+Failures that need a browser the host lacks (Playwright Chromium) are known and unrelated. Any
+other failure counts.
 
 1. If the working tree has uncommitted changes, or the branch is not `main`, skip the rest of this
    file and say so in the report. Never stash, reset or discard work.
@@ -41,13 +41,11 @@ anything that needs the missing Playwright Chromium. Any other failure counts.
    `origin`, so bring each local feature branch up to its `origin` copy: if the local branch does
    not exist yet, create it with `git branch <branch> origin/<branch>`; if it is an ancestor of
    `origin/<branch>`, `git branch -f <branch> origin/<branch>`. If the local branch has commits
-   that `origin` lacks, skip the rest of this file and report it; never drop them. (The other
-   laptop's run counts as `origin`: it only pushes whole results, so after the fetch you are
-   current.)
+   that `origin` lacks, skip the rest of this file and report it; never drop them.
 3. Nothing changed if all of these hold: `upstream/main` is in `feat/pipelines`, each feature
    branch contains the one before it, and `origin/main` equals what step 5 would build (it
    contains `upstream/main` and every feature branch and nothing else). Then skip steps 4 to 6
-   and report "main unchanged". This is the usual outcome for the second laptop.
+   and report "main unchanged".
 4. Rebase the stack, in order. Before starting, note each branch's current tip
    (`old_pipelines=$(git rev-parse feat/pipelines)`, `old_linear=$(git rev-parse feat/linear)`
    and so on).
@@ -96,11 +94,10 @@ anything that needs the missing Playwright Chromium. Any other failure counts.
    Since the branches are stacked these are fast-forwards, and `main` ends up equal to the last
    feature branch. Run the checks once more on `main`.
 6. Push `feat/pipelines feat/linear feat/multi-repo-projects feat/host-capacity main` with force-with-lease, using
-   the command above. If a lease is rejected, the other laptop pushed in the meantime: do not
-   force. Fetch, go back to step 3, and if main is now unchanged report that and stop.
+   the command above. If a lease is rejected, someone pushed in the meantime: do not force. Fetch,
+   go back to step 3, and if main is now unchanged report that and stop.
 
-   If this run pushed a new `main`, remember its short SHA: the run file then launches a chat on
-   the other laptop to update it.
+   Note whether this run pushed a new `main`, and its short SHA.
 
 ## Schema rule
 
