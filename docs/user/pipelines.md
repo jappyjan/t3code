@@ -11,7 +11,8 @@ Pipelines need a T3 Code server that supports them. Update an older server befor
 Define pipelines in **Settings → Pipelines**. Choose **New pipeline** and start from **Blank** or
 from the **Feature delivery** template, a full feature-delivery flow from requirements to merge and
 follow-through. Its last step waits until you start it, then merges the pull request and does the
-post-merge work.
+post-merge work. Each step stops the dev servers, containers and other temporary resources it
+started once no later step needs them, and the last step sweeps up anything left over from QA.
 T3 Code adds it once. If you delete it, it stays deleted, and you can recreate it from the
 template. While you have not edited a pipeline made from the template, it is updated to the latest
 template when T3 Code updates. Once you edit it, or an agent edits it for you, it is yours and
