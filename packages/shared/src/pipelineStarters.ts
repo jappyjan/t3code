@@ -82,6 +82,11 @@ const BUILDS_ON = `What this step builds on:
 - Before you start, check that the work this step needs is really there: the earlier steps' results, the branch or pull request this work stacks on, and any other ticket's work the requirements depend on.
 - If something is missing, unfinished or different from what the requirements assume, ask me how to proceed with your question tool and wait. Offer concrete options, for example: wait until I say it is ready (then check again), build on another base you name, do only the parts that do not depend on it, or stop here.`;
 
+const CLEANUP = `Cleanup:
+- Before you hand off, stop and remove everything you or your subagents started that no later step needs: dev servers and other processes (by the PID you recorded, after checking it is still that process; never by matching a name), Docker containers, volumes and networks, temporary databases and seeded data, extra checkouts or worktrees, browser or preview tabs, and scratch files.
+- Never touch what you did not start, or the workspace this pipeline runs in.
+- In your result, list what you cleaned up and anything you could not.`;
+
 const step = (
   input: Omit<PipelineStarterStep, "id" | "skills" | "pauseBefore"> & {
     readonly id: string;
@@ -99,7 +104,14 @@ export const FEATURE_DELIVERY_PIPELINE: PipelineStarter = {
   name: "Feature delivery",
   description: "Refine → Implement → QA → Review → Guide → Merge",
   // Earlier step lists, so unedited copies of them upgrade to these steps.
-  previousFingerprints: ["dahrmvu2g", "113oj2n9s8j", "1tjm54v9ael", "1ja7h1u1f3b"],
+  previousFingerprints: [
+    "dahrmvu2g",
+    "113oj2n9s8j",
+    "1tjm54v9ael",
+    "1ja7h1u1f3b",
+    "yjcq182r3n",
+    "29ivh7t9mwk",
+  ],
   steps: [
     step({
       id: "requirements",
@@ -137,6 +149,8 @@ ${BUILDS_ON}
 
 ${GIT_AND_TRACKING}
 
+${CLEANUP}
+
 Finish with: what you built, the areas you changed, how to run and try it, test results, the branch and PR link, post-merge checks you discovered or changes to the requirements' list, and anything left open.`,
     }),
     step({
@@ -152,12 +166,15 @@ Implementation summary:
 {{steps.implement.output}}
 
 1. Read the branch's diff against its base. List every changed screen, route, dialog, command, API and setting, plus everything that reuses changed code.
-2. Get the app running for a real test the way the repo documents it, isolated from production and personal data. Start long-running processes detached so they survive the end of your turn. Record their PIDs, ports, URLs and how to log in or pair.
+2. Get the app running for a real test the way the repo documents it, isolated from production and personal data. Start long-running processes detached so they survive the end of your turn. Record their PIDs, ports, URLs and how to log in or pair, and every other resource the environment uses (containers, volumes, networks, databases, temp folders), each with the exact commands that stop and remove it.
 3. Write a full QA plan: one numbered task per check, grouped by area. Each task says where to go (exact URL, route or screen), the steps, the expected result and what to screenshot. Cover the happy path, edge cases, errors, empty and loading states, reverse paths (undo, close, cancel), permissions, narrow and mobile widths, light and dark theme, and regressions in neighbouring features.
 
 ${BUILDS_ON}
 
-Do not change code. Finish with the environment details (URLs, PIDs, where credentials come from, how to stop everything), then the complete QA plan.`,
+${CLEANUP}
+- Exception: leave the QA environment running for the next step.
+
+Do not change code. Finish with the environment details (URLs, PIDs, where credentials come from, every resource and how to stop and remove it), then the complete QA plan.`,
     }),
     step({
       id: "qa",
@@ -175,13 +192,16 @@ Requirements:
 - Drive the app with the browser or preview tools you have. Screenshot every checked state and save the screenshots outside the tracked tree (a gitignored or temp folder), named by task number.
 - Inspect everything visually too: spacing, alignment, overflow, contrast, dark mode, responsive layouts, and whether new UI matches the rest of the app's components, wording and patterns.
 - When something fails, find the root cause, fix it, add a regression test where it makes sense, and re-run the affected tasks.
-- If the environment from the plan is not running, start it yourself. Stop the processes the plan started when you are done.
+- If the environment from the plan is not running, start it yourself.
 
 ${BUILDS_ON}
 
 ${GIT_AND_TRACKING}
 
-Finish with a QA report: a table of tasks marked pass, fixed or open; each issue found and what you changed; the screenshot folder; remaining risks.`,
+${CLEANUP}
+- This includes the whole QA environment the plan lists, even though an earlier step started it. Keep the screenshot folder: the guide step uses it.
+
+Finish with a QA report: a table of tasks marked pass, fixed or open; each issue found and what you changed; the screenshot folder; what you cleaned up and anything still running; remaining risks.`,
     }),
     step({
       id: "review",
@@ -207,6 +227,8 @@ ${BUILDS_ON}
 ${GIT_AND_TRACKING}
 - When the review is done and nothing important is open, mark the pull request ready for review.
 
+${CLEANUP}
+
 Finish with: confirmed findings and how each was resolved, rejected findings and why, post-merge checks you discovered or changes to the earlier list, and anything that still needs a human decision.`,
     }),
     step({
@@ -228,8 +250,11 @@ Review results:
 - Show code only when it is essential to understand a decision, and keep it to a few lines.
 - Order it as a walkthrough: what changed and why, each user-visible change, how it works behind the scenes, what QA and review found, and what I should look at or decide. In that last section keep apart (a) what the Merge & follow-through step will do once I start it (approve the pull request as me, merge it, get its checks green, and check the change in the dev environment if one is known) and (b) what stays with me, including any release, production deploy or other rollout.
 - Make it one self-contained HTML page with the images embedded, saved outside the tracked tree. Show it with your HTML preview tool if you have one, and link the pull request.
+- If you need the app running for new screenshots, start it isolated as the QA plan describes.
 
 ${BUILDS_ON}
+
+${CLEANUP}
 
 Do not change code. Finish with the path to the guide and a three-line summary.`,
     }),
@@ -252,8 +277,13 @@ Review results:
 Review guide:
 {{steps.guide.output}}
 
+QA environment, if the pipeline prepared one:
+{{steps.qa-prep.output}}
+
 QA report, if the pipeline had one:
 {{steps.qa.output}}
+
+Before anything else, sweep up what earlier steps left behind, since nothing runs after this step: check every process, container, volume, network, temporary database, extra worktree and preview tab the QA environment and the step results above list, and stop and remove what is still there. Delete the QA screenshot folder; the review guide embeds its images, so keep the guide. Follow the cleanup rules below.
 
 1. Find this run's pull request, the one the implementation linked; if you cannot tell which, ask me. If it is already merged, skip to step 5.
 2. Make it mergeable: bring it up to date with its base the way the repo does it and resolve conflicts, fix CI failures this change caused, and address new review comments within the pull request's scope. Push only to the pull request's own branch. Fix causes in code: never skip, delete or weaken tests, checks or CI configuration to get green. If a check fails for a reason outside this change, ask me.
@@ -265,6 +295,8 @@ QA report, if the pipeline had one:
 8. If the work belongs to a ticket and you have tools for it, move it to its done state. No status spam: no comments that only say you started or are still working.
 
 ${BUILDS_ON}
+
+${CLEANUP}
 
 Finish with a summary: the pull request URL and merge commit; the base branch's checks on it (passed, failed or pending); the dev environment check (passed, failed, not done yet, or no dev environment known); the ticket state; and "Left for me": releases, deploys and anything else the change still needs.`,
     }),
