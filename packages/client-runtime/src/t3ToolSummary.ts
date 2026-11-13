@@ -376,6 +376,23 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "pipeline-run-list": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Listed pipeline runs {count} time} other {Listed pipeline runs {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to list pipeline runs {count} time} other {Tried to list pipeline runs {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "pipeline-continue": {
       const count = countEntities(entityIds("runId"));
       label = done

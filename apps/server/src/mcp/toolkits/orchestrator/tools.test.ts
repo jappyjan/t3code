@@ -82,6 +82,7 @@ it("marks only the pipeline reads as read-only", () => {
   expect(readonly("list_pipelines")).toBe(true);
   expect(readonly("get_pipeline")).toBe(true);
   expect(readonly("pipeline_status")).toBe(true);
+  expect(readonly("list_pipeline_runs")).toBe(true);
   expect(readonly("save_pipeline")).toBe(false);
   expect(readonly("delete_pipeline")).toBe(false);
   expect(readonly("start_pipeline")).toBe(false);

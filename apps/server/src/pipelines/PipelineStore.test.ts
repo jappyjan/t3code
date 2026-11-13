@@ -8,6 +8,7 @@ import {
   PipelineRun,
   PipelineRunId,
   PipelineStepId,
+  ProjectId,
   ThreadId,
   ComposerContextId,
 } from "@t3tools/contracts";
@@ -303,6 +304,36 @@ it.effect("persists revisions and the revising flag, and reads runs without any 
     assert.isTrue(yield* store.isStepRevising(runId, 1));
     yield* store.updateStep(runId, 1, { revising: false });
     assert.isFalse(yield* store.isStepRevising(runId, 1));
+  }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect("lists run ids newest first, narrowed by status, pipeline and project", () =>
+  Effect.gen(function* () {
+    const store = yield* PipelineStore.PipelineStore;
+    const otherRunId = decodeRunId("run-2");
+    yield* store.insertRunWithSteps(newRun(), newSteps(["plan"]));
+    yield* store.insertRunWithSteps(
+      {
+        ...newRun(),
+        id: otherRunId,
+        pipelineId: null,
+        projectId: ProjectId.make("project-2"),
+        parentThreadId: decodeThreadId("thread-parent-2"),
+        status: "paused",
+        pauseReason: "awaiting_handoff",
+        createdAt: LATER,
+      },
+      newSteps(["plan"]),
+    );
+
+    assert.deepStrictEqual(yield* store.listRunIds({}), [otherRunId, runId]);
+    assert.deepStrictEqual(yield* store.listRunIds({ statuses: ["paused"] }), [otherRunId]);
+    assert.deepStrictEqual(yield* store.listRunIds({ statuses: [] }), []);
+    assert.deepStrictEqual(yield* store.listRunIds({ pipelineId }), [runId]);
+    assert.deepStrictEqual(
+      yield* store.listRunIds({ projectId: ProjectId.make("project-2"), statuses: ["running"] }),
+      [],
+    );
   }).pipe(Effect.provide(testLayer)),
 );
 
