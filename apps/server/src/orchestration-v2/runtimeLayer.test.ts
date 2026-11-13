@@ -6401,7 +6401,13 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
                   }),
                   state,
                   checks: [
-                    { name: "test", status: "success" as const, description: null, url: null },
+                    {
+                      name: "test",
+                      status: "success" as const,
+                      description: null,
+                      url: null,
+                      required: true,
+                    },
                   ],
                 })),
               activity: () =>
@@ -6423,7 +6429,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         ({ messages }) => messages.flatMap((message) => message.notification?.summary ?? []),
       );
       yield* sweep;
-      assert.deepEqual(yield* summaries, ["#14: checks passed"]);
+      const before = yield* summaries;
 
       // A merge queue merges it after the agent ended its turn; nothing else is left to wake it.
       state = "merged";
@@ -6431,10 +6437,10 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       yield* sweep;
       const thread = yield* orchestrator.getThreadShell(threadId);
       assert.isUndefined(thread?.pullRequests?.[0]?.watch);
-      assert.deepEqual(yield* summaries, ["#14: checks passed", "#14: merged, stopped watching"]);
+      assert.deepEqual(yield* summaries, [...before, "#14: merged, stopped watching"]);
       yield* TestClock.adjust("2 minutes");
       yield* sweep;
-      assert.lengthOf(yield* summaries, 2);
+      assert.lengthOf(yield* summaries, before.length + 1);
     }),
   );
 

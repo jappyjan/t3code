@@ -69,6 +69,7 @@ export function PipelineStepModelPickerRouteScreen() {
     <ThreadSettingsPickerScreen
       environmentId={editor.environmentId}
       projectId={null}
+      cwd={null}
       providerGroups={providerGroups}
       selectedModel={selectedModel}
       prompt={step.promptTemplate}

@@ -486,6 +486,7 @@ const makeHarness = Effect.gen(function* () {
       cleanupScheduledTasks: () => Effect.void,
       cleanupTerminals: () => Effect.void,
       cleanupPreviews: () => Effect.void,
+      cleanupDevices: () => Effect.void,
       cleanupAttachments: (ids) => Queue.offer(cleanedAttachments, ids),
     }),
     IdAllocator.layer,
