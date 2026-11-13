@@ -7,9 +7,11 @@ and pushes; the laptops only install what it pushed. Never open a pull request a
 Paths: fork checkout `~/code/t3dotgg/t3code`, kept on branch `main`. Remotes: `origin` is
 `jappyjan/t3code`, `upstream` is `pingdotgg/t3code`.
 
-Push with the `jappyjan` GitHub credential over HTTPS, not SSH:
-`git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/jappyjan/t3code.git <refs>`
-(use `--force-with-lease=<branch>:<expected sha>` for each force-pushed ref).
+Push as `jappyjan` over SSH: `git push git@github.com:jappyjan/t3code.git <refs>`
+(use `--force-with-lease=<branch>:<expected sha>` for each force-pushed ref). On this host the
+SSH key authenticates as `jappyjan` (`ssh -T git@github.com` says so). Do not push over HTTPS
+with the `gh` token: it lacks the `workflow` scope, and GitHub rejects every push that brings in
+upstream commits touching `.github/workflows/`.
 
 The run has two phases. First each feature branch is rebased on its own, checked and pushed.
 Only then is `main` rebuilt from the branches that made it. A branch that fails never stops the
