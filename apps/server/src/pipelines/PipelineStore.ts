@@ -16,6 +16,7 @@ import {
   type PipelineRunId,
   type PipelineRunStatus,
   type PipelineRunStepStatus,
+  type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
@@ -127,6 +128,12 @@ export class PipelineStore extends Context.Service<
     readonly listRunIdsByStatus: (
       statuses: ReadonlyArray<PipelineRunStatus>,
     ) => Effect.Effect<ReadonlyArray<PipelineRunId>, PipelineError>;
+    /** Ids of runs matching every given filter, newest first. */
+    readonly listRunIds: (filter: {
+      readonly statuses?: ReadonlyArray<PipelineRunStatus> | undefined;
+      readonly pipelineId?: PipelineId | undefined;
+      readonly projectId?: ProjectId | undefined;
+    }) => Effect.Effect<ReadonlyArray<PipelineRunId>, PipelineError>;
     /** Writes only the supplied run columns; a missing run is a no-op. */
     readonly updateRun: (
       runId: PipelineRunId,
@@ -597,6 +604,23 @@ export const layer: Layer.Layer<PipelineStore, never, SqlClient.SqlClient> = Lay
       return rows.map((row) => row.run_id);
     });
 
+    const listRunIds: PipelineStore["Service"]["listRunIds"] = Effect.fn(
+      "PipelineStore.listRunIds",
+    )(function* (filter) {
+      if (filter.statuses?.length === 0) return [];
+      const conditions = [
+        ...(filter.statuses === undefined ? [] : [sql.in("status", filter.statuses)]),
+        ...(filter.pipelineId === undefined ? [] : [sql`pipeline_id = ${filter.pipelineId}`]),
+        ...(filter.projectId === undefined ? [] : [sql`project_id = ${filter.projectId}`]),
+      ];
+      const rows = yield* sql<{ readonly run_id: PipelineRunId }>`
+        SELECT run_id FROM pipeline_runs
+        WHERE ${sql.and(conditions)}
+        ORDER BY created_at DESC, run_id DESC
+      `.pipe(NodeSqliteClient.readOnly, storageError("Could not list pipeline runs.", {}));
+      return rows.map((row) => row.run_id);
+    });
+
     const writeRun = (runId: PipelineRunId, patch: PipelineRunPatch) =>
       sql`UPDATE pipeline_runs SET ${sql.update(runColumns(patch))} WHERE run_id = ${runId}`;
 
@@ -707,6 +731,7 @@ export const layer: Layer.Layer<PipelineStore, never, SqlClient.SqlClient> = Lay
       getRun,
       getRunByParentThreadId,
       listRunIdsByStatus,
+      listRunIds,
       updateRun,
       updateStep,
       updateRunWithSteps,
