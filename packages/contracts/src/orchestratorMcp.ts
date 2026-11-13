@@ -794,7 +794,13 @@ const OrchestratorMcpPipelineKey = TrimmedNonEmptyString.annotate({
   description: "Pipeline id or exact name, from `list_pipelines`.",
 });
 
+export const OrchestratorMcpListPipelinesInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
+});
+export type OrchestratorMcpListPipelinesInput = typeof OrchestratorMcpListPipelinesInput.Type;
+
 export const OrchestratorMcpGetPipelineInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
   pipeline: OrchestratorMcpPipelineKey,
 });
 export type OrchestratorMcpGetPipelineInput = typeof OrchestratorMcpGetPipelineInput.Type;
@@ -872,6 +878,7 @@ export const OrchestratorMcpDeletePipelineResult = Schema.Struct({
 export type OrchestratorMcpDeletePipelineResult = typeof OrchestratorMcpDeletePipelineResult.Type;
 
 export const OrchestratorMcpStartPipelineInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
   pipeline: TrimmedNonEmptyString.annotate({
     description: "Pipeline id or exact name, from `list_pipelines`.",
   }),
@@ -889,11 +896,13 @@ export const OrchestratorMcpStartPipelineInput = Schema.Struct({
 export type OrchestratorMcpStartPipelineInput = typeof OrchestratorMcpStartPipelineInput.Type;
 
 export const OrchestratorMcpPipelineRunInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
   runId: PipelineRunId,
 });
 export type OrchestratorMcpPipelineRunInput = typeof OrchestratorMcpPipelineRunInput.Type;
 
 export const OrchestratorMcpContinuePipelineInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
   runId: PipelineRunId,
   stepIndex: NonNegativeInt.annotate({
     description: "The run's `currentStepIndex`. A stale index is rejected.",
@@ -902,6 +911,7 @@ export const OrchestratorMcpContinuePipelineInput = Schema.Struct({
 export type OrchestratorMcpContinuePipelineInput = typeof OrchestratorMcpContinuePipelineInput.Type;
 
 export const OrchestratorMcpRerunPipelineInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
   runId: PipelineRunId,
   stepIndex: NonNegativeInt.annotate({
     description:
@@ -911,6 +921,7 @@ export const OrchestratorMcpRerunPipelineInput = Schema.Struct({
 export type OrchestratorMcpRerunPipelineInput = typeof OrchestratorMcpRerunPipelineInput.Type;
 
 export const OrchestratorMcpRevisePipelineStepInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
   runId: PipelineRunId,
   stepIndex: NonNegativeInt.annotate({
     description:

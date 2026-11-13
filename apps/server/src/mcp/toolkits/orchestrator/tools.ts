@@ -29,6 +29,7 @@ import {
   OrchestratorMcpRequestSecretInput,
   OrchestratorMcpRequestSecretResult,
   OrchestratorMcpFailure,
+  OrchestratorMcpListPipelinesInput,
   OrchestratorMcpListPipelinesResult,
   OrchestratorMcpListScheduledTasksInput,
   OrchestratorMcpListScheduledTasksResult,
@@ -214,6 +215,7 @@ const DeleteScheduledTaskTool = Tool.make("delete_scheduled_task", {
 const ListPipelinesTool = Tool.make("list_pipelines", {
   description:
     "List the user's pipelines: saved chains of agent steps, each step in its own thread, each step's output feeding the next. Pass an id or exact name to `start_pipeline`. Full definitions: `get_pipeline`.",
+  parameters: OrchestratorMcpListPipelinesInput,
   success: OrchestratorMcpListPipelinesResult,
   failure: OrchestratorMcpFailure,
   failureMode: "return",
@@ -265,7 +267,7 @@ const DeletePipelineTool = Tool.make("delete_pipeline", {
 
 const StartPipelineTool = Tool.make("start_pipeline", {
   description:
-    "Run a saved pipeline on `prompt` when the user asks for one by name or purpose. Not for ordinary delegation. Steps share your checkout (another project's root), or one new worktree with `worktree=true`. They run at your runtime mode or narrower. Plan mode cannot start one. Returns `runId`: poll `pipeline_status`. In your reply, name the run as its `link` verbatim.",
+    "Run a saved pipeline on `prompt` when the user asks for one by name or purpose. Not for ordinary delegation. Steps share your checkout (in another project or environment, its root), or one new worktree with `worktree=true`. They run at your runtime mode or narrower. Plan mode cannot start one. Returns `runId`: poll `pipeline_status`. In your reply, name the run as its `link` verbatim.",
   parameters: OrchestratorMcpStartPipelineInput,
   success: OrchestratorMcpPipelineRun,
   failure: OrchestratorMcpFailure,

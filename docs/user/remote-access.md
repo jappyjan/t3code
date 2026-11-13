@@ -322,7 +322,8 @@ threads on an environment through its MCP server. See
 
 Link two machines, such as your laptop and a VPS, and agents on one can work on
 the other: launch, message, wait on and stop its threads, answer their
-questions, and manage its queues, projects and scheduled tasks.
+questions, start and follow its pipeline runs, and manage its queues, projects
+and scheduled tasks.
 
 Linked environments is a beta. Turn it on for both machines in **Settings →
 Labs**; on mobile, **Settings → Labs** lists each connected machine. While it is
@@ -351,7 +352,7 @@ an address you trust: the code is sent there.
 - A full-access link works there like that machine's own agents. Below full
   access, the link's agents can change only threads it started, not that
   machine's own threads, projects or settings, and they skip its project setup
-  scripts.
+  scripts. They can check on its pipeline runs but not start or change them.
 - The link shows up in that machine's **Settings → Sharing & access** like any
   outside agent. Revoke it there to end it. **Forget** on this machine only
   removes it here.
