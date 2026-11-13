@@ -487,7 +487,7 @@ export const make = Effect.gen(function* () {
           outcome: wake.notification.outcome,
           summary: wake.notification.summary,
         })),
-        messageId: MessageId.make(`message:pr-watch:${uuid}`),
+        messageId: pullRequestWatchWakeMessageId(uuid),
       },
     });
     yield* Effect.forEach(
@@ -791,7 +791,7 @@ export const make = Effect.gen(function* () {
       ending,
       ([target, reason]) =>
         (reason === "merged"
-          ? merged(target)
+          ? merged(`${target.thread.projectId} ${threadPullRequestKeyOf(target.link)}`, target)
           : record(target, null).pipe(Effect.tap(() => ended(target, reason)))
         ).pipe(
           Effect.catchCause(
