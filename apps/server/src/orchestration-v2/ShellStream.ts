@@ -356,10 +356,9 @@ export function activeShellRowsForSubscriber(
 
 /**
  * Opted-in snapshots keep the 25 newest settled top-level threads (and ties) and count the rest per
- * project in `olderSettled`; clients page them with `getOlderSettledThreads`. Older rows stay while
- * pinned, snoozed, live, above a kept subagent or side chat, the parent of a task in a linked
- * environment, or the parent of a kept pipeline step, so walks over shell rows and other
- * environments' tasks still find them.
+ * project in `olderSettled`, paged by `getOlderSettledThreads`. Older rows stay while pinned,
+ * snoozed, live, above a kept subagent or side chat, or the parent of a linked environment's task or
+ * of a kept pipeline step, so walks over shell rows and other environments' tasks still find them.
  */
 export function omitOlderSettledShells(input: {
   readonly threads: ReadonlyArray<OrchestrationV2ThreadShell>;

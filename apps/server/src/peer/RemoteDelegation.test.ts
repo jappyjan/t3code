@@ -543,18 +543,26 @@ const boxToolkitLayer = (thread: BoxThread) => {
         ),
       ),
   });
-  return Layer.merge(McpHttpServer.layerOrchestratorToolkit, McpHttpServer.layerProjectRegistration)
-    .pipe(
-      Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
-      Layer.provide(NodeCrypto.layer),
-      Layer.provide(layerBoxThreads),
-      Layer.provide(layerBoxLaunches),
-      Layer.provide(Layer.mock(RemoteDelegation.RemoteDelegation)({})),
-      Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
-      Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
-      Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
-      Layer.provide(
-        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/p" }),
+  return Layer.merge(
+    McpHttpServer.layerOrchestratorToolkit,
+    McpHttpServer.layerProjectRegistration,
+  ).pipe(
+    Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+    Layer.provide(NodeCrypto.layer),
+    Layer.provide(layerBoxThreads),
+    Layer.provide(layerBoxLaunches),
+    Layer.provide(Layer.mock(RemoteDelegation.RemoteDelegation)({})),
+    Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
+    Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
+    Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
+    Layer.provide(
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/p" }),
+    ),
+    Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+    Layer.provide(Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({})),
+    Layer.provide(
+      ServerConfig.layerTest(process.cwd(), { prefix: "t3-remote-delegation-box-" }).pipe(
+        Layer.provide(NodeServices.layer),
       ),
     ),
     Layer.provide(
@@ -567,8 +575,12 @@ const boxToolkitLayer = (thread: BoxThread) => {
         list: () => Effect.succeed([boxClaude.instanceId]),
       }),
     ),
-    Layer.provide(Layer.mock(PipelineService.PipelineService)({})),
-    Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(PipelineService.PipelineService)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      ),
+    ),
     Layer.provide(
       Layer.mock(ProjectService.ProjectService)({
         getById: (id) =>
@@ -711,8 +723,12 @@ const makeLaptop = (
       Layer.provideMerge(layerThreads),
       Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
       Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
-      Layer.provide(Layer.mock(PipelineService.PipelineService)({})),
-      Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(PipelineService.PipelineService)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        ),
+      ),
       Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
       Layer.provide(Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({})),
       Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
