@@ -16,8 +16,9 @@ import { GuestMessageAttachments } from "./GuestMessageAttachments";
 const isKnownContextKind = (kind: string): kind is KnownComposerContextKind =>
   (COMPOSER_CONTEXT_KINDS as ReadonlyArray<string>).includes(kind);
 
-/** Every known context kind has a chip colour of the same name. */
-const chipKind = (kind: string): ContextChipKind => (isKnownContextKind(kind) ? kind : "neutral");
+/** Every known context kind but a reply has a chip colour of the same name. */
+const chipKind = (kind: string): ContextChipKind =>
+  isKnownContextKind(kind) && kind !== "response" ? kind : "neutral";
 
 /** The images, files and context that came with a run's starting prompt. */
 export function PipelineStartAttachments(props: {
