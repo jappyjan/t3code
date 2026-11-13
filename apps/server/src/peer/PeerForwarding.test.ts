@@ -6,7 +6,13 @@ import {
   EnvironmentId,
   type OrchestrationV2Run,
   type OrchestrationV2ThreadShell,
+  type PipelineDefinition,
+  type PipelineRun,
+  type PipelineRunStartInput,
   type SourceControlCloneRepositoryInput,
+  PipelineId,
+  PipelineRunId,
+  PipelineStepId,
   ProjectId,
   ProviderInstanceId,
   RunId,
@@ -58,6 +64,11 @@ interface Seen {
   readonly clones: ReadonlyArray<SourceControlCloneRepositoryInput>;
   /** Commands dispatched and delegated-task stops, as `<type> <threadId>`. */
   readonly stops: ReadonlyArray<string>;
+  readonly pipelineStarts: ReadonlyArray<{
+    readonly input: PipelineRunStartInput;
+    readonly modeLimit: unknown;
+  }>;
+  readonly pipelineCancels: ReadonlyArray<PipelineRunId>;
 }
 const nothingSeen: Seen = {
   sends: [],
@@ -66,6 +77,8 @@ const nothingSeen: Seen = {
   projects: [],
   clones: [],
   stops: [],
+  pipelineStarts: [],
+  pipelineCancels: [],
 };
 
 /** The box user's own thread, which no link started. */
@@ -163,11 +176,24 @@ const boxLaunches = (seen: Ref.Ref<Seen>) =>
       ),
   });
 
+const boxProjectRecord = {
+  title: "box-app",
+  workspaceRoot: "/home/box/app",
+  defaultModelSelection: null,
+  scripts: [],
+  createdAt: "2026-10-18T00:00:00.000Z",
+  updatedAt: "2026-10-18T00:00:00.000Z",
+  deletedAt: null,
+};
+
 /** B clones and registers whatever it is asked to, and records it. */
 const boxProjects = (seen: Ref.Ref<Seen>) =>
   Layer.merge(
     Layer.mock(ProjectService.ProjectService)({
-      getById: () => Effect.succeedNone,
+      getById: (projectId) =>
+        projectId === boxProject
+          ? Effect.succeedSome({ id: boxProject, ...boxProjectRecord })
+          : Effect.succeedNone,
       create: (input) =>
         Ref.update(seen, (current) => ({
           ...current,
@@ -196,6 +222,65 @@ const boxProjects = (seen: Ref.Ref<Seen>) =>
         ),
     }),
   );
+
+const boxPipelineRun = PipelineRunId.make("pipeline-run:box");
+const boxCoordinator = ThreadId.make("thread:box-pipeline-coordinator");
+const featureDelivery: PipelineDefinition = {
+  id: PipelineId.make("pipeline:box-feature-delivery"),
+  name: "Feature delivery",
+  steps: [
+    {
+      id: PipelineStepId.make("build"),
+      name: "Build",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+      runtimeMode: "auto",
+      skills: [],
+      promptTemplate: "{{input}}",
+      pauseBefore: false,
+    },
+  ],
+  createdAt: "2026-10-18T00:00:00.000Z",
+  updatedAt: "2026-10-18T00:00:00.000Z",
+};
+const pipelineRunOf = (status: PipelineRun["status"]): PipelineRun => ({
+  id: boxPipelineRun,
+  pipelineId: featureDelivery.id,
+  definition: { name: featureDelivery.name, steps: featureDelivery.steps },
+  projectId: boxProject,
+  parentThreadId: boxCoordinator,
+  input: "Add dark mode",
+  attachments: [],
+  contextChips: [],
+  workspaceStrategy: { type: "root" },
+  status,
+  pauseReason: null,
+  error: null,
+  currentStepIndex: 0,
+  steps: [],
+  revisions: [],
+  createdBy: "agent",
+  creationSource: "mcp",
+  createdAt: "2026-10-18T00:00:00.000Z",
+  updatedAt: "2026-10-18T00:00:00.000Z",
+  completedAt: null,
+});
+
+/** B's one pipeline, "Feature delivery". Starts and cancels are recorded. */
+const boxPipelines = (seen: Ref.Ref<Seen>) =>
+  Layer.mock(PipelineService.PipelineService)({
+    list: () => Effect.succeed({ pipelines: [featureDelivery] }),
+    getRun: () => Effect.succeed(pipelineRunOf("running")),
+    start: (input, options) =>
+      Ref.update(seen, (current) => ({
+        ...current,
+        pipelineStarts: [...current.pipelineStarts, { input, modeLimit: options?.modeLimit }],
+      })).pipe(Effect.as({ run: pipelineRunOf("running") })),
+    cancel: (input) =>
+      Ref.update(seen, (current) => ({
+        ...current,
+        pipelineCancels: [...current.pipelineCancels, input.runId],
+      })).pipe(Effect.as({ run: pipelineRunOf("cancelled") })),
+  });
 
 /**
  * The orchestrator and project toolkits on B's real `/mcp`, behind its real
@@ -233,7 +318,7 @@ const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) =>
           Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
         ),
         Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
-        Layer.provide(Layer.mock(PipelineService.PipelineService)({})),
+        Layer.provide(boxPipelines(seen)),
         Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
         Layer.provide(Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({})),
         Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
@@ -587,6 +672,80 @@ it.effect("brings a repository to a linked environment, only through full access
       }
       expect((yield* Ref.get(seen)).clones).toHaveLength(1);
       expect((yield* Ref.get(seen)).projects).toHaveLength(1);
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it.effect("runs pipelines in a linked environment, only through full access", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const seen = yield* Ref.make<Seen>(nothingSeen);
+      const b = yield* serveBox(seen, yield* Ref.make(""));
+      const a = yield* makeLaptop;
+      const there = { environmentId: box.environmentId };
+      const start = (caller: string) =>
+        a.call(caller, "start_pipeline", {
+          ...there,
+          pipeline: "Feature delivery",
+          projectId: boxProject,
+          prompt: "Add dark mode",
+          clientRequestId: "start-1",
+        });
+
+      yield* linkTo(a.links, b, "full-access");
+      const listed = yield* a.call("thread:laptop-full", "list_pipelines", there);
+      expect(listed.structuredContent).toMatchObject({
+        pipelines: [{ pipelineId: featureDelivery.id, name: "Feature delivery" }],
+      });
+      // The box resolves its own pipeline and project, and links to its own threads.
+      const started = yield* start("thread:laptop-full");
+      expect(started.structuredContent).toMatchObject({
+        runId: boxPipelineRun,
+        projectId: boxProject,
+        threadId: boxCoordinator,
+        link: expect.stringContaining(box.environmentId),
+      });
+      expect((yield* Ref.get(seen)).pipelineStarts).toMatchObject([
+        {
+          input: { pipelineId: featureDelivery.id, projectId: boxProject, input: "Add dark mode" },
+          modeLimit: { runtimeMode: "full-access", interactionMode: "default" },
+        },
+      ]);
+      const status = yield* a.call("thread:laptop-full", "pipeline_status", {
+        ...there,
+        runId: boxPipelineRun,
+      });
+      expect(status.structuredContent).toMatchObject({ runId: boxPipelineRun, status: "running" });
+      const cancelled = yield* a.call("thread:laptop-full", "cancel_pipeline", {
+        ...there,
+        runId: boxPipelineRun,
+      });
+      expect(cancelled.structuredContent).toMatchObject({ status: "cancelled" });
+
+      // A plan-mode agent here may not start one: the box holds it to the caller's modes.
+      const planned = yield* start("thread:laptop-plan");
+      expect(failureOf(planned)).toMatchObject({ code: "interaction_mode_escalation_denied" });
+
+      // A run's threads carry no link origin, so a link below full access cannot start or
+      // change runs there; it can still read them.
+      for (const access of ["auto", "read-only"] as const) {
+        yield* linkTo(a.links, b, access);
+        expect(failureOf(yield* start("thread:laptop-full")), access).toMatchObject({
+          code: "capability_denied",
+        });
+        const cancel = yield* a.call("thread:laptop-full", "cancel_pipeline", {
+          ...there,
+          runId: boxPipelineRun,
+        });
+        expect(failureOf(cancel), access).toMatchObject({ code: "capability_denied" });
+        const read = yield* a.call("thread:laptop-full", "pipeline_status", {
+          ...there,
+          runId: boxPipelineRun,
+        });
+        expect(read.isError, access).toBe(false);
+      }
+      expect((yield* Ref.get(seen)).pipelineStarts).toHaveLength(1);
+      expect((yield* Ref.get(seen)).pipelineCancels).toEqual([boxPipelineRun]);
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );
