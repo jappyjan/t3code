@@ -347,7 +347,7 @@ function pullRequestWatchTasks(
   pullRequests: ReadonlyArray<PendingBackgroundWorkPullRequest> | undefined,
 ): Array<PendingBackgroundWorkTask> {
   return (pullRequests ?? []).flatMap((link) =>
-    !pullRequestWatchHoldsThread(link)
+    link.watch === undefined || link.source === "stack-dismissed"
       ? []
       : [
           {
