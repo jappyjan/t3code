@@ -186,6 +186,13 @@ const handlers = {
       return yield* service.pipelineStatus(scope, input);
     }),
   ),
+  list_pipeline_runs: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.listPipelineRuns(scope, input);
+    }),
+  ),
   continue_pipeline: McpToolAccess.writes(
     (input) =>
       Effect.gen(function* () {

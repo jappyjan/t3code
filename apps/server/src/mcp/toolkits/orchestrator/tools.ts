@@ -29,6 +29,8 @@ import {
   OrchestratorMcpRequestSecretInput,
   OrchestratorMcpRequestSecretResult,
   OrchestratorMcpFailure,
+  OrchestratorMcpListPipelineRunsInput,
+  OrchestratorMcpListPipelineRunsResult,
   OrchestratorMcpListPipelinesResult,
   OrchestratorMcpListScheduledTasksInput,
   OrchestratorMcpListScheduledTasksResult,
@@ -220,7 +222,7 @@ const DeleteScheduledTaskTool = Tool.make("delete_scheduled_task", {
 
 const ListPipelinesTool = Tool.make("list_pipelines", {
   description:
-    "List the user's pipelines: saved chains of agent steps, each step in its own thread, each step's output feeding the next. Pass an id or exact name to `start_pipeline`. Full definitions: `get_pipeline`.",
+    "List the user's pipelines: saved chains of agent steps, each step in its own thread, each step's output feeding the next. Pass an id or exact name to `start_pipeline`. Full definitions: `get_pipeline`. Runs: `list_pipeline_runs`.",
   success: OrchestratorMcpListPipelinesResult,
   failure: OrchestratorMcpFailure,
   failureMode: "return",
@@ -293,6 +295,20 @@ const PipelineStatusTool = Tool.make("pipeline_status", {
   dependencies,
 })
   .annotate(Tool.Title, "Pipeline run status")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
+const ListPipelineRunsTool = Tool.make("list_pipeline_runs", {
+  description:
+    "List pipeline runs newest first, with each step's status and thread `link`. Filter by `pipeline`, `projectId`, `statuses`. What waits for the user: `needsAttention=true`; each run's `attention` says why (a pause reason, or `pending_request`: the running step asks an approval or question in its thread). Details and feedback: `pipeline_status`. Page with `cursor`.",
+  parameters: OrchestratorMcpListPipelineRunsInput,
+  success: OrchestratorMcpListPipelineRunsResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "List pipeline runs")
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true);
@@ -401,7 +417,7 @@ const CreateThreadsTool = Tool.make("create_threads", {
 
 const ThreadListTool = Tool.make("t3_thread_list", {
   description:
-    "List threads newest first, in one project or with `allProjects`. Page with `cursor`.",
+    "List threads newest first, in one project or with `allProjects`. `pipeline` marks a pipeline run's coordinator chat or step thread. Page with `cursor`.",
   parameters: OrchestratorMcpThreadListInput,
   success: OrchestratorMcpThreadListResult,
   failure: OrchestratorMcpFailure,
@@ -542,6 +558,7 @@ export const OrchestratorToolkit = Toolkit.make(
   DeletePipelineTool,
   StartPipelineTool,
   PipelineStatusTool,
+  ListPipelineRunsTool,
   ContinuePipelineTool,
   CancelPipelineTool,
   RerunPipelineTool,

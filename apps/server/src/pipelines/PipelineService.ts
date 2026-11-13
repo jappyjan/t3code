@@ -77,6 +77,7 @@ export class PipelineService extends Context.Service<
       },
     ) => Effect.Effect<PipelineRunResult, PipelineError>;
     readonly getRun: (runId: PipelineRunId) => Effect.Effect<PipelineRun, PipelineError>;
+    readonly listRunIds: PipelineStore.PipelineStore["Service"]["listRunIds"];
     readonly subscribeRun: (
       input: PipelineRunSubscribeInput,
     ) => Stream.Stream<PipelineRunResult, PipelineError>;
@@ -387,6 +388,7 @@ export const layerWithStarters = (
         delete: deleteDefinition,
         start: runner.start,
         getRun,
+        listRunIds: store.listRunIds,
         subscribeRun,
         subscribeLiveRuns,
         continueRun: runner.continueRun,

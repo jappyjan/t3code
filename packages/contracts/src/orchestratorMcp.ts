@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
+import * as Struct from "effect/Struct";
 
 import { AuthMcpClientAccess } from "./auth.ts";
 import {
@@ -412,6 +413,10 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   pendingBackgroundTasks: Schema.optional(Schema.Array(OrchestratorMcpThreadBackgroundTask)),
   parentThreadId: Schema.NullOr(ThreadId),
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
+  pipeline: Schema.optional(OrchestrationV2ThreadPipeline).annotate({
+    description:
+      "Set when the thread belongs to a pipeline run: its coordinator chat (`stepId` null) or a step's thread. Absent: an ordinary chat.",
+  }),
   itemCount: NonNegativeInt,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -1032,6 +1037,49 @@ export const OrchestratorMcpPipelineRun = Schema.Struct({
   completedAt: Schema.NullOr(IsoDateTime),
 });
 export type OrchestratorMcpPipelineRun = typeof OrchestratorMcpPipelineRun.Type;
+
+export const OrchestratorMcpPipelineRunAttention = Schema.Literals([
+  ...PipelinePauseReason.literals,
+  "pending_request",
+]).annotate({
+  description:
+    "Why the run waits for the user: a pause reason, or `pending_request` when the running step's thread has an open approval or question. Null: nothing to do.",
+});
+export type OrchestratorMcpPipelineRunAttention = typeof OrchestratorMcpPipelineRunAttention.Type;
+
+export const OrchestratorMcpListPipelineRunsInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
+  pipeline: Schema.optional(OrchestratorMcpPipelineKey),
+  projectId: Schema.optional(ProjectId.annotate({ description: "Default: every project." })),
+  statuses: Schema.optional(Schema.Array(PipelineRunStatus).check(Schema.isMaxLength(4))),
+  needsAttention: Schema.optional(
+    Schema.Boolean.annotate({ description: "True: only runs waiting for the user." }),
+  ),
+  cursor: Schema.optional(NonNegativeInt),
+  limit: Schema.optional(clampedPositiveInt(50)).annotate({
+    description: "Max runs, 1 to 50. Default 20.",
+  }),
+});
+export type OrchestratorMcpListPipelineRunsInput = typeof OrchestratorMcpListPipelineRunsInput.Type;
+
+/** `pipeline_status` without output previews and feedback, so a page of runs stays small. */
+export const OrchestratorMcpPipelineRunListItem = OrchestratorMcpPipelineRun.mapFields(
+  Struct.omit(["revisions"]),
+).mapFields(
+  Struct.assign({
+    attention: Schema.NullOr(OrchestratorMcpPipelineRunAttention),
+    steps: Schema.Array(OrchestratorMcpPipelineStep.mapFields(Struct.omit(["outputPreview"]))),
+  }),
+);
+export type OrchestratorMcpPipelineRunListItem = typeof OrchestratorMcpPipelineRunListItem.Type;
+
+export const OrchestratorMcpListPipelineRunsResult = Schema.Struct({
+  runs: Schema.Array(OrchestratorMcpPipelineRunListItem),
+  nextCursor: Schema.NullOr(NonNegativeInt),
+  total: NonNegativeInt,
+});
+export type OrchestratorMcpListPipelineRunsResult =
+  typeof OrchestratorMcpListPipelineRunsResult.Type;
 
 export const OrchestratorMcpRequestSecretInput = Schema.Struct({
   label: TrimmedNonEmptyString.annotate({
