@@ -207,7 +207,6 @@ const make = Effect.fn("makeHostResources")(function* () {
     } satisfies HostMemoryPressure;
   });
 
-
   const sample = Effect.fn("HostResources.sample")(function* () {
     // cgroup v2 only; limits of the server's own cgroup, which is `/` inside a container.
     const cgroupPath =
