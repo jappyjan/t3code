@@ -21,6 +21,8 @@ import {
   type PipelineDefinition,
   type PipelineError,
   type PipelineRun,
+  type PipelineRunId,
+  type PipelineRunStatus,
   type PipelineStep,
   PipelineStepId,
   type PipelineUpsertInput,
@@ -55,8 +57,12 @@ import {
   type OrchestratorMcpPipeline,
   type OrchestratorMcpSavePipelineInput,
   type OrchestratorMcpListScheduledTasksResult,
+  type OrchestratorMcpListPipelineRunsInput,
+  type OrchestratorMcpListPipelineRunsResult,
   type OrchestratorMcpPipelineRun,
+  type OrchestratorMcpPipelineRunAttention,
   type OrchestratorMcpPipelineRunInput,
+  type OrchestratorMcpPipelineRunListItem,
   type OrchestratorMcpStartPipelineInput,
   type OrchestratorMcpScheduledTask,
   type OrchestratorMcpScheduleTaskInput,
@@ -182,6 +188,8 @@ const TASK_WAKE_EVENTS = [
 ] as const;
 const SECRET_REQUEST_POLL_INTERVAL_MS = 500;
 const DEFAULT_THREAD_LIST_LIMIT = 10;
+const DEFAULT_PIPELINE_RUN_LIST_LIMIT = 20;
+const LIVE_PIPELINE_RUN_STATUSES: ReadonlyArray<PipelineRunStatus> = ["running", "paused"];
 const DEFAULT_THREAD_READ_LIMIT = 10;
 const DEFAULT_THREAD_RUN_LIMIT = 10;
 const DEFAULT_THREAD_ITEM_MAX_CHARS = 500;
@@ -261,6 +269,10 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpPipelineRunInput,
   ) => Effect.Effect<OrchestratorMcpPipelineRun, OrchestratorMcpFailure>;
+  readonly listPipelineRuns: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpListPipelineRunsInput,
+  ) => Effect.Effect<OrchestratorMcpListPipelineRunsResult, OrchestratorMcpFailure>;
   readonly continuePipeline: (
     scope: McpInvocationScope,
     input: OrchestratorMcpContinuePipelineInput,
@@ -451,6 +463,19 @@ function pipelineRunSummary(
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
     completedAt: run.completedAt,
+  };
+}
+
+function pipelineRunListItem(
+  environmentId: EnvironmentId,
+  run: PipelineRun,
+  attention: OrchestratorMcpPipelineRunAttention | null,
+): OrchestratorMcpPipelineRunListItem {
+  const { revisions: _revisions, steps, ...summary } = pipelineRunSummary(environmentId, run);
+  return {
+    ...summary,
+    attention,
+    steps: steps.map(({ outputPreview: _outputPreview, ...step }) => step),
   };
 }
 
@@ -1086,6 +1111,7 @@ function listItemFromShell(
     ...threadBackgroundWork(shell),
     parentThreadId: shell.lineage.parentThreadId,
     relationshipToParent: shell.lineage.relationshipToParent,
+    ...(shell.pipeline === undefined ? {} : { pipeline: shell.pipeline }),
     itemCount: shell.visibleItemCount,
     createdAt: DateTime.formatIso(shell.createdAt),
     updatedAt: DateTime.formatIso(shell.updatedAt),
@@ -2396,6 +2422,19 @@ const make = Effect.gen(function* () {
   });
 
   /** The id when it matches, else the one pipeline with this name, ignoring case. */
+  const runAttention = Effect.fn("OrchestratorMcpService.runAttention")(function* (
+    run: PipelineRun,
+  ) {
+    if (run.status === "paused") return run.pauseReason ?? "awaiting_continue";
+    if (run.status !== "running") return null;
+    const threadId = run.steps[run.currentStepIndex]?.childThreadId ?? null;
+    if (threadId === null) return null;
+    const shell = yield* threadManagement
+      .getThreadShell(threadId)
+      .pipe(Effect.mapError(threadManagementFailure));
+    return shell?.pendingRuntimeRequest == null ? null : ("pending_request" as const);
+  });
+
   const resolvePipeline = Effect.fn("OrchestratorMcpService.resolvePipeline")(function* (
     key: string,
   ) {
@@ -2977,6 +3016,46 @@ const make = Effect.gen(function* () {
       const run = yield* pipelines.getRun(input.runId).pipe(Effect.mapError(pipelineFailure));
       return pipelineRunSummary(scope.environmentId, run);
     }),
+    listPipelineRuns: Effect.fn("OrchestratorMcpService.listPipelineRuns")(
+      function* (scope, input) {
+        yield* loadCaller(scope, []);
+        const pipelineId =
+          input.pipeline === undefined ? undefined : (yield* resolvePipeline(input.pipeline)).id;
+        // An empty list is no filter: clients that fill every optional field send `[]`.
+        const requested =
+          input.statuses === undefined || input.statuses.length === 0 ? undefined : input.statuses;
+        // Only a live run can wait for the user.
+        const statuses = input.needsAttention
+          ? (requested ?? LIVE_PIPELINE_RUN_STATUSES).filter((status) =>
+              LIVE_PIPELINE_RUN_STATUSES.includes(status),
+            )
+          : requested;
+        const runIds = yield* pipelines
+          .listRunIds({ statuses, pipelineId, projectId: input.projectId })
+          .pipe(Effect.mapError(pipelineFailure));
+        const loadListItem = Effect.fn("OrchestratorMcpService.loadPipelineRunListItem")(function* (
+          runId: PipelineRunId,
+        ) {
+          const run = yield* pipelines.getRun(runId).pipe(Effect.mapError(pipelineFailure));
+          return pipelineRunListItem(scope.environmentId, run, yield* runAttention(run));
+        });
+        const cursor = input.cursor ?? 0;
+        const limit = input.limit ?? DEFAULT_PIPELINE_RUN_LIST_LIMIT;
+        // Attention needs each live run read before paging; live runs are few.
+        const waiting = input.needsAttention
+          ? (yield* Effect.forEach(runIds, loadListItem)).filter((run) => run.attention !== null)
+          : undefined;
+        const total = waiting?.length ?? runIds.length;
+        const runs =
+          waiting?.slice(cursor, cursor + limit) ??
+          (yield* Effect.forEach(runIds.slice(cursor, cursor + limit), loadListItem));
+        return {
+          runs,
+          nextCursor: cursor + runs.length < total ? cursor + runs.length : null,
+          total,
+        } satisfies OrchestratorMcpListPipelineRunsResult;
+      },
+    ),
     continuePipeline: Effect.fn("OrchestratorMcpService.continuePipeline")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope, ["runs"]);

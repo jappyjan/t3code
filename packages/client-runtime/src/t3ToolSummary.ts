@@ -251,6 +251,9 @@ export function summarizeT3ToolCalls(
     case "pipeline-status":
       label = phrase("Checked", "check", `pipeline status ${times}`);
       break;
+    case "pipeline-run-list":
+      label = phrase("Listed", "list", `pipeline runs ${times}`);
+      break;
     case "pipeline-continue":
       label = phrase(
         "Continued",

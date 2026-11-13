@@ -29,6 +29,7 @@ import {
   ProviderThreadId,
   ProviderTurnId,
   RunId,
+  RuntimeRequestId,
   ThreadId,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2StoredEvent,
@@ -4356,7 +4357,10 @@ describe("OrchestratorMcpService thread list", () => {
   const shells = [
     shell("thread:a-snoozed", "project:a", true),
     shell("thread:a-awake", "project:a", false),
-    shell("thread:b-snoozed", "project:b", true, true),
+    {
+      ...shell("thread:b-snoozed", "project:b", true, true),
+      pipeline: { runId: PipelineRunId.make("pipeline-run:b"), stepId: "build" },
+    },
     {
       ...shell("thread:a-awaiting-command", "project:a", false),
       activityRunStatus: null,
@@ -4423,11 +4427,11 @@ describe("OrchestratorMcpService thread list", () => {
         snoozed: true,
       });
       assert.equal(listed.projectId, null);
-      assert.deepStrictEqual(
-        listed.threads.map((thread) => [thread.threadId, thread.projectId]),
+      assert.deepStrictEqual<unknown>(
+        listed.threads.map((thread) => [thread.threadId, thread.projectId, thread.pipeline]),
         [
-          ["thread:a-snoozed", "project:a"],
-          ["thread:b-snoozed", "project:b"],
+          ["thread:a-snoozed", "project:a", undefined],
+          ["thread:b-snoozed", "project:b", { runId: "pipeline-run:b", stepId: "build" }],
         ],
       );
       assert.deepStrictEqual(
@@ -4847,6 +4851,8 @@ describe("OrchestratorMcpService pipelines", () => {
     },
     extra: {
       readonly run?: Partial<PipelineRun>;
+      /** Stored runs, newest first; `getRun` reads them by id. */
+      readonly runs?: ReadonlyArray<PipelineRun>;
       readonly getRunError?: PipelineError;
       /** Makes `upsert` fail, as for an edit of a pipeline deleted meanwhile. */
       readonly upsertError?: PipelineError;
@@ -4910,10 +4916,18 @@ describe("OrchestratorMcpService pipelines", () => {
           started.push({ input, options });
           return { run: run({ status: "running", pauseReason: null, currentStepIndex: 0 }) };
         }),
-      getRun: () =>
+      getRun: (runId) =>
         extra.getRunError === undefined
-          ? Effect.succeed(run(extra.run))
+          ? Effect.succeed(
+              extra.runs?.find((candidate) => candidate.id === runId) ?? run(extra.run),
+            )
           : Effect.fail(extra.getRunError),
+      listRunIds: (filter) =>
+        Effect.succeed(
+          (extra.runs ?? [])
+            .filter((candidate) => filter.statuses?.includes(candidate.status) ?? true)
+            .map((candidate) => candidate.id),
+        ),
       continueRun: (input) =>
         Effect.sync(() => {
           continued.push(input);
@@ -5537,6 +5551,78 @@ describe("OrchestratorMcpService pipelines", () => {
       );
       assert.include(error.message, "was not found");
       assert.equal(h.deleted.length, 1);
+    }),
+  );
+
+  it.effect("lists runs waiting for the user, with why, and pages all runs", () =>
+    Effect.gen(function* () {
+      const runningStep = (index: number, childThreadId: string) => {
+        const { steps } = run();
+        return steps.map((entry) =>
+          entry.index === index
+            ? { ...entry, status: "running" as const, childThreadId: ThreadId.make(childThreadId) }
+            : entry,
+        );
+      };
+      const runs = [
+        run({
+          id: PipelineRunId.make("pipeline-run:done"),
+          status: "completed",
+          pauseReason: null,
+        }),
+        run({
+          id: PipelineRunId.make("pipeline-run:asking"),
+          status: "running",
+          pauseReason: null,
+          steps: runningStep(1, "thread:asking-step"),
+        }),
+        run({
+          id: PipelineRunId.make("pipeline-run:busy"),
+          status: "running",
+          pauseReason: null,
+          steps: runningStep(1, "thread:busy-step"),
+        }),
+        run({ id: PipelineRunId.make("pipeline-run:handoff"), pauseReason: "awaiting_handoff" }),
+      ];
+      const asking = {
+        ...liveThreadShell(ThreadId.make("thread:asking-step")),
+        pendingRuntimeRequest: {
+          id: RuntimeRequestId.make("request:approve"),
+          kind: "command" as const,
+          createdAt: DateTime.makeUnsafe(at),
+        },
+      };
+      const h = harness(
+        { runtimeMode: "full-access", interactionMode: "default" },
+        { runs, shells: [asking, liveThreadShell(ThreadId.make("thread:busy-step"))] },
+      );
+
+      const waiting = yield* withService(h, (service) =>
+        service.listPipelineRuns(h.scope, { needsAttention: true, limit: 1 }),
+      );
+      assert.equal(waiting.total, 2);
+      assert.equal(waiting.nextCursor, 1);
+      assert.deepEqual<unknown>(
+        waiting.runs.map((entry) => [entry.runId, entry.attention]),
+        [["pipeline-run:asking", "pending_request"]],
+      );
+      const rest = yield* withService(h, (service) =>
+        service.listPipelineRuns(h.scope, { needsAttention: true, cursor: 1 }),
+      );
+      assert.deepEqual<unknown>(
+        rest.runs.map((entry) => [entry.runId, entry.attention]),
+        [["pipeline-run:handoff", "awaiting_handoff"]],
+      );
+      assert.equal(rest.nextCursor, null);
+
+      const all = yield* withService(h, (service) => service.listPipelineRuns(h.scope, {}));
+      assert.equal(all.total, 4);
+      assert.deepEqual(
+        all.runs.map((entry) => entry.attention),
+        [null, "pending_request", null, "awaiting_handoff"],
+      );
+      assert.isString(all.runs[1]?.steps[1]?.link);
+      assert.notProperty(all.runs[0]?.steps[0], "outputPreview");
     }),
   );
 

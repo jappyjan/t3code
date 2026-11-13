@@ -76,6 +76,9 @@ describe("summarizeT3ToolCalls", () => {
     expect(summarizeT3ToolCalls("pipeline-list", [completed({}, { pipelines: [] })]).label).toBe(
       "Listed pipelines 1 time",
     );
+    expect(summarizeT3ToolCalls("pipeline-run-list", [completed({}, { runs: [] })]).label).toBe(
+      "Listed pipeline runs 1 time",
+    );
   });
 
   it("excludes failed and unfinished sends even if the provider reports completed", () => {
