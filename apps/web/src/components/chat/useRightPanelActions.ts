@@ -48,7 +48,8 @@ interface RightPanelActionsInput {
   readonly pullRequestPanelTarget: ReturnType<typeof threadPullRequestPanelTarget> | null;
   readonly threadPanelPresentation: ThreadPanelPresentation;
   readonly isServerThread: boolean;
-  readonly isGitRepo: boolean;
+  /** The thread has a diff to show: a Git folder, or turns that changed tracked repositories. */
+  readonly diffAvailable: boolean;
   readonly browserAvailable: boolean;
   readonly canOperatePreview: boolean;
   readonly diffOpen: boolean;
@@ -81,7 +82,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     pullRequestPanelTarget,
     threadPanelPresentation,
     isServerThread,
-    isGitRepo,
+    diffAvailable,
     browserAvailable,
     canOperatePreview,
     diffOpen,
@@ -131,7 +132,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   };
   const createBrowserSurfaceStable = useStableCallback(createBrowserSurface);
   const addDiffSurface = () => {
-    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    if (!activeThreadRef || !isServerThread || !diffAvailable) return;
     useDiffPanelStore.getState().selectGitScope(activeThreadRef, "branch");
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
