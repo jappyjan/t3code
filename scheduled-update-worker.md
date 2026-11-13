@@ -45,8 +45,11 @@ Mention maintainer activity first. Then write the newest timestamp you saw to
 ## 2. Rebase the feature branches and rebuild main
 
 `git fetch origin fork-tools`, read `git show origin/fork-tools:rebuild-main.md`, and follow it in
-the fork checkout. It ends with `main` unchanged, pushed, or a problem to report. Note which, and
-the short SHA of `origin/main` afterwards.
+the fork checkout. It first rebases, checks and pushes each feature branch on its own, then
+rebuilds `main` from the ones that made it. A branch that fails is left out and saved unchanged;
+the run goes on with the rest. Note per branch whether it was rebased and pushed, unchanged,
+dropped (and why) or parked, and whether `main` was pushed, unchanged or skipped, with the short
+SHA of `origin/main` afterwards.
 
 ## 3. Ask the laptops to install
 
@@ -89,8 +92,12 @@ One short line each:
   multi-repo: projects/settings, checkpointing, worktrees/TaskFolderService, diff/review, Git
   actions, provider adapters, mobile review/Git; host capacity: resource telemetry/HostResources,
   agent scope, run admission and the run queue, settings, sidebar, mobile home).
-- **Rebase**: per feature branch, conflicts and how you resolved them, fixes you committed and
-  check results. Say whether upstream PR #26254 or #27253 landed, or #27253 got new commits.
-- **Main**: unchanged at `<sha>`, pushed `<sha>`, or why it was skipped or failed.
+- **Rebase**: per feature branch: rebased and pushed (new short SHA), unchanged, dropped (why,
+  and the `refs/wip/...` ref it was saved under) or parked. For rebased ones, conflicts and how
+  you resolved them, fixes you committed and check results. Say whether upstream PR #27253
+  landed or got new commits, and the state of #35921 and #35925 (multi-repo).
+- **Main**: unchanged at `<sha>`, pushed `<sha>` with which feature branches, or why it was
+  skipped or failed. Put a feature that the previous `main` had and this one lacks first in the
+  report: the machines lose it on their next install.
 - **MacBook Pro** / **MacBook Air**: chat launched (its link), or why the launch failed.
 - **t3-worker**: update started, plus the previous outcome from `install-status`.
