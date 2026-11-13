@@ -188,6 +188,8 @@ interface ComposerSendInput {
   readonly phase: SessionPhase;
   readonly runtimeMode: RuntimeMode;
   readonly sendEnvMode: DraftThreadEnvMode;
+  /** Tracked repositories a new worktree takes; undefined leaves the choice to the server. */
+  readonly worktreeRepositories: ReadonlyArray<{ readonly path: string }> | undefined;
   readonly startFromOrigin: boolean;
   readonly localCheckoutBranchMismatch: {
     readonly threadBranch: string;
@@ -288,6 +290,7 @@ export function useComposerSend(input: ComposerSendInput) {
     phase,
     runtimeMode,
     sendEnvMode,
+    worktreeRepositories,
     startFromOrigin,
     localCheckoutBranchMismatch,
     logicalProjectEnvironments,
@@ -365,6 +368,7 @@ export function useComposerSend(input: ComposerSendInput) {
     promptRef,
     runtimeMode,
     startFromOrigin,
+    worktreeRepositories,
     resetLocalDispatch,
     setThreadError,
   });
@@ -837,6 +841,7 @@ export function useComposerSend(input: ComposerSendInput) {
       sendEnvMode,
       worktreePath: activeThread.worktreePath,
       activeThreadBranch,
+      projectIsGitRepo: isGitRepo,
       resumeCompactionTokens,
       keepFullHistory,
       phase,
@@ -1389,6 +1394,7 @@ export function useComposerSend(input: ComposerSendInput) {
                         ? { branch: draftThread.linearIssue.branchName }
                         : {}),
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                      ...(worktreeRepositories ? { repositories: worktreeRepositories } : {}),
                     },
                     runSetupScript: true,
                   }

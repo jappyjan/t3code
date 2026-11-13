@@ -179,6 +179,8 @@ export interface StartThreadBootstrap {
     readonly baseBranch: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
+    /** Tracked repositories to give a worktree; absent leaves the choice to the server. */
+    readonly repositories?: ReadonlyArray<{ readonly path: string }>;
   };
   readonly runSetupScript?: boolean;
 }
@@ -762,6 +764,9 @@ export function draftWorkspaceStrategy(
       ...(prepareWorktree.startFromOrigin === undefined
         ? {}
         : { startFromOrigin: prepareWorktree.startFromOrigin }),
+      ...(prepareWorktree.repositories === undefined
+        ? {}
+        : { repositories: prepareWorktree.repositories }),
     };
   }
   if (bootstrap?.worktreePath) {

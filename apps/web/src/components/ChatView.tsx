@@ -49,6 +49,7 @@ import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
 import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+import { resolveWorktreeRepositorySelection } from "@t3tools/client-runtime/state/thread-repositories";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
@@ -221,6 +222,7 @@ import {
 import { useNowMinute } from "../hooks/useNowMinute";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { useWorktreeRepositoryChoices } from "../hooks/useWorktreeRepositoryChoices";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -2360,10 +2362,17 @@ export default function ChatView(props: ChatViewProps) {
       ? (pendingServerThreadStartFromOriginByThreadId[activeThread?.id ?? ""] ??
         activeProjectSettings.settings.newWorktreesStartFromOrigin)
       : false;
+  const worktreeRepositoryChoices = useWorktreeRepositoryChoices(activeProject);
   const sendEnvMode = resolveSendEnvMode({
     requestedEnvMode: envMode,
     isGitRepo,
+    tracksGitRepositories: worktreeRepositoryChoices.tracksGitRepositories,
   });
+  // Only a new thread's draft holds a choice; anything else leaves it to the server's default.
+  const worktreeRepositories = resolveWorktreeRepositorySelection({
+    choices: worktreeRepositoryChoices.choices,
+    chosen: isLocalDraftThread ? draftThread?.worktreeRepositories : undefined,
+  }).strategyRepositories;
   const localCheckoutBranchMismatch = isServerThread
     ? resolveLocalCheckoutBranchMismatch({
         effectiveEnvMode: envMode,
@@ -3036,6 +3045,7 @@ export default function ChatView(props: ChatViewProps) {
     phase,
     runtimeMode,
     sendEnvMode,
+    worktreeRepositories,
     startFromOrigin,
     localCheckoutBranchMismatch,
     logicalProjectEnvironments,
@@ -3906,7 +3916,10 @@ export default function ChatView(props: ChatViewProps) {
                                   projectId={activeThread.projectId}
                                   worktreePath={activeThread.worktreePath}
                                   isServerThread={isServerThread}
-                                  showGitControls={isGitRepo}
+                                  showGitControls={
+                                    isGitRepo || worktreeRepositoryChoices.tracksGitRepositories
+                                  }
+                                  showBranchControls={isGitRepo}
                                   {...(routeKind === "draft" && draftId ? { draftId } : {})}
                                   onEnvModeChange={onEnvModeChangeStable}
                                   startFromOrigin={startFromOrigin}
@@ -4172,7 +4185,12 @@ export default function ChatView(props: ChatViewProps) {
       ) : null}
       <RevertConfirmHost
         threadKey={routeThreadKey}
+        environmentId={environmentId}
+        taskFolderPath={
+          (activeProject?.trackedFolders?.length ?? 0) > 0 ? activeThreadWorktreePath : null
+        }
         projection={serverProjection}
+        worktreePath={activeThread?.worktreePath ?? null}
         onConfirm={onConfirmRevertStable}
       />
       {embedded ? null : <LinkPullRequestDialogHost />}

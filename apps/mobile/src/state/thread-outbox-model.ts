@@ -48,6 +48,8 @@ const QueuedThreadCreationSchema = Schema.Struct({
   pullRequestReference: Schema.optional(Schema.String),
   worktreeBranchName: Schema.optional(Schema.String),
   linearIssue: Schema.optional(LinearDraftIssue),
+  repositories: Schema.optional(Schema.Array(Schema.String)),
+  startsFromRepositoryDefaults: Schema.optional(Schema.Boolean),
 });
 
 export const QueuedThreadMessageSchema = Schema.Struct({
@@ -85,6 +87,10 @@ export interface QueuedThreadCreation {
   readonly worktreeBranchName?: string;
   /** Linked to this thread, with its write-backs, once the thread is created. */
   readonly linearIssue?: LinearDraftIssue;
+  /** Tracked repositories the new worktree takes, by path; absent leaves the choice to the server. */
+  readonly repositories?: ReadonlyArray<string>;
+  /** The project folder is no Git repository, so a new worktree needs no base branch. */
+  readonly startsFromRepositoryDefaults?: boolean;
 }
 
 export interface QueuedThreadMessage {
@@ -270,7 +276,11 @@ export function isQueuedThreadCreationSendable(message: QueuedThreadMessage): bo
   if (!hasContent || message.modelSelection === undefined) {
     return false;
   }
-  return message.creation.workspaceMode !== "worktree" || Boolean(message.creation.branch);
+  return (
+    message.creation.workspaceMode !== "worktree" ||
+    Boolean(message.creation.branch) ||
+    message.creation.startsFromRepositoryDefaults === true
+  );
 }
 
 function errorMessage(error: unknown): string | null {
