@@ -338,7 +338,7 @@ function pullRequestWatchTasks(
             description: `Watching pull request #${link.number}`,
             kind: "monitor" as const,
             // Once every check finished, a person moves the PR next: the watch stays on but holds nothing.
-            ...(link.watch.checksPending === false ? {} : { awaited: true as const }),
+            ...(link.watch?.checksPending === false ? {} : { awaited: true as const }),
           },
         ],
   );

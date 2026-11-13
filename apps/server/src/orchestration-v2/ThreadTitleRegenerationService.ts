@@ -82,7 +82,7 @@ const make = Effect.gen(function* () {
   const complete = (input: {
     readonly threadId: ThreadId;
     readonly requestId: CommandId;
-    readonly kind: { readonly type: "initial" | "regenerate" };
+    readonly kind: { readonly type: ThreadTitleGenerationKind["type"] };
     readonly outcome: Outcome;
   }) =>
     threads
