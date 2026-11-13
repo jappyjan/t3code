@@ -23,6 +23,7 @@ import type {
 } from "../composerContextPresentation";
 import { ContextChip, ContextChipLabel } from "../ContextChip";
 import { ContextChipShell } from "../contextChipParts";
+import { LinearGlyph } from "../linear/linearIcons";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { SkillChipIcon } from "./SkillInlineText";
 
@@ -40,6 +41,7 @@ const CONTEXT_REFERENCE_ICONS: Record<
   "review-comment": () => <MessageCircleIcon />,
   thread: () => <MessagesSquareIcon />,
   environment: () => <MonitorIcon />,
+  "linear-issue": () => <LinearGlyph />,
 };
 
 // Mirrors the editor's chip: only a draft record of the same kind resolves a reference.

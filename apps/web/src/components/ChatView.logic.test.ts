@@ -1121,6 +1121,7 @@ describe("snapshotComposerSend", () => {
       reviewComments: [],
       threadContexts: [],
       environmentContexts: [],
+      linearContexts: [],
       replyTo,
     });
 

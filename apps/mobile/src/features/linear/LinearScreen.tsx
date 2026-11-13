@@ -1,7 +1,8 @@
 import { LegendList } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { ComponentProps, ReactNode } from "react";
-import { Platform, RefreshControl, ScrollView, View } from "react-native";
+import { Platform, ScrollView, View } from "react-native";
+import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBar } from "../../components/ui/AppBar";

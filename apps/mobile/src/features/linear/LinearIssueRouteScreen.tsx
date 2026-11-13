@@ -19,7 +19,8 @@ import {
   type LinearViewer,
 } from "@t3tools/contracts";
 import { useEffect, useState, type ReactNode } from "react";
-import { Pressable, RefreshControl, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
