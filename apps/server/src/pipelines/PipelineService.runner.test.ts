@@ -49,6 +49,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import * as PipelineService from "./PipelineService.ts";
 import * as PipelineStore from "./PipelineStore.ts";
 import { beforeRestoreRef } from "./pipelineWorkspace.ts";
@@ -139,6 +140,10 @@ const makeHarness = Effect.gen(function* () {
     subscriptionCount: 0,
     worktreeRoot: "/wt",
     restoreFails: false,
+    /** Threads run in a task folder: a repository scope sits under the root scope. */
+    repositoryScopes: false,
+    /** Threads run in a task folder with tracked repositories, whether or not a scope recorded one. */
+    taskFolderRepositories: false,
     /** A completed settle first hands off the thread's reply, as a step agent would. */
     autoHandoff: true,
   };
@@ -352,6 +357,17 @@ const makeHarness = Effect.gen(function* () {
   };
 
   const layer = Layer.mergeAll(
+    Layer.mock(TaskFolderStore.TaskFolderStore)({
+      findContaining: (cwd) =>
+        Effect.succeed(
+          behavior.taskFolderRepositories
+            ? ({
+                root: cwd,
+                repositories: [{ repositoryPath: "/projects/api", worktreePath: `${cwd}/api` }],
+              } as never)
+            : null,
+        ),
+    }),
     Layer.mock(ThreadLaunchService.ThreadLaunchService)({
       launch: (input) => {
         const threadId = decodeThreadId(`thread-of:${input.commandId}`);
@@ -431,6 +447,17 @@ const makeHarness = Effect.gen(function* () {
                     kind: "root_run",
                     cwd: worktreePath,
                   },
+                  ...(behavior.repositoryScopes
+                    ? [
+                        {
+                          id: `repository-scope-of:${threadId}`,
+                          runId: `run-of:${threadId}`,
+                          kind: "manual",
+                          cwd: `${worktreePath}/api`,
+                          repositoryPath: "/projects/api",
+                        },
+                      ]
+                    : []),
                 ],
         }) as never;
       },
@@ -1275,6 +1302,36 @@ it.effect(
         const retried = yield* Queue.take(harness.launches);
         assert.strictEqual(retried.input.commandId, `pipeline-run:${run.id}:plan:2`);
         assert.deepStrictEqual(harness.checkpointOps, []);
+      }),
+    ),
+);
+
+it.effect.each(["a recorded repository scope", "the task folder alone"] as const)(
+  "a task folder with tracked repositories never offers or performs a start restore (%s)",
+  (signal) =>
+    withService(
+      Effect.fn(function* (harness, service, store) {
+        harness.behavior.worktreeRoot = MANAGED_ROOT;
+        if (signal === "a recorded repository scope") harness.behavior.repositoryScopes = true;
+        else harness.behavior.taskFolderRepositories = true;
+        const { run } = yield* service.start(startInput("cmd-multi-repo"));
+        const first = yield* Queue.take(harness.launches);
+        yield* harness.settle(first.threadId, "failed");
+        const failed = yield* awaitRun(service, run.id, (current) => current.status === "paused");
+        assert.isFalse(failed.steps[0]?.canRestoreWorkspace);
+        assert.isNull(yield* store.getStepStartCheckpoint(run.id, 0));
+        const refused = yield* Effect.flip(
+          service.retryStep({ runId: run.id, stepIndex: 0, restoreWorkspace: true }),
+        );
+        assert.include(refused.message, "were not saved");
+        assert.deepStrictEqual(
+          harness.checkpointOps.filter((entry) => entry.op !== "has"),
+          [],
+        );
+
+        yield* service.retryStep({ runId: run.id, stepIndex: 0 });
+        const retried = yield* Queue.take(harness.launches);
+        assert.strictEqual(retried.input.commandId, `pipeline-run:${run.id}:plan:2`);
       }),
     ),
 );
