@@ -27,12 +27,12 @@ In stack order. Each branch is rebased onto the last branch before it that made 
 | 1   | `feat/pipelines`           | -                   | active | Pipelines. Proposed upstream in discussion `pingdotgg/t3code#26694`, so it must keep working on its own.                                                                                         |
 | 2   | `feat/linear`              | pipelines           | active | Linear integration.                                                                                                                                                                              |
 | 3   | `feat/host-capacity`       | -                   | active | Host capacity. First commit ports upstream PR `pingdotgg/t3code#27253` (memory pressure warnings); later commits cap concurrent turns per machine.                                              |
-| 4   | `feat/multi-repo-projects` | pipelines, linear   | parked | Multi-repo projects, a port of upstream PR `#26254` plus Pipelines/Linear glue. Parked 2026-11-14: upstream closed #26254 for #35921 and #35925, and the port no longer rebases (see below). |
+| 4   | `feat/multi-repo-projects` | pipelines, linear   | active | Multi-repo projects: upstream's open PR series #35921, #35923, #35924, #35925 (one commit each), their schema moved into `MultiRepoSchema.ts`, plus Pipelines glue and a desktop SSH-agent fix. |
 
 "Needs" lists the branches whose code it builds on. If one of them dropped out this run, skip the
 branch too (report it as "skipped: needs <branch>").
 
-A **parked** branch is not rebased or merged at all; leave it exactly as it is and list it in the
+A **parked** branch (none at the moment) is not rebased or merged at all; leave it exactly as it is and list it in the
 report with its reason. Only Jan parks or unparks a branch, by editing this table.
 
 ### Fork points
@@ -48,7 +48,9 @@ and report it; do not guess.
 "Checks" means, in the checkout: `pnpm install --frozen-lockfile`, then
 `pnpm exec vp run check:changed upstream/main`. Failures that need a browser the host lacks
 (Playwright Chromium: `Executable doesn't exist at .../chromium_headless_shell-...`) are known and
-unrelated. Any other failure counts.
+unrelated. So is an `unused patches` failure that is not `ERR_PNPM_UNUSED_PATCH` (that step resolves
+without the lockfile, so new registry releases can trip a peer-dependency check). Any other
+failure counts.
 
 `apps/server/src/provider/agentContextBudget.json` holds the measured size of the agent-facing
 text. The fork adds MCP tools, so after a rebase it is often wrong; when
@@ -95,8 +97,16 @@ text. The fork adds MCP tools, so after a rebase it is often wrong; when
    empties host-capacity's first commit; if upstream changed it, prefer upstream's version, keep
    the cap commits, and report that #27253 landed. While it is open, check whether its head moved
    (`gh pr view 27253 --repo pingdotgg/t3code --json headRefOid,updatedAt`) and mention new
-   commits; do not port them automatically. For the parked multi-repo branch, report the state of
-   #35921 and #35925 (`gh pr view <n> --repo pingdotgg/t3code --json state,mergedAt`).
+   commits; do not port them automatically.
+
+   Multi-repo carries upstream's open series #35921 → #35923 → #35924 → #35925 as cherry-picks
+   (`-x`, so each commit names its upstream sha). Check each PR (`gh pr view <n> --repo
+   pingdotgg/t3code --json state,mergedAt,headRefOid`). Once upstream `main` contains one, the
+   rebase drops or empties that cherry-pick; if upstream changed it, prefer upstream's version and
+   keep only the fork commits on top; report that it landed. When a landed PR adds numbered
+   migrations, the fork's `MultiRepoSchema.ts` must yield to them: drop the fork's copy of that DDL
+   in the same run so nothing creates the schema twice. While a PR is open and its head moved,
+   mention it; do not port new commits automatically.
 4. Rebuild `main` from the branches that made it.
    1. Make sure nobody committed to `main` directly: every commit in `origin/main` must be in
       `upstream/main`, a feature branch, or a ref you saved this run
@@ -122,14 +132,7 @@ numbered migrations. Never give them a numbered migration: the migrator would la
 upstream migration with the same id as already applied, and the app would refuse to start. The same
 goes for the multi-repo tables and columns (`projection_projects.tracked_folders_json`,
 `task_folders`): they live in the fork schema module
-`apps/server/src/persistence/MultiRepoSchema.ts`, never in a numbered migration. A `main` without
-the multi-repo branch still starts on a database that has them (the column has a default).
+`apps/server/src/persistence/MultiRepoSchema.ts`, never in a numbered migration (upstream's series
+ships them as 092/093). A `task_folders` table from the old #26254 port has another shape; the
+module renames it to `task_folders_fork_v1` and never drops it.
 
-## Parked: feat/multi-repo-projects
-
-On 2026-11-14 a rebase onto upstream `main` (1017 commits newer than its base) conflicted in 50
-files even as one squashed change (16.5k lines over checkpointing, worktrees, provider adapters,
-diff/review and Git actions). Upstream also closed the PR it ports (#26254) and split it into
-#35921 (tracked repositories) and #35925 (worktree isolation), both still open. The branch is kept
-unchanged at `c7af02dfbb` (also `refs/wip/2026-11-14/feat-multi-repo-projects`) and is not in
-`main`. Jan decides whether to re-port it onto the new upstream PRs or to wait for them to land.

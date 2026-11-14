@@ -93,13 +93,13 @@ One short line each:
 - **Upstream**: how many upstream commits came in, and which touch areas the feature branches
   use (Pipelines: orchestration, thread shells, sidebar, MCP toolkit, settings, mobile threads;
   Linear: the pull request page and source control, composer context, settings secrets, routes;
-  multi-repo: projects/settings, checkpointing, worktrees/TaskFolderService, diff/review, Git
+  multi-repo: projects/settings, checkpointing, worktrees/TaskFolders, diff/review, Git
   actions, provider adapters, mobile review/Git; host capacity: resource telemetry/HostResources,
   agent scope, run admission and the run queue, settings, sidebar, mobile home).
 - **Rebase**: per feature branch: rebased and pushed (new short SHA), unchanged, dropped (why,
   and the `refs/wip/...` ref it was saved under) or parked. For rebased ones, conflicts and how
   you resolved them, fixes you committed and check results. Say whether upstream PR #27253
-  landed or got new commits, and the state of #35921 and #35925 (multi-repo).
+  landed or got new commits, and the state of #35921, #35923, #35924 and #35925 (multi-repo).
 - **Main**: unchanged at `<sha>`, pushed `<sha>` with which feature branches, or why it was
   skipped or failed. Put a feature that the previous `main` had and this one lacks first in the
   report: the machines lose it on their next install.
