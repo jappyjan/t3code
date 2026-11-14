@@ -7,6 +7,7 @@ import {
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
 import { ensureLinearSchema } from "./LinearSchema.ts";
+import { ensureMultiRepoSchema } from "./MultiRepoSchema.ts";
 import { ensurePipelineSchema } from "./PipelineSchema.ts";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
@@ -317,6 +318,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   if (toMigrationInclusive === undefined) {
     yield* ensurePipelineSchema;
     yield* ensureLinearSchema;
+    yield* ensureMultiRepoSchema;
   }
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
