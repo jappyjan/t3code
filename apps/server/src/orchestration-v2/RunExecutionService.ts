@@ -1013,8 +1013,10 @@ export const layer: Layer.Layer<
                   .responseStreamingMode,
             ),
           );
-          yield* input.baseline ??
-            captureRunBaseline({ ...input, message: { role: "user", ...input.message } });
+          yield* (
+            input.baseline ??
+              captureRunBaseline({ ...input, message: { role: "user", ...input.message } })
+          );
           if (
             input.shouldStartProviderTurn !== undefined &&
             !(yield* input.shouldStartProviderTurn())
