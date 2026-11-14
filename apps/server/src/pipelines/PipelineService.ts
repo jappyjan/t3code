@@ -52,6 +52,7 @@ import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import { makePipelineRunner, pipelineError } from "./pipelineRunner.ts";
 import * as PipelineStore from "./PipelineStore.ts";
 
@@ -138,6 +139,7 @@ export const layerWithStarters = (
   | IdAllocator.IdAllocatorV2
   | ServerSettings.ServerSettingsService
   | CheckpointStore.CheckpointStore
+  | TaskFolderStore.TaskFolderStore
   | ProviderRegistry.ProviderRegistry
   | ServerConfig.ServerConfig
   | DocumentText.DocumentText

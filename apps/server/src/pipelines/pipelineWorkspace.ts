@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import { checkpointRefForScopeOrdinal } from "../orchestration-v2/CheckpointService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
 import type { StartCheckpoint } from "./PipelineStore.ts";
@@ -34,6 +35,7 @@ export const makePipelineWorkspace = Effect.fn("PipelineWorkspace.make")(functio
   const checkpoints = yield* CheckpointStore.CheckpointStore;
   const digest = yield* Digest.Digest;
   const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
+  const taskFolders = yield* TaskFolderStore.TaskFolderStore;
 
   /**
    * The state a thread's first run found its workspace in: the root scope's ordinal-0 checkpoint.
@@ -51,6 +53,18 @@ export const makePipelineWorkspace = Effect.fn("PipelineWorkspace.make")(functio
         (candidate) => candidate.kind === "root_run" && candidate.runId === firstRun.id,
       );
       if (scope === undefined || !(yield* isManagedWorktreePath(scope.cwd))) return null;
+      // The snapshot covers only the project folder; restoring it alone would leave the other
+      // repositories of a task folder as the failed attempt left them. Repository scopes are only
+      // recorded once a turn changed them, so the task folder itself is asked too.
+      if (context.checkpointScopes.some((candidate) => candidate.repositoryPath !== undefined)) {
+        return null;
+      }
+      const taskFolder = yield* taskFolders
+        .findContaining(scope.cwd)
+        .pipe(Effect.orElseSucceed(() => undefined));
+      if (taskFolder === undefined || (taskFolder !== null && taskFolder.repositories.length > 0)) {
+        return null;
+      }
       const recorded = context.checkpoints.find(
         (checkpoint) =>
           checkpoint.scopeId === scope.id &&

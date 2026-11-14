@@ -30,6 +30,7 @@ import * as ThreadManagementService from "../orchestration-v2/ThreadManagementSe
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import * as PipelineService from "./PipelineService.ts";
 import * as PipelineStore from "./PipelineStore.ts";
 
@@ -69,6 +70,7 @@ const serviceLayer = (
         }),
         IdAllocator.layer,
         Layer.mock(CheckpointStore.CheckpointStore)({}),
+        Layer.mock(TaskFolderStore.TaskFolderStore)({}),
         Layer.mock(ProviderRegistry.ProviderRegistry)({}),
         Layer.mock(DocumentText.DocumentText)({}),
         // Only the worktrees directory is read, to tell managed worktrees from other folders.

@@ -101,6 +101,9 @@ in **Settings → Threads**; the run picks up the resumed turn's result.
   T3 Code worktree, you can choose **Retry from step start**: it first puts the files back to how
   they were when the step began, then runs the step again. **Retry with current files** keeps
   whatever the failed attempt left behind. Commits the step made stay on the branch either way.
+  In a project that tracks other repositories, only **Retry with current files** is offered:
+  restoring the project folder alone would leave the other repositories as the failed attempt left
+  them.
 - **Skip** moves on without a step.
 - **Rerun from here** on an earlier step of a paused, cancelled or completed run starts that step
   and every step after it again. The steps before it keep their results.

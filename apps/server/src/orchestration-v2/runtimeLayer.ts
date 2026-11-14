@@ -333,6 +333,7 @@ const layerPipelineProvided = PipelineService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       PipelineStore.layer,
+      TaskFolderStore.layer,
       layerThreadLaunchProvided,
       layerThreadManagementProvided,
       IdAllocator.layer,
