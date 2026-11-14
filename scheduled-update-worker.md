@@ -70,6 +70,10 @@ Title "T3 Code fork: install main", message (fill in the SHA and whether section
 > ~/code/t3dotgg/t3code run `git fetch origin fork-tools`, then read
 > `git show origin/fork-tools:install-laptop.md` and follow it exactly.
 
+Pass `modelSelection` `{"instanceId": "claudeAgent", "model": "claude-sonnet-5-5"}` and
+`runtimeMode` `full-access`: the laptop projects have no default model, and the launch is refused
+without one.
+
 If a launch fails (the laptop is off, asleep or unreachable, or the link expired), note it for the
 report and go on. The next run tries again.
 
