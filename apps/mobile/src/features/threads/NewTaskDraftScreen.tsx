@@ -748,7 +748,7 @@ export function NewTaskDraftScreen(props: {
         );
         return null;
       }
-      if (workspaceMode === "worktree" && !selectedBranchName) return null;
+      if (workspaceMode === "worktree" && flow.isGitRepo && !selectedBranchName) return null;
       // Image references alone are not a prompt; the attachments carry the request.
       const pipelineText = isImageReferencesOnly(draft.text) ? "" : initialMessageText;
       const branch = resolveProjectThreadCreationBranch({
@@ -818,14 +818,18 @@ export function NewTaskDraftScreen(props: {
             : {}),
           workspaceStrategy: draftWorkspaceStrategy(
             { branch, worktreePath },
-            workspaceMode === "worktree" && branch !== null
+            workspaceMode === "worktree" && (branch !== null || !flow.isGitRepo)
               ? {
                   projectCwd: selectedProject.workspaceRoot,
-                  baseBranch: branch,
+                  // The launch needs a base ref; the server ignores it for a plain project folder.
+                  baseBranch: branch ?? "HEAD",
                   branch: buildTemporaryWorktreeBranchName(() =>
                     attempt.commandId.replaceAll("-", ""),
                   ),
                   ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                  ...(flow.worktreeRepositorySelection.strategyRepositories === undefined
+                    ? {}
+                    : { repositories: flow.worktreeRepositorySelection.strategyRepositories }),
                 }
               : undefined,
           ),
