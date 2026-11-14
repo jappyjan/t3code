@@ -1233,6 +1233,7 @@ export function useComposerSend(input: ComposerSendInput) {
               projectCwd: activeProject.workspaceRoot,
               baseBranch: baseBranchForWorktree,
               ...(startFromOrigin ? { startFromOrigin: true } : {}),
+              ...(worktreeRepositories ? { repositories: worktreeRepositories } : {}),
             }
           : undefined,
       );
