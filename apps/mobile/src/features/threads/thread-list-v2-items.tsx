@@ -2056,6 +2056,7 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
                 {statusLabel.label}
                 {status === "working" ? (
                   <ThreadListV2Duration
+                    environmentId={thread.environmentId}
                     startedAt={resolveThreadWorkingStartedAt(thread)}
                     leadingSpace={statusLabel.label !== null}
                   />
