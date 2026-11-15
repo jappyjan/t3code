@@ -378,7 +378,8 @@ const HandoffPipelineStepTool = Tool.make("handoff_pipeline_step", {
   dependencies,
 })
   .annotate(Tool.Title, "Hand off a pipeline step")
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const EscalateToPipelineCoordinatorTool = Tool.make("escalate_to_pipeline_coordinator", {
   description:
@@ -390,7 +391,8 @@ const EscalateToPipelineCoordinatorTool = Tool.make("escalate_to_pipeline_coordi
   dependencies,
 })
   .annotate(Tool.Title, "Pass a request to the pipeline coordinator")
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const RequestSecretTool = Tool.make("request_secret", {
   description:

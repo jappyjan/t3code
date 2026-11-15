@@ -1128,6 +1128,7 @@ export function useComposerSend(input: ComposerSendInput) {
           environmentId,
           attachments: composerAttachmentsSnapshot,
           usesAttachmentUploads: true,
+          draftTarget: composerDraftTarget,
         }),
       );
       if (pipelineAttachments._tag === "Failure") {

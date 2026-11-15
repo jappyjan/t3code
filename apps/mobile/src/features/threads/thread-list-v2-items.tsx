@@ -1014,26 +1014,6 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
   const timeLabel = props.timeLabel && m(props.timeLabel);
   const snoozeWakeLabelText =
     props.snoozeWakeLabelText === undefined ? undefined : m(props.snoozeWakeLabelText);
-  const rowAccessibilityLabel = threadListV2RowAccessibilityLabel(
-    {
-      title: thread.title,
-      variant,
-      woke: showsWoke,
-      // Working and waiting rows show only an icon and a duration, so name them for speech.
-      statusLabel:
-        statusLabel &&
-        (statusLabel.label ??
-          (status === "waiting"
-            ? gt("Waiting", { $context: "thread status" })
-            : gt("Working", { $context: "thread status" }))),
-      timeLabel,
-      snoozeWakeLabel: snoozedRow ? snoozeWakeLabelText : undefined,
-      providerNameLabel,
-      hasQueuedMessages: props.hasQueuedMessages === true,
-      regeneratingTitle: isRegeneratingTitle,
-    },
-    m,
-  );
 
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
   const markThreadUnread = useAtomCommand(threadEnvironment.markUnread, { reportFailure: false });
@@ -1098,17 +1078,34 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
     ],
   );
   const rowAccessibilityLabel = [
-    earlierAttemptLabel === null
-      ? thread.title
-      : `${earlierAttemptLabel}, attempt ${props.earlierAttempt}`,
-    providerNameLabel || null,
+    threadListV2RowAccessibilityLabel(
+      {
+        title:
+          earlierAttemptLabel === null
+            ? thread.title
+            : `${earlierAttemptLabel}, attempt ${props.earlierAttempt}`,
+        variant,
+        woke: showsWoke,
+        // Working and waiting rows show only an icon and a duration, so name them for speech.
+        statusLabel:
+          statusLabel &&
+          (statusLabel.label ??
+            (status === "waiting"
+              ? gt("Waiting", { $context: "thread status" })
+              : gt("Working", { $context: "thread status" }))),
+        timeLabel,
+        snoozeWakeLabel: snoozedRow ? snoozeWakeLabelText : undefined,
+        providerNameLabel,
+        hasQueuedMessages: props.hasQueuedMessages === true,
+        regeneratingTitle: isRegeneratingTitle,
+      },
+      m,
+    ),
     attentionBadge
       ? props.attentionLabel === undefined
         ? "needs your attention"
         : attentionBadgeLabel
       : null,
-    props.hasQueuedMessages ? "messages queued to send" : null,
-    isRegeneratingTitle ? "regenerating title" : null,
     pipelineProgress
       ? `${countFinishedPipelineSegments(pipelineProgress)} of ${pipelineProgress.length} steps done`
       : null,

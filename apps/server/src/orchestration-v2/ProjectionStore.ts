@@ -103,7 +103,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
-import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
+import { attachmentIdsOwnedByThread, threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import { DELEGATED_TASK_MESSAGE_CONDITION } from "./delegatedTaskMessage.ts";
 import {
   DEFERRED_COMMAND_MESSAGE_CONDITION,
@@ -6974,12 +6974,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         `;
         return [
           ...new Set([
-            ...(yield* unshownRunAttachmentIds(
-              threadId,
-              options?.includeShownByLiveFork ? -1 : afterRun(own.with_fork),
-              Number.MAX_SAFE_INTEGER,
-            )),
-            ...guestFiles.map((row) => row.id),
+            ...attachmentIdsOwnedByThread(threadId, [
+              ...(yield* unshownRunAttachmentIds(
+                threadId,
+                options?.includeShownByLiveFork ? -1 : afterRun(own.with_fork),
+                Number.MAX_SAFE_INTEGER,
+              )),
+              ...guestFiles.map((row) => row.id),
+            ]),
             ...released.flat(),
           ]),
         ];
