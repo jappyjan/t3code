@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  attachmentIdsOwnedByThread,
   chatAttachmentStableKey,
   createAttachmentId,
   createDeterministicAttachmentId,
@@ -209,5 +210,18 @@ describe("threadHtmlRenderAttachmentIds", () => {
         },
       ]),
     ).toEqual([app]);
+  });
+});
+
+describe("attachmentIdsOwnedByThread", () => {
+  it("keeps this thread's, pending and legacy files but not another thread's", () => {
+    const own = createAttachmentId("thread-a", "png")!;
+    const other = createAttachmentId("thread-b", "png")!;
+    const pending = createPendingAttachmentId("png");
+    expect(attachmentIdsOwnedByThread("thread-a", [own, other, pending, "legacy_file"])).toEqual([
+      own,
+      pending,
+      "legacy_file",
+    ]);
   });
 });

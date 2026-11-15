@@ -2505,7 +2505,7 @@ it.effect(
           commandId: CommandId.make(`create:${threadId}`),
           threadId,
           projectId,
-          title: "Pipeline",
+          title: pipeline === undefined ? "New thread" : "Pipeline",
           modelSelection,
           runtimeMode: "full-access",
           interactionMode: "default",
