@@ -128,6 +128,20 @@ export function parseThreadSegmentFromAttachmentId(attachmentId: string): string
   return match[1]?.toLowerCase() ?? null;
 }
 
+/**
+ * Messages can reference files another thread owns, such as a pipeline run's starting attachments
+ * in its parent thread. Deleting this thread must not take those with it.
+ */
+export function attachmentIdsOwnedByThread(threadId: string, attachmentIds: Iterable<string>) {
+  const ownSegment = toSafeThreadAttachmentSegment(threadId);
+  return Array.from(attachmentIds).filter((id) => {
+    const segment = parseThreadSegmentFromAttachmentId(id);
+    return (
+      segment === null || segment === ownSegment || segment === PENDING_ATTACHMENT_THREAD_SEGMENT
+    );
+  });
+}
+
 /** Only this thread's ids qualify, preserving source pages when deleting a fork. */
 export function threadHtmlRenderAttachmentIds(
   threadId: string,
