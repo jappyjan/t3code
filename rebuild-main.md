@@ -99,6 +99,14 @@ text. The fork adds MCP tools, so after a rebase it is often wrong; when
    (`gh pr view 27253 --repo pingdotgg/t3code --json headRefOid,updatedAt`) and mention new
    commits; do not port them automatically.
 
+   Pipelines also carries a fix for an upstream bug in Claude's background-task roster
+   (`fix(claude): a finished background task no longer blocks the wake turn`, in
+   `ClaudeAdapterV2.ts`). Without it a pipeline step cannot hand off while its wake turn runs.
+   On a conflict, keep upstream's code and re-apply the two small edits from that commit; if
+   upstream reworked the code, keep the commit's tests (`claude_background_task_wake/output.ts`
+   and the "release a finished background task" adapter test) and make them pass. Once upstream
+   fixes it, the rebase empties the commit; report that.
+
    Multi-repo carries upstream's open series #35921 → #35923 → #35924 → #35925 as cherry-picks
    (`-x`, so each commit names its upstream sha). Check each PR (`gh pr view <n> --repo
    pingdotgg/t3code --json state,mergedAt,headRefOid`). Once upstream `main` contains one, the
