@@ -14916,6 +14916,55 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("lets the agent release a finished background task still owed a wake", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      const now = yield* DateTime.now;
+      const awaitBackgroundTasks = harness.runtime.awaitBackgroundTasks;
+      if (awaitBackgroundTasks === undefined) {
+        throw new Error("Claude adapter runtime must expose awaitBackgroundTasks.");
+      }
+      const publishedTaskIds = () =>
+        (
+          providerThreadRosterEvents(harness.events).at(-1)?.providerThread
+            .pendingBackgroundTasks ?? []
+        ).map((task) => task.taskId);
+
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now,
+          attemptId: RunAttemptId.make("attempt-claude-release-owed-wake"),
+          text: "Run the build in the background.",
+          attachments: [],
+        }),
+      );
+      yield* Queue.offer(harness.sdkMessages, wakeTaskStarted);
+      yield* Queue.offer(harness.sdkMessages, turnOneResult);
+      yield* harness.awaitTerminal(1);
+      yield* harness.offerAndWait(wakeNotification);
+      assert.include(publishedTaskIds(), WAKE_TASK_ID);
+
+      const released = yield* awaitBackgroundTasks({
+        providerThread: harness.providerThread,
+        taskIds: [WAKE_TASK_ID],
+        awaited: false,
+      });
+      assert.deepStrictEqual(released.matched, [WAKE_TASK_ID]);
+      yield* harness.until(() => !publishedTaskIds().includes(WAKE_TASK_ID));
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
   it.effect("keeps a running Claude monitor typed after many newer monitors end", () =>
     Effect.gen(function* () {
       const harness = yield* makeWakeHarness;

@@ -12738,6 +12738,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 liveQuery.nativeThreadId,
                 message.task_id,
               );
+              // The tombstone kept the task published as an owed wake; republish without it.
+              yield* emitRosterUpdate(liveQuery.nativeThreadId, context);
             }
           }
 
@@ -15899,8 +15901,27 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 yield* Ref.get(pendingBackgroundTasksByNativeThread),
                 nativeThreadId,
               );
-              const matched = [...new Set(taskIds)].filter((taskId) => roster.has(taskId));
-              if (matched.length === 0) return { matched };
+              const requested = [...new Set(taskIds)];
+              const matched = requested.filter((taskId) => roster.has(taskId));
+              // An ended task can stay published as an owed wake; letting go of it releases that.
+              const published =
+                (yield* Ref.get(lastProviderThreadByNativeThread)).get(nativeThreadId)
+                  ?.pendingBackgroundTasks ?? [];
+              const released = awaited
+                ? []
+                : requested.filter(
+                    (taskId) =>
+                      !roster.has(taskId) && published.some((task) => task.taskId === taskId),
+                  );
+              for (const taskId of released) {
+                yield* clearTaskIdFromNativeThreadSet(
+                  wakeEligibleBackgroundTasksByNativeThread,
+                  nativeThreadId,
+                  taskId,
+                );
+                yield* clearOpaqueBackgroundTaskReplayTombstone(nativeThreadId, taskId);
+              }
+              if (matched.length === 0 && released.length === 0) return { matched };
               if (awaited) {
                 yield* addTaskIdsToNativeThreadSet(
                   awaitedBackgroundTasksByNativeThread,
@@ -15921,7 +15942,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 nativeThreadId,
                 active?.nativeThreadId === nativeThreadId ? active : null,
               );
-              return { matched };
+              return { matched: [...matched, ...released] };
             },
             (effect) => sdkMessageLock.withPermits(1)(effect),
           ),
