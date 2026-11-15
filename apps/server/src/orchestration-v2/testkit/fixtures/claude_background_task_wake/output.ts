@@ -69,6 +69,19 @@ export function assertClaudeBackgroundTaskWakeOutput(
   );
   assert.isAtLeast(rosterIndex, 0, "the running background task must reach the roster");
   assert.isAbove(clearedIndex, rosterIndex, "the completed task must leave the roster");
+  // Pipeline handoff and t3_background_wait read the roster during the wake turn itself.
+  const wakeReplyIndex = result.domainEvents.findIndex(
+    (event) =>
+      event.type === "turn-item.updated" &&
+      event.payload.runId === wakeRun?.id &&
+      event.payload.type === "assistant_message",
+  );
+  assert.isAbove(wakeReplyIndex, rosterIndex);
+  assert.isBelow(
+    clearedIndex,
+    wakeReplyIndex,
+    "the completed task must leave the roster before the wake turn replies",
+  );
   assert.deepEqual(projection.providerThreads[0]?.pendingBackgroundTasks ?? [], []);
 
   const rosterTask = result.domainEvents
