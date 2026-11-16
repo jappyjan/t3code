@@ -54,7 +54,38 @@ finish() {
 }
 # pgrep cannot read the main process's arguments, and the app name holds regex characters.
 app_pids() { ps -axo pid=,comm= | grep -F "$1" | awk '{print $1}' || true; }
-app_running() { [[ -n "$(app_pids "$target/Contents/MacOS/")" ]]; }
+bundle_running() { [[ -n "$(app_pids "$1/Contents/MacOS/")" ]]; }
+app_running() { bundle_running "$target"; }
+# Every T3 Code app (stable, Beta, Nightly) shares $USERDATA and only one server may own it, so
+# another app still running there makes the new one refuse to start. Prints that app's bundle.
+home_owner_app() {
+  local pid exe
+  pid="$(sed -n 's/.*"pid":\([0-9]*\).*/\1/p' "$USERDATA/server-runtime.json" 2>/dev/null || true)"
+  [[ -n "$pid" ]] || return 0
+  exe="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+  if [[ "$exe" == *.app/Contents/* ]]; then echo "${exe%%.app/Contents/*}.app"; fi
+}
+quit_bundle() {
+  local bundle="$1" bundle_name
+  bundle_name="$(basename "$bundle" .app)"
+  bundle_running "$bundle" || return 0
+  log "Quitting $bundle_name"
+  osascript -e "quit app \"$bundle_name\"" >/dev/null 2>&1 || true
+  for _ in $(seq 1 60); do bundle_running "$bundle" || break; sleep 1; done
+  if bundle_running "$bundle"; then
+    log "Still running after 60s; terminating"
+    kill -TERM $(app_pids "$bundle/Contents/MacOS/") 2>/dev/null || true
+    sleep 10
+    kill -KILL $(app_pids "$bundle/Contents/MacOS/") 2>/dev/null || true
+    sleep 2
+  fi
+  if bundle_running "$bundle"; then
+    finish "Not installed: $bundle_name did not quit. The build is ready: $0 \"$new_app\""
+    exit 1
+  fi
+  # The app's server and helpers can outlive the window briefly.
+  for _ in $(seq 1 30); do [[ -z "$(app_pids "$bundle/Contents/")" ]] && break; sleep 1; done
+}
 # Once the app is quit, any failure must bring the previous app back instead of leaving T3 Code closed.
 swapped=0
 recover_after_failure() {
@@ -108,24 +139,12 @@ if [[ "$(cat "$PIDFILE" 2>/dev/null)" != "$$" ]]; then
   exit 0
 fi
 trap recover_after_failure ERR
-if app_running; then
-  log "Quitting $name"
-  osascript -e "quit app \"$name\"" >/dev/null 2>&1 || true
-  for _ in $(seq 1 60); do app_running || break; sleep 1; done
-  if app_running; then
-    log "Still running after 60s; terminating"
-    kill -TERM $(app_pids "$target/Contents/MacOS/") 2>/dev/null || true
-    sleep 10
-    kill -KILL $(app_pids "$target/Contents/MacOS/") 2>/dev/null || true
-    sleep 2
-  fi
+owner="$(home_owner_app)"
+quit_bundle "$target"
+if [[ -n "$owner" && "$owner" != "$target" ]]; then
+  log "$(basename "$owner" .app) owns $USERDATA"
+  quit_bundle "$owner"
 fi
-if app_running; then
-  finish "Not installed: $name did not quit. The build is ready: $0 \"$new_app\""
-  exit 1
-fi
-# The app's server and helpers can outlive the window briefly.
-for _ in $(seq 1 30); do [[ -z "$(app_pids "$target/Contents/")" ]] && break; sleep 1; done
 
 mkdir -p "$BACKUPS"
 backup="$BACKUPS/statev2-$(date +%Y%m%d-%H%M%S).sqlite"
