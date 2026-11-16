@@ -343,15 +343,27 @@ describe("a paused run waiting on its step's background work", () => {
     expect([...targets.attentionThreads.values()][0] ?? null).toBe(status);
   });
 
-  it("still needs the user for a failed step, whatever its thread waits on", () => {
-    const waitOf = waitOn({ s0: "background_work" });
-    expect(aggregatePipelineStepStatus(steps, ready, run("step_failed"), waitOf)).toBe("input");
-  });
+  it.each(["background_work", "possibly_stuck"] as const)(
+    "still needs the user for a failed step whose thread waits on %s",
+    (wait) => {
+      const failed = run("step_failed");
+      const waitOf = waitOn({ s0: wait });
+      expect(aggregatePipelineStepStatus(steps, ready, failed, waitOf)).toBe("input");
+      const targets = pipelineAttentionTargets(failed, steps, ready, waitOf);
+      expect([...targets.attentionThreads.values()]).toEqual(["input"]);
+    },
+  );
 
   it("rolls a possibly stuck current step up even when the run is not paused", () => {
     const running = { ...run("awaiting_handoff"), status: "running" } as PipelineRunSummary;
     expect(
       aggregatePipelineStepStatus(steps, ready, running, waitOn({ s0: "possibly_stuck" })),
+    ).toBe("stuck");
+  });
+
+  it("rolls up any stuck step once the run is over", () => {
+    expect(
+      aggregatePipelineStepStatus(steps, ready, undefined, waitOn({ s0: "possibly_stuck" })),
     ).toBe("stuck");
   });
 

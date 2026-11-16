@@ -28,7 +28,7 @@ import {
   pipelineStepLabel,
   pipelineStepsOfParents,
   isShellPossiblyStuck,
-  pipelineCurrentStepIsStuck,
+  pipelineHasStuckStep,
   threadBackgroundWait,
   type PipelineStepWaitOf,
   type PossiblyStuckClock,
@@ -992,7 +992,7 @@ export function buildThreadListV2Items(input: {
       pinned.push(thread);
     } else if (
       isStuck(owner) ||
-      pipelineCurrentStepIsStuck(
+      pipelineHasStuckStep(
         livePipelineRunOf(input.pipelineRuns, owner),
         stepsOfParent.get(`${owner.environmentId}:${owner.id}`) ?? [],
         waitOf,

@@ -581,7 +581,11 @@ function PipelineStepRow(props: {
   const childShell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId: props.environmentId, threadId: childThreadId },
   );
-  const awaitsHandoff = step.status === "running" && pipelineStepAwaitsHandoff(run, step.index);
+  // A wake turn runs the step again, so it reads as running whatever work is still pending.
+  const awaitsHandoff =
+    step.status === "running" &&
+    pipelineStepAwaitsHandoff(run, step.index) &&
+    childShell?.runtime?.activeRunId == null;
   const tone = props.needsYou
     ? ATTENTION_TONE
     : awaitsHandoff && props.wait !== null

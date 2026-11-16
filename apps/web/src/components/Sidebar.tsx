@@ -39,7 +39,7 @@ import {
   isPipelineGroupActive,
   isShellPossiblyStuck,
   livePipelineRunOf,
-  pipelineCurrentStepIsStuck,
+  pipelineHasStuckStep,
   nestPipelineSteps,
   pipelineParentsOfSteps,
   pipelineEarlierFoldKey,
@@ -765,7 +765,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) =>
     // A thread whose background work outlived the threshold leaves the inbox for its own shelf.
     isShellPossiblyStuck(thread, stuckClockOf(thread.environmentId)) ||
-    pipelineCurrentStepIsStuck(
+    pipelineHasStuckStep(
       livePipelineRunOf(pipelineLiveRuns, thread),
       pipelineStepsOf.get(threadShellKey(thread)) ?? [],
       waitOf,

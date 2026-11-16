@@ -184,14 +184,21 @@ function pausedRunCurrentStep<T extends PipelineNestable>(
   return childThreadId == null ? undefined : steps.find((step) => step.id === childThreadId);
 }
 
-/** Whether the current step's thread has had background work running past the user's threshold. */
-export function pipelineCurrentStepIsStuck<T extends PipelineNestable>(
+/**
+ * Whether a pipeline holds a step whose background work ran past the user's threshold. A live run
+ * counts only its current step, and not while paused for another reason (a failure, a gate), so
+ * work an earlier step left running does not hold the run. A run that is over counts any step.
+ */
+export function pipelineHasStuckStep<T extends PipelineNestable>(
   run: PausedRunInput | null | undefined,
   steps: readonly T[],
   waitOf: PipelineStepWaitOf<T> | undefined,
 ): boolean {
-  const current = run == null ? undefined : pausedRunCurrentStep(run, steps);
-  return current !== undefined && waitOf?.(current) === "possibly_stuck";
+  if (waitOf === undefined) return false;
+  if (run == null) return steps.some((step) => waitOf(step) === "possibly_stuck");
+  if (run.status === "paused" && run.pauseReason !== "awaiting_handoff") return false;
+  const current = pausedRunCurrentStep(run, steps);
+  return current !== undefined && waitOf(current) === "possibly_stuck";
 }
 
 /**
@@ -323,7 +330,7 @@ export function aggregatePipelineStepStatus<T extends PipelineNestable>(
   waitOf?: PipelineStepWaitOf<T>,
 ): PipelineStepStatus | null {
   const seen = new Set<string>(steps.map(threadStatus));
-  if (pipelineCurrentStepIsStuck(run, steps, waitOf)) seen.add("stuck");
+  if (pipelineHasStuckStep(run, steps, waitOf)) seen.add("stuck");
   else if (
     run?.status === "paused" &&
     pausedRunWaitsOnUser(run, steps, (step) => pausedStepIsBusy(run, step, threadStatus, waitOf))
@@ -486,7 +493,7 @@ export function pipelineAttentionTargets<T extends PipelineNestable & { readonly
       shellKey(thread),
       isPipelineAttentionStatus(own)
         ? own
-        : waitOf?.(thread) === "possibly_stuck"
+        : run?.pauseReason === "awaiting_handoff" && waitOf?.(thread) === "possibly_stuck"
           ? "stuck"
           : "input",
     );
