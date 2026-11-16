@@ -18,10 +18,15 @@ import {
   pipelineStepAwaitsHandoff,
   pipelineStepPosition,
   pipelineStepStatusLabel,
+  pipelineStepWaitLabel,
   stepName,
-  threadWatchesPullRequest,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
-import { pipelineRunStepShells } from "@t3tools/client-runtime/state/pipeline-nesting";
+import {
+  pipelineRunStepShells,
+  possiblyStuckClock,
+  threadBackgroundWait,
+  type PipelineStepWait,
+} from "@t3tools/client-runtime/state/pipeline-nesting";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -38,6 +43,8 @@ import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { formatMessageTime } from "../../lib/time";
+import { useNowMinuteMs } from "../../lib/clock";
+import { environmentPresentations } from "../../state/presentation";
 import { useQuietThreadShell, useQuietThreadShells } from "../../state/entities";
 import { resolveThreadListV2Status, threadHasUnseenCompletion } from "./threadListV2";
 import { useEnvironmentQuery } from "../../state/query";
@@ -73,25 +80,32 @@ function reportFailure(title: string, result: AtomCommandResult<unknown, unknown
   }
 }
 
-function useRunWaitingOnPullRequest(
-  environmentId: EnvironmentId,
-  run: PipelineRun | null,
-): boolean {
+/** What the current step's thread waits on after ending its turn without a handoff, and the stuck threshold. */
+function useStepWait(environmentId: EnvironmentId, run: PipelineRun | null) {
   const childThreadId = pipelineAwaitingHandoffThreadId(run);
   const shell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId, threadId: childThreadId },
   );
-  return threadWatchesPullRequest(shell);
+  const config = useAtomValue(environmentPresentations.serverConfigsAtom).get(environmentId);
+  const nowMs = useNowMinuteMs();
+  const clock = possiblyStuckClock(config?.settings, nowMs);
+  return {
+    wait: threadBackgroundWait(shell, clock),
+    waitOf: (step: Parameters<typeof threadBackgroundWait>[0]) => threadBackgroundWait(step, clock),
+    afterHours: clock?.afterHours,
+  };
 }
 
-function runTone(run: PipelineRun, waitingOnPullRequest: boolean): StatusTone {
+function runTone(run: PipelineRun, wait: PipelineStepWait | null): StatusTone {
   switch (run.status) {
     case "running":
       return { label: "Running", ...STEP_TONES.active };
     case "paused":
-      if (!pipelineRunNeedsAttention(run, waitingOnPullRequest)) {
+      if (!pipelineRunNeedsAttention(run, wait)) {
         return { label: "Waiting", ...STEP_TONES.active };
       }
+      if (wait === "possibly_stuck")
+        return { label: pipelineStepWaitLabel(wait), ...ATTENTION_TONE };
       return {
         label: run.pauseReason === "awaiting_continue" ? "Paused" : "Needs attention",
         ...ATTENTION_TONE,
@@ -155,9 +169,9 @@ export function PipelineRunSummaryHeader(props: {
     }),
   );
   const run = runQuery.data?.run ?? null;
-  const waitingOnPullRequest = useRunWaitingOnPullRequest(props.environmentId, run);
+  const { wait } = useStepWait(props.environmentId, run);
   if (run === null) return <View style={{ paddingTop: props.topInset }} />;
-  const tone = runTone(run, waitingOnPullRequest);
+  const tone = runTone(run, wait);
   const stepIndex = Math.min(run.currentStepIndex, run.steps.length - 1);
   return (
     <View
@@ -195,7 +209,7 @@ export function PipelineRunPanel(props: {
     serverEnvironment.pipelineRunLive({ environmentId, input: { runId: props.runId } }),
   );
   const run = runQuery.data?.run ?? null;
-  const waitingOnPullRequest = useRunWaitingOnPullRequest(environmentId, run);
+  const { wait, waitOf, afterHours } = useStepWait(environmentId, run);
   const [expanded, setExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [previewFile, setPreviewFile] = useState<FilePreviewSource | null>(null);
@@ -296,7 +310,7 @@ export function PipelineRunPanel(props: {
 
   const actions = availablePipelineActions(run);
   const stepIndex = run.currentStepIndex;
-  const tone = runTone(run, waitingOnPullRequest);
+  const tone = runTone(run, wait);
   const stepInput = { runId: run.id, stepIndex };
   const startingText = composerContextProse(run.input);
   // Image and file chips only bind the attachments listed above them.
@@ -309,6 +323,8 @@ export function PipelineRunPanel(props: {
     run,
     pipelineRunStepShells(shells, environmentId, run.id),
     resolveThreadListV2Status,
+    waitOf,
+    afterHours,
   );
   const needsYouThreadId = needsYou?.threadId ?? null;
 
@@ -339,8 +355,7 @@ export function PipelineRunPanel(props: {
           </View>
         </View>
         <Text textRole="footnote" className="text-foreground-secondary" numberOfLines={1}>
-          {runProgressLabel(run)} · {currentStepName} ·{" "}
-          {pipelineRunStateLabel(run, waitingOnPullRequest)}
+          {runProgressLabel(run)} · {currentStepName} · {pipelineRunStateLabel(run, wait)}
         </Text>
       </Pressable>
       {needsYou !== null ? (
@@ -506,6 +521,7 @@ export function PipelineRunPanel(props: {
               environmentId={environmentId}
               run={run}
               step={step}
+              wait={step.index === stepIndex ? wait : null}
               current={step.index === stepIndex && run.status !== "completed"}
               needsYou={needsYou?.threadId != null && needsYou.stepIndex === step.index}
               pauseBeforeEditable={
@@ -544,6 +560,8 @@ function PipelineStepRow(props: {
   readonly environmentId: EnvironmentId;
   readonly run: PipelineRun;
   readonly step: PipelineRun["steps"][number];
+  /** What the step's thread waits on after ending its turn without a handoff. */
+  readonly wait: PipelineStepWait | null;
   readonly current: boolean;
   /** The step the run's "needs you" line points at. */
   readonly needsYou: boolean;
@@ -563,11 +581,22 @@ function PipelineStepRow(props: {
   const childShell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId: props.environmentId, threadId: childThreadId },
   );
-  const tone = props.needsYou ? ATTENTION_TONE : STEP_TONES[pipelineStepTone(step.status)];
+  // A wake turn runs the step again, so it reads as running whatever work is still pending.
+  const awaitsHandoff =
+    step.status === "running" &&
+    pipelineStepAwaitsHandoff(run, step.index) &&
+    childShell?.runtime?.activeRunId == null;
+  const tone = props.needsYou
+    ? ATTENTION_TONE
+    : awaitsHandoff && props.wait !== null
+      ? STEP_TONES.muted
+      : STEP_TONES[pipelineStepTone(step.status)];
   const statusLabel =
-    props.needsYou && step.status === "running" && pipelineStepAwaitsHandoff(run, step.index)
-      ? "No handoff"
-      : pipelineStepStatusLabel(step);
+    awaitsHandoff && props.wait !== null
+      ? pipelineStepWaitLabel(props.wait)
+      : props.needsYou && awaitsHandoff
+        ? "No handoff"
+        : pipelineStepStatusLabel(step);
   const revisions = stepRevisions(run, step.index);
   const needsInput = childShell?.runtime?.status === "waiting";
   const details = [

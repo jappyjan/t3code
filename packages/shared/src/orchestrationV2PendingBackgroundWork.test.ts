@@ -3,6 +3,7 @@ import { ProviderInstanceId, ProviderThreadId } from "@t3tools/contracts";
 import {
   backgroundWorkHoldsCompletion,
   derivePendingBackgroundWork,
+  isThreadPossiblyStuck,
   monitorHoldsWakeCompletion,
 } from "./orchestrationV2PendingBackgroundWork.ts";
 
@@ -14,6 +15,35 @@ describe("backgroundWorkHoldsCompletion", () => {
     ["a subagent", true, [{ taskId: "review", kind: "subagent" }]],
   ] as const)("with %s pending, holds completion: %s", (_case, holds, tasks) => {
     expect(backgroundWorkHoldsCompletion(tasks)).toBe(holds);
+  });
+});
+
+describe("isThreadPossiblyStuck", () => {
+  const HOUR = 3_600_000;
+  const now = 10 * HOUR;
+  const dev = { taskId: "dev" };
+  const watch = { taskId: "pull-request-watch:github.com/o/r#1" };
+  const stuck = { activeRunId: null, pendingBackgroundTasks: [dev], lastRunEndedAtMs: 0 };
+
+  it.each([
+    ["past the threshold", stuck, 2, true],
+    ["exactly at the threshold", { ...stuck, lastRunEndedAtMs: now - 2 * HOUR }, 2, false],
+    ["just past the threshold", { ...stuck, lastRunEndedAtMs: now - 2 * HOUR - 1 }, 2, true],
+    [
+      "a later wake turn restarting the clock",
+      { ...stuck, lastRunEndedAtMs: now - HOUR },
+      2,
+      false,
+    ],
+    ["only a pull request watch", { ...stuck, pendingBackgroundTasks: [watch] }, 2, false],
+    ["a watch beside other work", { ...stuck, pendingBackgroundTasks: [watch, dev] }, 2, true],
+    ["no background work", { ...stuck, pendingBackgroundTasks: [] }, 2, false],
+    ["an active run", { ...stuck, activeRunId: "run-1" }, 2, false],
+    ["an archived thread", { ...stuck, archived: true }, 2, false],
+    ["no finished run to date it", { ...stuck, lastRunEndedAtMs: null }, 2, false],
+    ["the indicator turned off", stuck, 0, false],
+  ] as const)("with %s: %s", (_case, thread, afterHours, expected) => {
+    expect(isThreadPossiblyStuck(thread, now, afterHours)).toBe(expected);
   });
 });
 

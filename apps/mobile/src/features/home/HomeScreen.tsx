@@ -78,6 +78,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
+  ThreadListV2StuckShelfHeader,
   ThreadListV2WorkingShelfHeader,
 } from "../threads/thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "../threads/thread-provider-instance";
@@ -393,10 +394,12 @@ export function HomeScreen(props: HomeScreenProps) {
     snoozedShelfExpanded,
     workingShelfEnabled,
     workingShelfExpanded,
+    stuckShelfExpanded,
     expandedPipelineKeys,
     toggleSettledShelf,
     toggleSnoozedShelf,
     toggleWorkingShelf,
+    toggleStuckShelf,
     togglePipelineExpanded,
   } = useThreadListV2ShelfPreferences();
   const now = useThreadListNow(props.threads);
@@ -440,6 +443,7 @@ export function HomeScreen(props: HomeScreenProps) {
     shelfPreferencesLoaded,
     workingShelfEnabled,
     workingShelfExpanded,
+    stuckShelfExpanded,
     snoozedShelfExpanded,
     settledShelfExpanded,
     expandedPipelineKeys,
@@ -512,6 +516,16 @@ export function HomeScreen(props: HomeScreenProps) {
         />
       );
     }
+    if (item.type === "v2-stuck-shelf") {
+      return (
+        <ThreadListV2StuckShelfHeader
+          count={item.count}
+          disabled={item.disabled}
+          expanded={item.expanded}
+          onToggle={toggleStuckShelf}
+        />
+      );
+    }
     if (item.type === "v2-snoozed-shelf") {
       return (
         <ThreadListV2SnoozedShelfHeader
@@ -546,6 +560,7 @@ export function HomeScreen(props: HomeScreenProps) {
         stepStatus={item.item.stepStatus}
         stepLabel={item.item.stepLabel}
         suppressUnseenDone={item.item.suppressUnseenDone}
+        possiblyStuck={item.item.possiblyStuck}
         earlierAttempt={item.item.earlierAttempt}
         earlierFold={item.item.earlierFold}
         attentionTarget={item.item.attentionTarget}

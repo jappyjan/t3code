@@ -1,7 +1,11 @@
 import { formatModelSelectionEffort } from "@t3tools/client-runtime/state/thread-execution";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import { pipelineStepStatusLabel } from "@t3tools/client-runtime/pipeline-run-presentation";
+import {
+  pipelineStepStatusLabel,
+  pipelineStepWaitLabel,
+} from "@t3tools/client-runtime/pipeline-run-presentation";
+import type { PipelineStepWait } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { ModelSelection, PipelineRun, PipelineRunStep } from "@t3tools/contracts";
 import { formatModelSlugName, resolveSelectableModel } from "@t3tools/shared/model";
 
@@ -70,19 +74,22 @@ export function pipelineStepStatusDisplay(
   liveState: PipelineChildLiveState | null,
   /** The run paused because this step ended its turn without handing off. */
   awaitingHandoff = false,
-  /** The step's thread watches a pull request, so it is waiting rather than stuck. */
-  watchingPullRequest = false,
+  /** What the step's thread waits on, so it reads as waiting rather than needing the user. */
+  wait: PipelineStepWait | null = null,
   /** The run is paused at this step: a failed or stopped one waits on the user. */
   pausedAtStep = false,
 ): PipelineStepStatusDisplay {
+  if (step.status === "running" && awaitingHandoff && wait === "possibly_stuck") {
+    return { label: pipelineStepWaitLabel(wait), tone: "attention" };
+  }
   if (step.status === "running" && liveState !== null) {
     return {
       label: PIPELINE_CHILD_LIVE_STATE_LABEL[liveState],
       tone: liveState === "working" ? "working" : "attention",
     };
   }
-  if (step.status === "running" && awaitingHandoff && watchingPullRequest) {
-    return { label: "Waiting on pull request", tone: "default" };
+  if (step.status === "running" && awaitingHandoff && wait !== null) {
+    return { label: pipelineStepWaitLabel(wait), tone: "default" };
   }
   if (step.status === "running" && awaitingHandoff) {
     return { label: "No handoff", tone: "attention" };

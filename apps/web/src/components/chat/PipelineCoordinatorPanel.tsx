@@ -1,9 +1,9 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { useStepWait } from "../../hooks/useStepWait";
 import {
   pipelineAwaitingHandoffThreadId,
   pipelineRunStateLabel,
   stepName,
-  threadWatchesPullRequest,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
 import { pipelineProgressSegments } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { PipelineRun, PipelineRunSummary, ScopedThreadRef } from "@t3tools/contracts";
@@ -64,6 +64,7 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
   const awaitingShell = useQuietThreadShell(
     awaitingChildId === null ? null : scopeThreadRef(environmentId, awaitingChildId),
   );
+  const { waitOf } = useStepWait(environmentId);
   const parentRef = run === null ? null : scopeThreadRef(environmentId, run.parentThreadId);
   const parentExists = useQuietThreadShell(parentRef) !== null;
   if (run === null || parentRef === null) {
@@ -73,14 +74,18 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
       </p>
     );
   }
-  const segments = pipelineProgressSegments(summarizeRun(run), [], () => "ready").map(
-    (segment, index) => ({
-      stepId: segment.stepId,
-      label: segment.label,
-      status: segment.status,
-      threadId: run.steps[index]?.childThreadId ?? null,
-    }),
-  );
+  // Only the current step's thread matters here: it waits on the user unless its own work holds it.
+  const segments = pipelineProgressSegments(
+    summarizeRun(run),
+    awaitingShell === null ? [] : [awaitingShell],
+    () => "ready",
+    waitOf,
+  ).map((segment, index) => ({
+    stepId: segment.stepId,
+    label: segment.label,
+    status: segment.status,
+    threadId: run.steps[index]?.childThreadId ?? null,
+  }));
   const currentIndex = run.currentStepIndex;
   const openThread = (target: ScopedThreadRef) =>
     void navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(target) });
@@ -105,7 +110,7 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
             }
           >
             Step {currentIndex + 1}/{run.steps.length} · {stepName(run, currentIndex)} ·{" "}
-            {pipelineRunStateLabel(run, threadWatchesPullRequest(awaitingShell))}
+            {pipelineRunStateLabel(run, waitOf(awaitingShell))}
           </TooltipTrigger>
           <TooltipPopup side="left">Open the run's main page</TooltipPopup>
         </Tooltip>
