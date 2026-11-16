@@ -2,7 +2,9 @@ import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useSyncExternalStore } from "react";
+import { possiblyStuckClock } from "@t3tools/client-runtime/state/pipeline-nesting";
 
+import { environmentPresentations } from "../../state/presentation";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../../state/olderSettledShelf";
 import { serverEnvironment } from "../../state/server";
@@ -11,6 +13,7 @@ import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
   getThreadListV2OrderedSection,
+  possiblyStuckThreadKeys,
   threadListInboxReturns,
   threadListV2LayoutTime,
 } from "./threadListV2";
@@ -66,12 +69,18 @@ export function useThreadListV2(input: {
   readonly shelfPreferencesLoaded: boolean;
   readonly workingShelfEnabled: boolean;
   readonly workingShelfExpanded: boolean;
+  readonly stuckShelfExpanded: boolean;
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
   readonly expandedPipelineKeys: ReadonlyArray<string>;
   readonly selectedThreadKey: string | null;
 }) {
   const { threads, workingShelfEnabled } = input;
+  const serverConfigs = useAtomValue(environmentPresentations.serverConfigsAtom);
+  const nowMs = Date.parse(input.now);
+  const stuckClockOf = (environmentId: EnvironmentId) =>
+    possiblyStuckClock(serverConfigs.get(environmentId)?.settings, nowMs);
+  const stuckThreadKeys = useKeySet(possiblyStuckThreadKeys(threads, stuckClockOf).join("\n"));
   // Hermes lacks toSorted.
   const pipelineRuns = useAtomValue(
     serverEnvironment.pipelineLiveRunsAtom([...input.pipelineEnvironmentIds].sort().join("\n")),
@@ -156,6 +165,8 @@ export function useThreadListV2(input: {
         now: layoutTime,
         workingShelfEnabled,
         workingShelfExpanded: input.workingShelfExpanded,
+        stuckThreadKeys,
+        stuckShelfExpanded: input.stuckShelfExpanded,
         inboxReturnAt: inbox.returnedAt,
         isWorking: inbox.isWorking,
         pipelineRuns,
@@ -190,6 +201,8 @@ export function useThreadListV2(input: {
       layoutTime,
       workingShelfEnabled,
       input.workingShelfExpanded,
+      stuckThreadKeys,
+      input.stuckShelfExpanded,
       inbox.returnedAt,
       inbox.isWorking,
       pipelineRuns,
@@ -230,6 +243,9 @@ export function useThreadListV2(input: {
         workingCount: layout.workingCount,
         workingShelfExpanded: input.workingShelfExpanded,
         workingShelfHeaderIndex: layout.workingShelfHeaderIndex,
+        stuckCount: layout.stuckCount,
+        stuckShelfExpanded: input.stuckShelfExpanded,
+        stuckShelfHeaderIndex: layout.stuckShelfHeaderIndex,
         snoozedCount: layout.snoozedCount,
         snoozedShelfExpanded: input.snoozedShelfExpanded,
         snoozedShelfHeaderIndex: layout.snoozedShelfHeaderIndex,
@@ -246,6 +262,7 @@ export function useThreadListV2(input: {
       layout,
       pendingTasks,
       input.workingShelfExpanded,
+      input.stuckShelfExpanded,
       input.snoozedShelfExpanded,
       input.settledShelfExpanded,
       input.now,

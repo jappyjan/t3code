@@ -37,7 +37,9 @@ import {
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   isPipelineGroupActive,
+  isShellPossiblyStuck,
   livePipelineRunOf,
+  pipelineHasStuckStep,
   nestPipelineSteps,
   pipelineParentsOfSteps,
   pipelineEarlierFoldKey,
@@ -45,8 +47,10 @@ import {
   pipelineStepAttempts,
   pipelineStepLabel,
   pipelineStepsOfParents,
+  threadBackgroundWait,
   type PipelineLiveRuns,
   type PipelineStepAttempts,
+  type PossiblyStuckClock,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
 import {
   nextShownOrder,
@@ -212,6 +216,7 @@ import {
   resolveSidebarPipelineAttention,
   resolveSidebarPipelineProgress,
   resolveSidebarPipelineStepStatus,
+  resolveSidebarStuckClock,
   resolveSidebarThreadSection,
   resolveSidebarReorderableThreadKeys,
   searchSidebarThreads,
@@ -352,6 +357,7 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
+const STUCK_SHELF_EXPANDED_KEY = "t3code:sidebar:stuck-expanded";
 
 const inboxReturns = createInboxReturnTracker();
 
@@ -382,6 +388,8 @@ interface SidebarThreadPartitionInput {
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
   readonly clockKey: string;
+  /** The minute clock, for the Possibly stuck check. */
+  readonly nowMinute: string;
 }
 
 function scrollSidebarToTop(content: HTMLElement | null) {
@@ -495,6 +503,11 @@ function useSidebarThreads(input: {
     false,
     Schema.Boolean,
   );
+  const [stuckShelfExpanded, setStuckShelfExpanded] = useLocalStorage(
+    STUCK_SHELF_EXPANDED_KEY,
+    false,
+    Schema.Boolean,
+  );
   // Shared with the old per-project sidebar, so folders keep their open state.
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
@@ -521,12 +534,14 @@ function useSidebarThreads(input: {
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
+    nowMinute,
   });
 
   const {
     pinnedThreads,
     activeThreads,
     workingThreads,
+    stuckThreads,
     snoozedThreads,
     settledThreads,
     pipelineStepsByParentKey,
@@ -562,6 +577,9 @@ function useSidebarThreads(input: {
   const visibleSnoozedThreads = snoozedShelfExpanded
     ? snoozedThreads
     : routeThreadOnly(snoozedThreads, routeRowThreadKey, pipelineStepsByParentKey);
+  const visibleStuckThreads = stuckShelfExpanded
+    ? stuckThreads
+    : routeThreadOnly(stuckThreads, routeRowThreadKey, pipelineStepsByParentKey);
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
     : routeThreadOnly(workingThreads, routeRowThreadKey, pipelineStepsByParentKey);
@@ -639,6 +657,7 @@ function useSidebarThreads(input: {
       projectFolders === null ? activeThreads : projectFolders.flatMap((folder) => folder.threads),
     ),
     ...withShownSteps(visibleWorkingThreads),
+    ...withShownSteps(visibleStuckThreads),
     ...withShownSteps(visibleSnoozedThreads),
     ...withShownSteps(renderedSettledThreads),
   ];
@@ -647,6 +666,7 @@ function useSidebarThreads(input: {
     [pinnedThreads, "pinned"],
     [activeThreads, "active"],
     [workingThreads, "working"],
+    [stuckThreads, "stuck"],
     [snoozedThreads, "snoozed"],
     [settledThreads, "settled"],
   ] as const) {
@@ -660,6 +680,7 @@ function useSidebarThreads(input: {
       ...withSteps(pinnedThreads),
       ...withSteps(activeThreads),
       ...withSteps(workingThreads),
+      ...withSteps(stuckThreads),
       ...withSteps(snoozedThreads),
       ...withSteps(settledThreads),
     ],
@@ -678,6 +699,8 @@ function useSidebarThreads(input: {
     toggleSnoozedShelf: () => setSnoozedShelfExpanded((value) => !value),
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
+    stuckShelfExpanded,
+    toggleStuckShelf: () => setStuckShelfExpanded((value) => !value),
     shownPipelineStepsByParentKey,
     pipelineAttemptsByParentKey,
     expandedPipelines,
@@ -690,6 +713,7 @@ function useSidebarThreads(input: {
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    visibleStuckThreads,
     orderedThreadKeys: orderedThreads.map(threadShellKey),
     threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
     settledThreadKeys: new Set(withSteps(settledThreads).map(threadShellKey)),
@@ -718,24 +742,45 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     sortActiveBySend,
   } = input;
   const preciseNow = new Date().toISOString();
+  const stuckClocks = new Map<EnvironmentId, PossiblyStuckClock | undefined>();
+  const stuckClockOf = (environmentId: EnvironmentId) => {
+    if (!stuckClocks.has(environmentId)) {
+      stuckClocks.set(
+        environmentId,
+        resolveSidebarStuckClock(serverConfigs.get(environmentId), input.nowMinute),
+      );
+    }
+    return stuckClocks.get(environmentId);
+  };
+  const waitOf = (shell: EnvironmentThreadShell) =>
+    threadBackgroundWait(shell, stuckClockOf(shell.environmentId));
   const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, delegatedUnderParent);
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
+  const stuck: EnvironmentThreadShell[] = [];
   const pipelineParentOf = pipelineParentsOfSteps(visible);
   const pipelineStepsOf = pipelineStepsOfParents(visible, pipelineParentOf);
   // A pipeline counts as working while any of its steps does, so it stays on the shelf.
   const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) =>
-    workingShelfEnabled &&
-    isPipelineGroupActive(
-      thread,
-      pipelineStepsOf,
-      manuallyMoved ? isThreadWorking : inboxObservation.isWorking,
-      pipelineLiveRuns,
+    // A thread whose background work outlived the threshold leaves the inbox for its own shelf.
+    isShellPossiblyStuck(thread, stuckClockOf(thread.environmentId)) ||
+    pipelineHasStuckStep(
+      livePipelineRunOf(pipelineLiveRuns, thread),
+      pipelineStepsOf.get(threadShellKey(thread)) ?? [],
+      waitOf,
     )
-      ? working
-      : active;
+      ? stuck
+      : workingShelfEnabled &&
+          isPipelineGroupActive(
+            thread,
+            pipelineStepsOf,
+            manuallyMoved ? isThreadWorking : inboxObservation.isWorking,
+            pipelineLiveRuns,
+          )
+        ? working
+        : active;
   const snoozed: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   const { draggableThreadKeys, activeReorderableThreadKeys } = resolveSidebarReorderableThreadKeys({
@@ -817,6 +862,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     },
   );
   const nestedWorking = nestPipelineSteps(sortWorkingThreadsBySend(working));
+  const nestedStuck = nestPipelineSteps(sortWorkingThreadsBySend(stuck));
   const nestedSnoozed = nestPipelineSteps(
     snoozed.toSorted(
       (left, right) =>
@@ -831,6 +877,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     ...nestedPinned.stepsByParentKey,
     ...nestedActive.stepsByParentKey,
     ...nestedWorking.stepsByParentKey,
+    ...nestedStuck.stepsByParentKey,
     ...nestedSnoozed.stepsByParentKey,
     ...nestedSettled.stepsByParentKey,
   ]);
@@ -842,6 +889,8 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   return {
     pipelineStepsByParentKey,
     pipelineParentKeyByStepKey,
+    stuckClockOf,
+    waitOf,
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
         ? sortedPinned
@@ -861,6 +910,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
             getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
           }),
     workingThreads: nestedWorking.rows,
+    stuckThreads: nestedStuck.rows,
     snoozedThreads: nestedSnoozed.rows,
     settledThreads: nestedSettled.rows,
     visibleThreads: visible,
@@ -1460,12 +1510,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
 
   const {
+    stuckClockOf,
+    waitOf,
     workingShelfEnabled,
     pinnedThreads,
     draggableThreadKeys,
     activeReorderableThreadKeys,
     activeThreads,
     workingThreads,
+    stuckThreads,
     snoozedThreads,
     settledThreads,
     snoozeNow,
@@ -1487,11 +1540,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     toggleSnoozedShelf,
     workingShelfExpanded,
     toggleWorkingShelf,
+    stuckShelfExpanded,
+    toggleStuckShelf,
     projectFolders,
     toggleProjectFolder,
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    visibleStuckThreads,
     orderedThreadKeys,
     threadByKey,
     settledThreadKeys,
@@ -1913,7 +1969,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const isContextDrag =
     projectFolders !== null ||
     dragState?.contextDrag === true ||
-    dragState?.activeSection === "working";
+    dragState?.activeSection === "working" ||
+    dragState?.activeSection === "stuck";
   const dragTargetSection = isContextDrag ? null : (dragState?.targetSection ?? null);
   const finishThreadDrag = (started: boolean) => {
     dragSensorRef.current = null;
@@ -2137,6 +2194,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       pinnedThreads.length +
         activeThreads.length +
         workingThreads.length +
+        stuckThreads.length +
         snoozedThreads.length +
         settledCount ===
         0
@@ -2153,6 +2211,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (workingThreads.length > 0) {
       items.push({ kind: "marker", marker: "working-header" });
       items.push(...rowsOf(visibleWorkingThreads, "working"));
+    }
+    if (stuckThreads.length > 0) {
+      items.push({ kind: "marker", marker: "stuck-header" });
+      items.push(...rowsOf(visibleStuckThreads, "stuck"));
     }
     if (snoozedThreads.length > 0) {
       items.push({ kind: "marker", marker: "snoozed-header" });
@@ -2199,9 +2261,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     dragState === null && sidebarListItems.length + visibleDraftSessionCount > 0;
   // Cache on both fields so layout-key changes trigger the effect even when animate is unchanged.
   const listMotionPass = { layoutKey: listMotionLayoutKey, animate: listMotionAnimate };
-  const shelfExpansionKey = [workingShelfExpanded, snoozedShelfExpanded, settledShelfExpanded].join(
-    ":",
-  );
+  const shelfExpansionKey = [
+    workingShelfExpanded,
+    stuckShelfExpanded,
+    snoozedShelfExpanded,
+    settledShelfExpanded,
+  ].join(":");
   const previousShelfExpansionKeyRef = useRef(shelfExpansionKey);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records moved rows and updates list motion after each layout-affecting commit
   useLayoutEffect(() => {
@@ -3568,7 +3633,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
                         const isCard =
-                          section === "active" || section === "pinned" || section === "working";
+                          section === "active" ||
+                          section === "pinned" ||
+                          section === "working" ||
+                          section === "stuck";
                         const rowVariant = folderRow
                           ? folderRowsMultiline
                             ? "folder-multiline"
@@ -3580,6 +3648,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           const key = scopedThreadKey(scopeThreadRef(row.environmentId, row.id));
                           return {
                             thread: row,
+                            possiblyStuck: isShellPossiblyStuck(
+                              row,
+                              stuckClockOf(row.environmentId),
+                            ),
                             // Steps follow their parent's section, so they offer no settle, snooze or pin of their own.
                             settlementSupported: !isStep && serverConfigs.has(row.environmentId),
                             snoozeSupported: !isStep && serverConfigs.has(row.environmentId),
@@ -3655,7 +3727,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         const isPipelineParent =
                           thread.pipeline != null && thread.pipeline.stepId === null;
                         const attention = isPipelineParent
-                          ? resolveSidebarPipelineAttention(liveRun, steps ?? EMPTY_THREADS)
+                          ? resolveSidebarPipelineAttention(liveRun, steps ?? EMPTY_THREADS, waitOf)
                           : undefined;
                         const attemptInfo = pipelineAttemptsByParentKey.get(threadKey);
                         const stepRowProps = (step: EnvironmentThreadShell) => {
@@ -3685,6 +3757,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             navigationParent={
                               folderRow ??
                               (section === "working" ||
+                              section === "stuck" ||
                               section === "snoozed" ||
                               section === "settled"
                                 ? `shelf:${section}`
@@ -3693,6 +3766,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             stepStatus={resolveSidebarPipelineStepStatus(
                               steps ?? EMPTY_THREADS,
                               liveRun,
+                              waitOf,
                             )}
                             pipelineSteps={shownPipelineStepsByParentKey
                               .get(threadKey)
@@ -3710,7 +3784,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             pipelineEarlierIndex={attemptInfo?.currentShown}
                             pipelineProgress={
                               thread.pipeline != null && thread.pipeline.stepId === null
-                                ? resolveSidebarPipelineProgress(liveRun, steps ?? EMPTY_THREADS)
+                                ? resolveSidebarPipelineProgress(
+                                    liveRun,
+                                    steps ?? EMPTY_THREADS,
+                                    waitOf,
+                                  )
                                 : undefined
                             }
                             pipelineExpanded={expandedPipelines.has(threadKey)}
@@ -3818,12 +3896,29 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               />,
                             );
                             break;
+                          case "stuck-header":
+                            items.push(
+                              <SidebarSectionHeader
+                                key="stuck-shelf-header"
+                                marker="stuck-header"
+                                className={cn(workingThreads.length === 0 && "mt-auto")}
+                                label="Possibly stuck"
+                                count={stuckThreads.length}
+                                toggle={{
+                                  expanded: stuckShelfExpanded,
+                                  onToggle: toggleStuckShelf,
+                                }}
+                              />,
+                            );
+                            break;
                           case "snoozed-header":
                             items.push(
                               <SidebarSectionHeader
                                 key="snoozed-shelf-header"
                                 marker="snoozed-header"
-                                className={cn(workingThreads.length === 0 && "mt-auto")}
+                                className={cn(
+                                  workingThreads.length + stuckThreads.length === 0 && "mt-auto",
+                                )}
                                 label="Snoozed"
                                 count={snoozedThreads.length}
                                 toggle={{
@@ -3839,7 +3934,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 key="settled-shelf-header"
                                 marker="settled-header"
                                 className={cn(
-                                  workingThreads.length + snoozedThreads.length === 0 && "mt-auto",
+                                  workingThreads.length +
+                                    stuckThreads.length +
+                                    snoozedThreads.length ===
+                                    0 && "mt-auto",
                                 )}
                                 label="Settled"
                                 count={settledCount}

@@ -40,20 +40,30 @@ describe("pipelineChildLiveState", () => {
 
 describe("pipelineStepStatusDisplay", () => {
   it("shows a step that waits on its watched pull request as waiting, not as attention", () => {
-    expect(pipelineStepStatusDisplay({ status: "running" }, null, true, true)).toEqual({
+    expect(pipelineStepStatusDisplay({ status: "running" }, null, true, "pull_request")).toEqual({
       label: "Waiting on pull request",
       tone: "default",
     });
-    expect(pipelineStepStatusDisplay({ status: "running" }, null, true, false).tone).toBe(
+    expect(pipelineStepStatusDisplay({ status: "running" }, null, true, "background_work")).toEqual(
+      {
+        label: "Waiting on background work",
+        tone: "default",
+      },
+    );
+    expect(
+      pipelineStepStatusDisplay({ status: "running" }, "working", true, "possibly_stuck"),
+    ).toEqual({
+      label: "Possibly stuck",
+      tone: "attention",
+    });
+    expect(pipelineStepStatusDisplay({ status: "running" }, null, true, null).tone).toBe(
       "attention",
     );
   });
 
   it("reads a failed or stopped step a paused run waits at as attention", () => {
     for (const status of ["failed", "cancelled"] as const) {
-      expect(pipelineStepStatusDisplay({ status }, null, false, false, true).tone).toBe(
-        "attention",
-      );
+      expect(pipelineStepStatusDisplay({ status }, null, false, null, true).tone).toBe("attention");
       expect(pipelineStepStatusDisplay({ status }, null).tone).toBe("default");
     }
   });

@@ -148,6 +148,19 @@ choice.
 While this is on, the active list is ordered by when each thread last came back to you, so you
 cannot drag or move threads within it. Your saved order returns when you turn it off.
 
+### Find threads that may be stuck
+
+A thread whose last turn ended while background work kept running, such as a dev server, a monitor,
+a background task or a subagent, shows **Possibly stuck** once that work has run longer than a set
+time. These threads move into a collapsed **Possibly stuck** section below the Working section.
+Watched pull requests never count, because they wait on people or checks by design. The mark clears
+when the work ends, when the thread starts a new turn, or when you archive it. Stop the work or send a
+message to clear it sooner. A pipeline step marked this way also needs your attention.
+
+Set the time with **Settings → Threads → Mark threads as possibly stuck after** on web and desktop,
+or **Settings → Threads** on iOS and Android. The default is 2 hours, and 0 turns it off. The
+setting belongs to the environment, so every device connected to it agrees.
+
 ### Group threads by project (beta)
 
 Turn on **Settings → Labs → Boring sidebar (group by project)** on web and desktop to put active

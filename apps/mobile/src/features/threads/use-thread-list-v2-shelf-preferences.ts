@@ -19,6 +19,8 @@ export function useThreadListV2ShelfPreferences() {
   const workingShelfEnabled = loaded && preferencesResult.value.workingShelfEnabled !== false;
   const workingShelfExpanded =
     loaded && preferencesResult.value.threadListWorkingShelfExpanded === true;
+  const stuckShelfExpanded =
+    loaded && preferencesResult.value.threadListStuckShelfExpanded === true;
   const expandedPipelineKeys =
     (loaded ? preferencesResult.value.threadListExpandedPipelines : undefined) ??
     NO_EXPANDED_PIPELINES;
@@ -48,6 +50,14 @@ export function useThreadListV2ShelfPreferences() {
       }),
     });
   };
+  const toggleStuckShelf = () => {
+    if (!loaded) return;
+    savePreferences({
+      transform: (current) => ({
+        threadListStuckShelfExpanded: current.threadListStuckShelfExpanded !== true,
+      }),
+    });
+  };
   const togglePipelineExpanded = (threadKey: string) => {
     if (!loaded) return;
     savePreferences({
@@ -71,10 +81,12 @@ export function useThreadListV2ShelfPreferences() {
     snoozedShelfExpanded,
     workingShelfEnabled,
     workingShelfExpanded,
+    stuckShelfExpanded,
     expandedPipelineKeys,
     toggleSettledShelf,
     toggleSnoozedShelf,
     toggleWorkingShelf,
+    toggleStuckShelf,
     togglePipelineExpanded,
   } as const;
 }
