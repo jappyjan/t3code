@@ -97,6 +97,9 @@ const make = Effect.gen(function* () {
     "TaskFolderStore.findContaining",
   )(function* (target) {
     if (!path.isAbsolute(target)) return null;
+    // Every turn start asks; most installs have no task folder, so skip resolving the path.
+    const [any] = yield* sql`SELECT 1 FROM task_folders LIMIT 1`.pipe(Effect.mapError(failed));
+    if (any === undefined) return null;
     const named = path.resolve(target);
     const candidates = [
       ...new Set([...ancestors(named), ...ancestors(yield* realLocation(named))]),
