@@ -81,10 +81,21 @@ and the step shows **No handoff**. Answer in the step's thread; when the agent t
 run continues on its own. **Continue with last message** moves on with the thread's latest answer
 instead.
 
+A step that ends its turn while its thread still has background work, such as a dev server, a
+monitor, a background task, a subagent or a pull request watch, is waiting on that work, not on you.
+The run shows **Waiting on background work** instead of **No handoff** and does not ask for your
+attention; **Continue with last message** stays available. When the work ends, the agent normally
+wakes and hands off. If it ends its turn again without handing off and nothing is running, the run
+shows **No handoff** as above.
+
 A step that waits on checks, reviews or a merge watches its pull request and ends its turn; the run
-then shows **Waiting on pull request** instead of **No handoff**. The watch ends when the step
-hands off or stops being the run's current step, and when the pull request merges; the merge wakes the
-step, so a repository that merges through a queue needs no one to confirm it.
+then shows **Waiting on pull request**. The watch ends when the step hands off or stops being the
+run's current step, and when the pull request merges; the merge wakes the step, so a repository that
+merges through a queue needs no one to confirm it.
+
+If background work, other than a pull request watch, keeps running for hours after the step's last
+turn ended, the step shows **Possibly stuck** and the run asks for your attention. See
+[Find threads that may be stuck](thread-sidebar.md#find-threads-that-may-be-stuck).
 
 If a step's turn fails or you stop it, the run pauses and the step shows **Failed** or **Stopped**.
 Fix the cause and ask the agent to go on in the step's thread; when it hands off, the run continues

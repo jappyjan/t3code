@@ -691,6 +691,8 @@ type SidebarThreadRowProps = {
   variant: "card" | "slim" | "folder" | "folder-multiline" | "step";
   /** Aggregate of a pipeline parent's steps; replaces a quiet status of the parent's own. */
   stepStatus?: PipelineStepStatus | null | undefined;
+  /** Background work has outlived the user's threshold since the last turn ended. */
+  possiblyStuck?: boolean | undefined;
   /** A pipeline step's label under its parent; the thread title when unset. */
   stepLabel?: string | undefined;
   /** A step of a live run that will redo it: its finished state is not news, so no unseen "Done". */
@@ -1002,7 +1004,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const isUnread =
     props.suppressUnseenDone !== true && hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = mergePipelineParentStatus(
-    resolveSidebarRowStatus({ ...thread, lastVisitedAt }),
+    resolveSidebarRowStatus({ ...thread, lastVisitedAt }, props.possiblyStuck === true),
     props.stepStatus ?? null,
   );
   // A run's attention badge opens the step that needs the user, or the parent when it has no thread yet.
@@ -1051,55 +1053,61 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           icon: "working" as const,
           className: "text-info-foreground",
         }
-      : status === "waiting"
+      : status === "stuck"
         ? {
-            label: "Waiting",
+            label: "Possibly stuck",
             icon: "waiting" as const,
-            className: "text-muted-foreground",
+            className: "text-warning-foreground",
           }
-        : status === "approval"
+        : status === "waiting"
           ? {
-              label: "Approval",
-              icon: "approval" as const,
-              className: "text-warning-foreground",
+              label: "Waiting",
+              icon: "waiting" as const,
+              className: "text-muted-foreground",
             }
-          : status === "input"
+          : status === "approval"
             ? {
-                label: "Input",
-                icon: "input" as const,
-                className: "text-indigo-600 dark:text-indigo-300",
+                label: "Approval",
+                icon: "approval" as const,
+                className: "text-warning-foreground",
               }
-            : status === "request"
+            : status === "input"
               ? {
-                  label: "Request",
-                  icon: "request" as const,
-                  className: "text-guest-foreground",
+                  label: "Input",
+                  icon: "input" as const,
+                  className: "text-indigo-600 dark:text-indigo-300",
                 }
-              : status === "limited"
+              : status === "request"
                 ? {
-                    label: "Limited",
-                    icon: "failed" as const,
-                    className: "text-warning-foreground",
+                    label: "Request",
+                    icon: "request" as const,
+                    className: "text-guest-foreground",
                   }
-                : status === "failed"
+                : status === "limited"
                   ? {
-                      label: "Failed",
+                      label: "Limited",
                       icon: "failed" as const,
-                      className: "text-error-foreground",
+                      className: "text-warning-foreground",
                     }
-                  : isWoke
+                  : status === "failed"
                     ? {
-                        label: "Woke",
-                        icon: "woke" as const,
-                        className: "text-warning-foreground",
+                        label: "Failed",
+                        icon: "failed" as const,
+                        className: "text-error-foreground",
                       }
-                    : isUnread
+                    : isWoke
                       ? {
-                          label: "Done",
-                          icon: "done" as const,
-                          className: "text-success-foreground",
+                          label: "Woke",
+                          icon: "woke" as const,
+                          className: "text-warning-foreground",
                         }
-                      : null;
+                      : isUnread
+                        ? {
+                            label: "Done",
+                            icon: "done" as const,
+                            className: "text-success-foreground",
+                          }
+                        : null;
   const attentionBadgeButton = (badge: NonNullable<typeof topStatus>, iconClassName: string) => (
     <Tooltip>
       <TooltipTrigger
