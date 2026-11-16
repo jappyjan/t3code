@@ -2,7 +2,9 @@ import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useSyncExternalStore } from "react";
+import { DEFAULT_POSSIBLY_STUCK_AFTER_HOURS } from "@t3tools/contracts/settings";
 
+import { useEnvironments } from "../../state/environments";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../../state/olderSettledShelf";
 import { serverEnvironment } from "../../state/server";
@@ -11,6 +13,7 @@ import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
   getThreadListV2OrderedSection,
+  possiblyStuckThreadKeys,
   threadListInboxReturns,
   threadListV2LayoutTime,
 } from "./threadListV2";
@@ -66,12 +69,35 @@ export function useThreadListV2(input: {
   readonly shelfPreferencesLoaded: boolean;
   readonly workingShelfEnabled: boolean;
   readonly workingShelfExpanded: boolean;
+  readonly stuckShelfExpanded: boolean;
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
   readonly expandedPipelineKeys: ReadonlyArray<string>;
   readonly selectedThreadKey: string | null;
 }) {
   const { threads, workingShelfEnabled } = input;
+  // The hours come from each environment's server settings; the key keeps the clock stable between ticks.
+  const { environments } = useEnvironments();
+  const stuckHoursKey = environments
+    .map(
+      (environment) =>
+        `${environment.environmentId}=${environment.serverConfig === null ? "" : (environment.serverConfig.settings.possiblyStuckAfterHours ?? DEFAULT_POSSIBLY_STUCK_AFTER_HOURS)}`,
+    )
+    .join("\n");
+  const stuckClockOf = useMemo(() => {
+    const nowMs = Date.parse(input.now);
+    const hoursByEnvironment = new Map(
+      stuckHoursKey.split("\n").map((entry) => {
+        const [id, hours] = entry.split("=");
+        return [id, hours === "" ? undefined : Number(hours)] as const;
+      }),
+    );
+    return (environmentId: EnvironmentId) => {
+      const afterHours = hoursByEnvironment.get(environmentId);
+      return afterHours === undefined ? undefined : { nowMs, afterHours };
+    };
+  }, [stuckHoursKey, input.now]);
+  const stuckThreadKeys = useKeySet(possiblyStuckThreadKeys(threads, stuckClockOf).join("\n"));
   // Hermes lacks toSorted.
   const pipelineRuns = useAtomValue(
     serverEnvironment.pipelineLiveRunsAtom([...input.pipelineEnvironmentIds].sort().join("\n")),
@@ -156,6 +182,8 @@ export function useThreadListV2(input: {
         now: layoutTime,
         workingShelfEnabled,
         workingShelfExpanded: input.workingShelfExpanded,
+        stuckThreadKeys,
+        stuckShelfExpanded: input.stuckShelfExpanded,
         inboxReturnAt: inbox.returnedAt,
         isWorking: inbox.isWorking,
         pipelineRuns,
@@ -190,6 +218,8 @@ export function useThreadListV2(input: {
       layoutTime,
       workingShelfEnabled,
       input.workingShelfExpanded,
+      stuckThreadKeys,
+      input.stuckShelfExpanded,
       inbox.returnedAt,
       inbox.isWorking,
       pipelineRuns,
@@ -230,6 +260,9 @@ export function useThreadListV2(input: {
         workingCount: layout.workingCount,
         workingShelfExpanded: input.workingShelfExpanded,
         workingShelfHeaderIndex: layout.workingShelfHeaderIndex,
+        stuckCount: layout.stuckCount,
+        stuckShelfExpanded: input.stuckShelfExpanded,
+        stuckShelfHeaderIndex: layout.stuckShelfHeaderIndex,
         snoozedCount: layout.snoozedCount,
         snoozedShelfExpanded: input.snoozedShelfExpanded,
         snoozedShelfHeaderIndex: layout.snoozedShelfHeaderIndex,
@@ -246,6 +279,7 @@ export function useThreadListV2(input: {
       layout,
       pendingTasks,
       input.workingShelfExpanded,
+      input.stuckShelfExpanded,
       input.snoozedShelfExpanded,
       input.settledShelfExpanded,
       input.now,

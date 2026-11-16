@@ -142,6 +142,12 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-foreground-muted",
     iconTintClassName: "accent-foreground-muted",
   },
+  stuck: {
+    label: "Possibly stuck",
+    icon: "exclamationmark.circle",
+    className: "text-warning-foreground",
+    iconTintClassName: "accent-warning-foreground",
+  },
   failed: {
     label: "Failed",
     icon: "exclamationmark.circle",
@@ -385,7 +391,12 @@ type ThreadListV2ShelfHeaderProps = {
   readonly pane?: "screen" | "sidebar";
 };
 
-const SHELF_LABEL = { working: "Working", snoozed: "Snoozed", settled: "Settled" } as const;
+const SHELF_LABEL = {
+  working: "Working",
+  stuck: "Possibly stuck",
+  snoozed: "Snoozed",
+  settled: "Settled",
+} as const;
 
 function ThreadListV2ShelfHeader(
   props: ThreadListV2ShelfHeaderProps & { readonly kind: keyof typeof SHELF_LABEL },
@@ -411,6 +422,12 @@ export const ThreadListV2WorkingShelfHeader = memo(function ThreadListV2WorkingS
   props: ThreadListV2ShelfHeaderProps,
 ) {
   return <ThreadListV2ShelfHeader {...props} kind="working" />;
+});
+
+export const ThreadListV2StuckShelfHeader = memo(function ThreadListV2StuckShelfHeader(
+  props: ThreadListV2ShelfHeaderProps,
+) {
+  return <ThreadListV2ShelfHeader {...props} kind="stuck" />;
 });
 
 export const ThreadListV2SnoozedShelfHeader = memo(function ThreadListV2SnoozedShelfHeader(
@@ -758,6 +775,8 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
   readonly stepLabel?: string;
   /** On a step of a live run that will redo it: no unseen "Done". */
   readonly suppressUnseenDone?: boolean;
+  /** Background work outlived the user's threshold since the last turn ended. */
+  readonly possiblyStuck?: boolean;
   /** On an earlier attempt of a step: its number; the row is dimmed. */
   readonly earlierAttempt?: number;
   /** On a pipeline's parent: the step its attention badge opens; null opens the parent. */
@@ -896,7 +915,7 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
 
   const rawStatus = resolveThreadListV2Status(thread);
   const status = mergePipelineParentStatus(
-    resolveThreadListV2RowStatus(thread),
+    resolveThreadListV2RowStatus(thread, props.possiblyStuck === true),
     props.stepStatus ?? null,
   );
   const isUnread =
@@ -928,6 +947,7 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
     props.attentionTarget !== undefined &&
     props.stepStatus != null &&
     props.stepStatus !== "working" &&
+    props.stepStatus !== "stuck" &&
     status === props.stepStatus;
   const attentionTargetThread = props.attentionTarget ?? thread;
   const attentionBadgeLabel =

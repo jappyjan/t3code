@@ -19,9 +19,13 @@ import {
   pipelineStepPosition,
   pipelineStepStatusLabel,
   stepName,
-  threadWatchesPullRequest,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
-import { pipelineRunStepShells } from "@t3tools/client-runtime/state/pipeline-nesting";
+import {
+  pipelineRunStepShells,
+  threadBackgroundWait,
+  type PipelineStepWait,
+} from "@t3tools/client-runtime/state/pipeline-nesting";
+import { DEFAULT_POSSIBLY_STUCK_AFTER_HOURS } from "@t3tools/contracts/settings";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -38,6 +42,8 @@ import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { formatMessageTime } from "../../lib/time";
+import { useNowMinuteMs } from "../../lib/clock";
+import { useEnvironments } from "../../state/environments";
 import { useQuietThreadShell, useQuietThreadShells } from "../../state/entities";
 import { resolveThreadListV2Status, threadHasUnseenCompletion } from "./threadListV2";
 import { useEnvironmentQuery } from "../../state/query";
@@ -73,25 +79,34 @@ function reportFailure(title: string, result: AtomCommandResult<unknown, unknown
   }
 }
 
-function useRunWaitingOnPullRequest(
-  environmentId: EnvironmentId,
-  run: PipelineRun | null,
-): boolean {
+/** What the current step's thread waits on after ending its turn without a handoff, and the stuck threshold. */
+function useStepWait(environmentId: EnvironmentId, run: PipelineRun | null) {
   const childThreadId = pipelineAwaitingHandoffThreadId(run);
   const shell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId, threadId: childThreadId },
   );
-  return threadWatchesPullRequest(shell);
+  const { environments } = useEnvironments();
+  const nowMs = useNowMinuteMs();
+  const afterHours =
+    environments.find((environment) => environment.environmentId === environmentId)?.serverConfig
+      ?.settings.possiblyStuckAfterHours ?? DEFAULT_POSSIBLY_STUCK_AFTER_HOURS;
+  const clock = { nowMs, afterHours };
+  return {
+    wait: threadBackgroundWait(shell, clock),
+    waitOf: (step: Parameters<typeof threadBackgroundWait>[0]) => threadBackgroundWait(step, clock),
+    afterHours,
+  };
 }
 
-function runTone(run: PipelineRun, waitingOnPullRequest: boolean): StatusTone {
+function runTone(run: PipelineRun, wait: PipelineStepWait | null): StatusTone {
   switch (run.status) {
     case "running":
       return { label: "Running", ...STEP_TONES.active };
     case "paused":
-      if (!pipelineRunNeedsAttention(run, waitingOnPullRequest)) {
+      if (!pipelineRunNeedsAttention(run, wait)) {
         return { label: "Waiting", ...STEP_TONES.active };
       }
+      if (wait === "possibly_stuck") return { label: "May be stuck", ...ATTENTION_TONE };
       return {
         label: run.pauseReason === "awaiting_continue" ? "Paused" : "Needs attention",
         ...ATTENTION_TONE,
@@ -155,9 +170,9 @@ export function PipelineRunSummaryHeader(props: {
     }),
   );
   const run = runQuery.data?.run ?? null;
-  const waitingOnPullRequest = useRunWaitingOnPullRequest(props.environmentId, run);
+  const { wait } = useStepWait(props.environmentId, run);
   if (run === null) return <View style={{ paddingTop: props.topInset }} />;
-  const tone = runTone(run, waitingOnPullRequest);
+  const tone = runTone(run, wait);
   const stepIndex = Math.min(run.currentStepIndex, run.steps.length - 1);
   return (
     <View
@@ -195,7 +210,7 @@ export function PipelineRunPanel(props: {
     serverEnvironment.pipelineRunLive({ environmentId, input: { runId: props.runId } }),
   );
   const run = runQuery.data?.run ?? null;
-  const waitingOnPullRequest = useRunWaitingOnPullRequest(environmentId, run);
+  const { wait, waitOf, afterHours } = useStepWait(environmentId, run);
   const [expanded, setExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [previewFile, setPreviewFile] = useState<FilePreviewSource | null>(null);
@@ -296,7 +311,7 @@ export function PipelineRunPanel(props: {
 
   const actions = availablePipelineActions(run);
   const stepIndex = run.currentStepIndex;
-  const tone = runTone(run, waitingOnPullRequest);
+  const tone = runTone(run, wait);
   const stepInput = { runId: run.id, stepIndex };
   const startingText = composerContextProse(run.input);
   // Image and file chips only bind the attachments listed above them.
@@ -309,6 +324,8 @@ export function PipelineRunPanel(props: {
     run,
     pipelineRunStepShells(shells, environmentId, run.id),
     resolveThreadListV2Status,
+    waitOf,
+    afterHours,
   );
   const needsYouThreadId = needsYou?.threadId ?? null;
 
@@ -339,8 +356,7 @@ export function PipelineRunPanel(props: {
           </View>
         </View>
         <Text textRole="footnote" className="text-foreground-secondary" numberOfLines={1}>
-          {runProgressLabel(run)} · {currentStepName} ·{" "}
-          {pipelineRunStateLabel(run, waitingOnPullRequest)}
+          {runProgressLabel(run)} · {currentStepName} · {pipelineRunStateLabel(run, wait)}
         </Text>
       </Pressable>
       {needsYou !== null ? (

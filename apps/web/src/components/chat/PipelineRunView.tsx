@@ -9,7 +9,6 @@ import {
   pipelineRunNeedsYou,
   pipelineRunStatusLabel,
   pipelineStepAwaitsHandoff,
-  threadWatchesPullRequest,
   stepName,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
 import { pipelineRunStepShells } from "@t3tools/client-runtime/state/pipeline-nesting";
@@ -45,6 +44,7 @@ import { useState } from "react";
 
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useClientSettings } from "../../hooks/useSettings";
+import { useStepWait } from "../../hooks/useStepWait";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { useEnvironmentQuery } from "../../state/query";
 import { useQuietThreadShell, useQuietThreadShells } from "../../state/entities";
@@ -268,10 +268,13 @@ function PipelineRunBody(props: {
 
   const actionsVisible = actions.continue || actions.retry || actions.skip || actions.cancel;
   const shells = useQuietThreadShells();
+  const { waitOf, stuckAfterHours } = useStepWait(environmentId);
   const needsYou = pipelineRunNeedsYou(
     run,
     pipelineRunStepShells(shells, environmentId, run.id),
     resolveSidebarThreadStatus,
+    waitOf,
+    stuckAfterHours,
   );
   const needsYouThreadId = needsYou?.threadId ?? null;
   return (
@@ -456,11 +459,13 @@ function useRunStatusLabel(environmentId: EnvironmentId, run: PipelineRun | null
   const awaitingShell = useQuietThreadShell(
     awaitingChildId === null ? null : scopeThreadRef(environmentId, awaitingChildId),
   );
+  const { waitOf, stuckAfterHours } = useStepWait(environmentId);
   if (run === null) return null;
   return pipelineRunStatusLabel(
     run,
     feeding !== null && pipelineChildLiveState(shell) === "working",
-    threadWatchesPullRequest(awaitingShell),
+    waitOf(awaitingShell),
+    stuckAfterHours,
   );
 }
 
@@ -485,6 +490,7 @@ function PipelineStepRow(props: {
     step.childThreadId === null ? null : scopeThreadRef(environmentId, step.childThreadId),
   );
   const liveState = pipelineChildLiveState(shell);
+  const { waitOf } = useStepWait(environmentId);
   const { Icon, className: iconClassName } = STEP_STATUS_ICON[step.status];
   const model =
     definitionStep === undefined
@@ -495,7 +501,7 @@ function PipelineStepRow(props: {
     step,
     liveState,
     pipelineStepAwaitsHandoff(run, step.index),
-    threadWatchesPullRequest(shell),
+    waitOf(shell),
     isCurrent && run.status === "paused",
   );
   const childThreadId = step.childThreadId;

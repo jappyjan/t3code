@@ -20,7 +20,9 @@ import {
   pipelineStepAttempts,
   pipelineStepLabel,
   pipelineStepsOfParents,
+  threadBackgroundWait,
   withPipelineExpanded,
+  type PipelineStepWait,
 } from "./pipelineNesting.ts";
 
 const env = EnvironmentId.make("env-1");
@@ -263,6 +265,81 @@ describe("pipeline parent status", () => {
     { own: "working", step: "input", expected: "working" },
   ] as const)("$own with step $step shows $expected", ({ own, step, expected }) => {
     expect(mergePipelineParentStatus(own, step)).toBe(expected);
+  });
+});
+
+describe("threadBackgroundWait", () => {
+  const HOUR = 3_600_000;
+  const completedAt = "1970-01-01T00:00:00.000Z";
+  const ended = (tasks: ReadonlyArray<{ taskId: string }>, activeRunId: string | null = null) => ({
+    pendingBackgroundTasks: tasks,
+    runtime: { activeRunId },
+    latestRun: { completedAt },
+  });
+  const dev = { taskId: "dev" };
+  const watch = { taskId: "pull-request-watch:github.com/o/r#1" };
+  const clock = (hours: number) => ({ nowMs: hours * HOUR, afterHours: 2 });
+
+  it.each([
+    ["no pending work", ended([]), clock(9), null],
+    ["a dev server", ended([dev]), clock(1), "background_work"],
+    ["a pull request watch alone", ended([watch]), clock(9), "pull_request"],
+    ["a watch beside a dev server", ended([watch, dev]), clock(1), "background_work"],
+    ["a dev server past the threshold", ended([dev]), clock(3), "possibly_stuck"],
+    [
+      "a dev server with the check off",
+      ended([dev]),
+      { nowMs: 9 * HOUR, afterHours: 0 },
+      "background_work",
+    ],
+    ["a dev server with no clock yet", ended([dev]), undefined, "background_work"],
+    ["a dev server in a running turn", ended([dev], "run-1"), clock(9), "background_work"],
+    ["a thread that is not loaded", null, clock(9), null],
+  ] as const)("reads %s as %s", (_case, shell, stuck, expected) => {
+    expect(threadBackgroundWait(shell, stuck)).toBe(expected);
+  });
+});
+
+describe("a paused run waiting on its step's background work", () => {
+  const waits: Record<string, PipelineStepWait | null> = {};
+  const waitOf = (s: { id: string }) => waits[s.id] ?? null;
+  const steps = [{ ...step("s0", "r1", "step-0", "2026-01-01T00:01:00Z"), title: "Run · Build" }];
+  const run = (pauseReason: "awaiting_handoff" | "step_failed") =>
+    ({
+      status: "paused",
+      pauseReason,
+      currentStepIndex: 0,
+      steps: [{ stepId: "step-0", name: "Build", status: "running", childThreadId: "s0" }],
+    }) as unknown as PipelineRunSummary;
+  const ready = () => "ready";
+
+  it.each([
+    { wait: null, attention: true },
+    { wait: "pull_request", attention: false },
+    { wait: "background_work", attention: false },
+    { wait: "possibly_stuck", attention: true },
+  ] as const)("with wait $wait, needs the user: $attention", ({ wait, attention }) => {
+    waits["s0"] = wait;
+    const awaiting = run("awaiting_handoff");
+    expect(aggregatePipelineStepStatus(steps, ready, awaiting, waitOf)).toBe(
+      attention ? "input" : null,
+    );
+    const [segment] = pipelineProgressSegments(awaiting, steps, ready, waitOf);
+    expect(segment?.status).toBe(attention ? "attention" : "running");
+    expect(pipelineAttentionTargets(awaiting, steps, ready, waitOf).target !== null).toBe(
+      attention,
+    );
+  });
+
+  it("still needs the user for a failed step, whatever its thread waits on", () => {
+    waits["s0"] = "background_work";
+    expect(aggregatePipelineStepStatus(steps, ready, run("step_failed"), waitOf)).toBe("input");
+  });
+
+  it("rolls a possibly stuck step up even when the run is not paused", () => {
+    waits["s0"] = "possibly_stuck";
+    const running = { ...run("awaiting_handoff"), status: "running" } as PipelineRunSummary;
+    expect(aggregatePipelineStepStatus(steps, ready, running, waitOf)).toBe("stuck");
   });
 });
 

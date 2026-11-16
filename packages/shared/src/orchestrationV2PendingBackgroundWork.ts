@@ -311,7 +311,7 @@ export function derivePendingBackgroundWork(input: {
 }
 
 /** Whether a link's watch still holds its thread open as pending work. */
-export function pullRequestWatchHoldsThread(
+function pullRequestWatchHoldsThread(
   link: Pick<PendingBackgroundWorkPullRequest, "source" | "snapshot"> & {
     readonly watch?: unknown;
   },
@@ -341,5 +341,36 @@ function pullRequestWatchTasks(
             ...(link.watch?.checksPending === false ? {} : { awaited: true as const }),
           },
         ],
+  );
+}
+
+const MS_PER_HOUR = 3_600_000;
+
+/** Pending work other than pull request watches, which wait on people or CI by design. */
+export const hasStaleableBackgroundWork = (
+  tasks: ReadonlyArray<Pick<PendingBackgroundWorkTask, "taskId">> | undefined,
+): boolean => (tasks ?? []).some((task) => !isPullRequestWatchTask(task));
+
+/**
+ * Whether a thread's last turn ended and its background work has run past `afterHours` since.
+ * `afterHours` of 0 turns the check off. A wake turn moves `lastRunEndedAtMs`, so it restarts the clock.
+ */
+export function isThreadPossiblyStuck(
+  thread: {
+    readonly activeRunId: unknown;
+    readonly archived?: boolean;
+    readonly pendingBackgroundTasks:
+      | ReadonlyArray<Pick<PendingBackgroundWorkTask, "taskId">>
+      | undefined;
+    readonly lastRunEndedAtMs: number | null;
+  },
+  nowMs: number,
+  afterHours: number,
+): boolean {
+  if (!(afterHours > 0) || thread.activeRunId != null || thread.archived === true) return false;
+  if (thread.lastRunEndedAtMs === null || !Number.isFinite(thread.lastRunEndedAtMs)) return false;
+  return (
+    hasStaleableBackgroundWork(thread.pendingBackgroundTasks) &&
+    nowMs - thread.lastRunEndedAtMs > afterHours * MS_PER_HOUR
   );
 }

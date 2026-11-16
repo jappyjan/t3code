@@ -27,6 +27,10 @@ import {
   pipelineStepAttempts,
   pipelineStepLabel,
   pipelineStepsOfParents,
+  isShellPossiblyStuck,
+  threadBackgroundWait,
+  type PipelineStepWaitOf,
+  type PossiblyStuckClock,
   type PipelineLiveRuns,
   type PipelineNestable,
   type PipelineNesting,
@@ -95,6 +99,7 @@ export type ThreadListV2Status =
   | "request"
   | "working"
   | "waiting"
+  | "stuck"
   | "failed"
   | "limited"
   | "ready";
@@ -354,22 +359,41 @@ export function threadListV2RowAccessibilityLabel(input: {
 }
 
 /** Row status: a failure the user has already opened settles to ready, like Done. */
+/**
+ * The threads past the user's threshold. The list keys its layout on this set, not on the
+ * clock, so a minute tick rebuilds nothing until a thread actually crosses the line.
+ */
+export function possiblyStuckThreadKeys(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  stuckClockOf: (environmentId: EnvironmentId) => PossiblyStuckClock | undefined,
+): ReadonlyArray<string> {
+  return threads
+    .filter((thread) => isShellPossiblyStuck(thread, stuckClockOf(thread.environmentId)))
+    .map((thread) => `${thread.environmentId}:${thread.id}`)
+    .sort();
+}
+
 export function resolveThreadListV2RowStatus(
   thread: Parameters<typeof resolveThreadListV2Status>[0] &
     Pick<EnvironmentThreadShell, "latestRun" | "lastVisitedAt">,
+  possiblyStuck = false,
 ): ThreadListV2Status {
   const status = resolveThreadListV2Status(thread);
+  if (possiblyStuck && (status === "ready" || status === "waiting")) return "stuck";
   // A runtime failure without a failed run has nothing to date it, so it stays.
   if (status !== "failed" || thread.latestRun?.status !== "failed") return status;
   return hasUnseenRunFailure(thread) ? status : "ready";
 }
 
 /** What a pipeline's parent row shows for its steps and live run; the row merges it with its own status. */
-export function resolveThreadListV2StepStatus(
-  steps: ReadonlyArray<Parameters<typeof resolveThreadListV2Status>[0] & PipelineNestable>,
-  run?: Pick<PipelineRunSummary, "status" | "currentStepIndex" | "steps"> | null,
+export function resolveThreadListV2StepStatus<
+  T extends Parameters<typeof resolveThreadListV2Status>[0] & PipelineNestable,
+>(
+  steps: ReadonlyArray<T>,
+  run?: Pick<PipelineRunSummary, "status" | "currentStepIndex" | "steps" | "pauseReason"> | null,
+  waitOf?: PipelineStepWaitOf<T>,
 ) {
-  return aggregatePipelineStepStatus(steps, resolveThreadListV2Status, run);
+  return aggregatePipelineStepStatus(steps, resolveThreadListV2Status, run, waitOf);
 }
 
 /**
@@ -461,6 +485,8 @@ export interface ThreadListV2Item {
   readonly nested?: boolean;
   /** Whether this is the last step of its pipeline. */
   readonly isLastStep?: boolean;
+  /** Background work outlived the user's threshold since the last turn ended. */
+  readonly possiblyStuck?: boolean;
   /** On a pipeline's parent: what its steps and live run need. On a step: what it needs, merged with its own status. */
   readonly stepStatus?: ReturnType<typeof resolveThreadListV2StepStatus>;
   /** On a pipeline step: its label under the parent. */
@@ -509,6 +535,8 @@ export interface ThreadListV2Layout {
   readonly listedSettledThreads: ReadonlyArray<EnvironmentThreadShell>;
   readonly workingCount: number;
   readonly workingShelfHeaderIndex: number | null;
+  readonly stuckCount: number;
+  readonly stuckShelfHeaderIndex: number | null;
   readonly snoozedCount: number;
   readonly snoozedShelfHeaderIndex: number | null;
   readonly settledCount: number;
@@ -549,6 +577,14 @@ export interface ThreadListV2WorkingShelfListItem {
   readonly disabled: boolean;
 }
 
+export interface ThreadListV2StuckShelfListItem {
+  readonly type: "v2-stuck-shelf";
+  readonly key: "v2-stuck-shelf";
+  readonly count: number;
+  readonly expanded: boolean;
+  readonly disabled: boolean;
+}
+
 export interface ThreadListV2SnoozedShelfListItem {
   readonly type: "v2-snoozed-shelf";
   readonly key: "v2-snoozed-shelf";
@@ -570,6 +606,7 @@ export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2WorkingShelfListItem
+  | ThreadListV2StuckShelfListItem
   | ThreadListV2SnoozedShelfListItem
   | ThreadListV2SettledShelfListItem;
 
@@ -580,6 +617,7 @@ export function isThreadListV2ListItem(value: {
     value.type === "v2-thread" ||
     value.type === "v2-pending" ||
     value.type === "v2-working-shelf" ||
+    value.type === "v2-stuck-shelf" ||
     value.type === "v2-snoozed-shelf" ||
     value.type === "v2-settled-shelf"
   );
@@ -600,6 +638,7 @@ export function threadListV2ListItemsAreEqual(
         previous.item.snoozed === item.item.snoozed &&
         previous.item.pinned === item.item.pinned &&
         previous.item.wokeAt === item.item.wokeAt &&
+        previous.item.possiblyStuck === item.item.possiblyStuck &&
         previous.item.nested === item.item.nested &&
         previous.item.isLastStep === item.item.isLastStep &&
         previous.item.stepStatus === item.item.stepStatus &&
@@ -632,6 +671,13 @@ export function threadListV2ListItemsAreEqual(
     case "v2-working-shelf":
       return (
         previous.type === "v2-working-shelf" &&
+        previous.count === item.count &&
+        previous.expanded === item.expanded &&
+        previous.disabled === item.disabled
+      );
+    case "v2-stuck-shelf":
+      return (
+        previous.type === "v2-stuck-shelf" &&
         previous.count === item.count &&
         previous.expanded === item.expanded &&
         previous.disabled === item.disabled
@@ -679,6 +725,9 @@ export function buildThreadListV2ListItems(input: {
   readonly workingCount?: number;
   readonly workingShelfExpanded?: boolean;
   readonly workingShelfHeaderIndex?: number | null;
+  readonly stuckCount?: number;
+  readonly stuckShelfExpanded?: boolean;
+  readonly stuckShelfHeaderIndex?: number | null;
   readonly snoozedCount?: number;
   readonly snoozedShelfExpanded?: boolean;
   readonly snoozedShelfHeaderIndex?: number | null;
@@ -734,12 +783,15 @@ export function buildThreadListV2ListItems(input: {
   }));
   const workingCount = input.workingCount ?? 0;
   const workingShelfHeaderIndex = input.workingShelfHeaderIndex ?? null;
+  const stuckCount = input.stuckCount ?? 0;
+  const stuckShelfHeaderIndex = input.stuckShelfHeaderIndex ?? null;
   const snoozedCount = input.snoozedCount ?? 0;
   const snoozedShelfHeaderIndex = input.snoozedShelfHeaderIndex ?? null;
   const settledCount = input.settledCount ?? 0;
   const settledShelfHeaderIndex = input.settledShelfHeaderIndex ?? null;
   const snoozedEnd = settledShelfHeaderIndex ?? threadItems.length;
-  const workingEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
+  const stuckEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
+  const workingEnd = stuckShelfHeaderIndex ?? stuckEnd;
   const activeEnd = workingShelfHeaderIndex ?? workingEnd;
   const result: ThreadListV2ListItem[] = [...pendingItems, ...threadItems.slice(0, activeEnd)];
   const shelfDisabled = input.shelfPreferencesLoading === true;
@@ -752,6 +804,16 @@ export function buildThreadListV2ListItems(input: {
       disabled: shelfDisabled,
     });
     result.push(...threadItems.slice(workingShelfHeaderIndex, workingEnd));
+  }
+  if (stuckShelfHeaderIndex !== null && stuckCount > 0) {
+    result.push({
+      type: "v2-stuck-shelf",
+      key: "v2-stuck-shelf",
+      count: stuckCount,
+      expanded: input.stuckShelfExpanded === true,
+      disabled: shelfDisabled,
+    });
+    result.push(...threadItems.slice(stuckShelfHeaderIndex, stuckEnd));
   }
   if (snoozedShelfHeaderIndex !== null && snoozedCount > 0) {
     result.push({
@@ -823,6 +885,9 @@ export function buildThreadListV2Items(input: {
   readonly workingShelfEnabled?: boolean;
   readonly workingShelfExpanded?: boolean;
   readonly isWorking?: (thread: EnvironmentThreadShell) => boolean;
+  /** Threads past the Possibly stuck threshold, as `environmentId:threadId`; see `possiblyStuckThreadKeys`. */
+  readonly stuckThreadKeys?: ReadonlySet<string>;
+  readonly stuckShelfExpanded?: boolean;
   /** Live pipeline runs of every environment that offers pipelines. */
   readonly pipelineRuns?: PipelineLiveRuns;
   /** Pipeline parents, as `environmentId:threadId`, that list all their steps. */
@@ -859,6 +924,7 @@ export function buildThreadListV2Items(input: {
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
+  const stuck: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   const snoozed: EnvironmentThreadShell[] = [];
   let nextSnoozeWakeAt: string | null = null;
@@ -887,6 +953,12 @@ export function buildThreadListV2Items(input: {
   const contentOnlyThreadKeys = new Set<string>();
   const parentOfStep = pipelineParentsOfSteps(listedThreads);
   const stepsOfParent = pipelineStepsOfParents(listedThreads, parentOfStep);
+  const isStuck = (thread: EnvironmentThreadShell) =>
+    input.stuckThreadKeys?.has(`${thread.environmentId}:${thread.id}`) === true;
+  const waitOf: PipelineStepWaitOf<EnvironmentThreadShell> = (thread) => {
+    const wait = threadBackgroundWait(thread);
+    return wait !== null && isStuck(thread) ? "possibly_stuck" : wait;
+  };
   for (const thread of listedThreads) {
     if (matchingThreads !== null && !matchingThreads.has(thread)) {
       const key = threadSearchMatchKey({
@@ -917,6 +989,11 @@ export function buildThreadListV2Items(input: {
       settled.push(thread);
     } else if (owner.pinnedAt != null) {
       pinned.push(thread);
+    } else if (
+      isStuck(owner) ||
+      (stepsOfParent.get(`${owner.environmentId}:${owner.id}`) ?? []).some(isStuck)
+    ) {
+      stuck.push(thread);
     } else if (
       // A pipeline counts as working while any of its steps does, so it stays on the shelf.
       workingShelfEnabled &&
@@ -964,6 +1041,8 @@ export function buildThreadListV2Items(input: {
       listedSettledThreads: [],
       workingCount: 0,
       workingShelfHeaderIndex: null,
+      stuckCount: 0,
+      stuckShelfHeaderIndex: null,
       snoozedCount: 0,
       snoozedShelfHeaderIndex: null,
       settledCount: 0,
@@ -982,6 +1061,7 @@ export function buildThreadListV2Items(input: {
     workingShelfEnabled ? null : "active",
   );
   const nestedWorking = nestThreadListV2Section(sortWorkingThreadsBySend(working), null);
+  const nestedStuck = nestThreadListV2Section(sortWorkingThreadsBySend(stuck), null);
   const nestedSnoozed = nestThreadListV2Section(
     [...snoozed].sort(
       (left, right) =>
@@ -994,6 +1074,7 @@ export function buildThreadListV2Items(input: {
     ...nestedPinned.stepsByParentKey,
     ...nestedActive.stepsByParentKey,
     ...nestedWorking.stepsByParentKey,
+    ...nestedStuck.stepsByParentKey,
     ...nestedSnoozed.stepsByParentKey,
     ...nestedSettled.stepsByParentKey,
   ]);
@@ -1001,6 +1082,7 @@ export function buildThreadListV2Items(input: {
     ? nestedActive.rows
     : applyPendingThreadOrder(nestedActive.rows, "active", pending);
   const orderedWorking = nestedWorking.rows;
+  const orderedStuck = nestedStuck.rows;
   const orderedSnoozed = nestedSnoozed.rows;
   const selectedThreadKey = input.selectedThreadKey ?? null;
   // A collapsed shelf keeps the open thread's row, and the parent's row when a step is open.
@@ -1011,6 +1093,8 @@ export function buildThreadListV2Items(input: {
       ?.some((step) => `${step.environmentId}:${step.id}` === selectedThreadKey) === true;
   const visibleWorking =
     input.workingShelfExpanded === true ? orderedWorking : orderedWorking.filter(holdsSelected);
+  const visibleStuck =
+    input.stuckShelfExpanded === true ? orderedStuck : orderedStuck.filter(holdsSelected);
   const visibleSnoozed =
     input.snoozedShelfExpanded === true ? orderedSnoozed : orderedSnoozed.filter(holdsSelected);
   const orderedSettled = nestedSettled.rows;
@@ -1044,13 +1128,13 @@ export function buildThreadListV2Items(input: {
     const run = livePipelineRunOf(input.pipelineRuns, thread);
     const progress =
       thread.pipeline != null && thread.pipeline.stepId === null
-        ? pipelineProgressSegments(run, steps ?? [], resolveThreadListV2Status)
+        ? pipelineProgressSegments(run, steps ?? [], resolveThreadListV2Status, waitOf)
         : [];
     const expanded = expandedPipelines.has(key);
     const isRun = thread.pipeline != null && thread.pipeline.stepId === null;
     const attempts = steps === undefined ? undefined : pipelineStepAttempts(run, steps);
     const attention = isRun
-      ? pipelineAttentionTargets(run, steps ?? [], resolveThreadListV2Status)
+      ? pipelineAttentionTargets(run, steps ?? [], resolveThreadListV2Status, waitOf)
       : undefined;
     const foldKey = pipelineEarlierFoldKey(key);
     const foldExpanded = expandedPipelines.has(foldKey);
@@ -1069,10 +1153,11 @@ export function buildThreadListV2Items(input: {
     items.push({
       thread,
       ...row,
+      ...(isStuck(thread) ? { possiblyStuck: true } : {}),
       isLast: false,
       ...(steps === undefined && run === undefined
         ? {}
-        : { stepStatus: resolveThreadListV2StepStatus(steps ?? [], run) }),
+        : { stepStatus: resolveThreadListV2StepStatus(steps ?? [], run, waitOf) }),
       ...(progress.length === 0
         ? {}
         : {
@@ -1094,6 +1179,7 @@ export function buildThreadListV2Items(input: {
         wokeAt: null,
         isLast: false,
         nested: true,
+        ...(isStuck(step) ? { possiblyStuck: true } : {}),
         stepLabel: pipelineStepLabel(input.pipelineRuns, step),
         ...(attentionStatus === undefined ? {} : { stepStatus: attentionStatus }),
         ...(attempts?.redoKeys.has(stepKey) ? { suppressUnseenDone: true } : {}),
@@ -1147,6 +1233,15 @@ export function buildThreadListV2Items(input: {
       wokeAt: resolveThreadListV2WokeAt(thread, { now }),
     });
   }
+  const stuckShelfHeaderIndex = orderedStuck.length > 0 ? items.length : null;
+  for (const thread of visibleStuck) {
+    pushRow(thread, {
+      variant: "card",
+      snoozed: false,
+      pinned: false,
+      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
+    });
+  }
   const snoozedShelfHeaderIndex = orderedSnoozed.length > 0 ? items.length : null;
   for (const thread of visibleSnoozed) {
     pushRow(thread, { variant: "slim", snoozed: true, pinned: false, wokeAt: null });
@@ -1165,6 +1260,8 @@ export function buildThreadListV2Items(input: {
     listedSettledThreads: listedSettled,
     workingCount: orderedWorking.length,
     workingShelfHeaderIndex,
+    stuckCount: orderedStuck.length,
+    stuckShelfHeaderIndex,
     snoozedCount: orderedSnoozed.length,
     snoozedShelfHeaderIndex,
     settledCount: settledTotal,

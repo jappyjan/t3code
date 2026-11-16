@@ -66,6 +66,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
+  ThreadListV2StuckShelfHeader,
   ThreadListV2WorkingShelfHeader,
 } from "./thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "./thread-provider-instance";
@@ -245,10 +246,12 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     snoozedShelfExpanded,
     workingShelfEnabled,
     workingShelfExpanded,
+    stuckShelfExpanded,
     expandedPipelineKeys,
     toggleSettledShelf,
     toggleSnoozedShelf,
     toggleWorkingShelf,
+    toggleStuckShelf,
     togglePipelineExpanded,
   } = useThreadListV2ShelfPreferences();
   const now = useThreadListNow(threads);
@@ -292,6 +295,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     shelfPreferencesLoaded,
     workingShelfEnabled,
     workingShelfExpanded,
+    stuckShelfExpanded,
     snoozedShelfExpanded,
     settledShelfExpanded,
     expandedPipelineKeys,
@@ -425,6 +429,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             stepStatus={item.item.stepStatus}
             stepLabel={item.item.stepLabel}
             suppressUnseenDone={item.item.suppressUnseenDone}
+            possiblyStuck={item.item.possiblyStuck}
             earlierAttempt={item.item.earlierAttempt}
             earlierFold={item.item.earlierFold}
             attentionTarget={item.item.attentionTarget}
@@ -508,6 +513,16 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             disabled={item.disabled}
             expanded={item.expanded}
             onToggle={toggleWorkingShelf}
+            pane="sidebar"
+          />
+        );
+      case "v2-stuck-shelf":
+        return (
+          <ThreadListV2StuckShelfHeader
+            count={item.count}
+            disabled={item.disabled}
+            expanded={item.expanded}
+            onToggle={toggleStuckShelf}
             pane="sidebar"
           />
         );
