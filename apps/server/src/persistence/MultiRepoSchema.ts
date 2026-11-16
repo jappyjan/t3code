@@ -51,4 +51,17 @@ export const ensureMultiRepoSchema = Effect.gen(function* () {
     )
   `;
   yield* sql`CREATE INDEX IF NOT EXISTS idx_task_folders_real_root ON task_folders (real_root)`;
+
+  // Earlier fork builds gave repository checkpoint scopes their own kind, which no longer decodes
+  // and fails the whole thread. Their rows already carry the `repositoryPath` that marks them now.
+  const repositoryScopes = yield* sql`
+    SELECT 1 FROM orchestration_v2_projection_checkpoint_scopes WHERE kind = 'repository' LIMIT 1
+  `;
+  if (repositoryScopes.length > 0) {
+    yield* sql`
+      UPDATE orchestration_v2_projection_checkpoint_scopes
+      SET kind = 'manual', payload_json = json_set(payload_json, '$.kind', 'manual')
+      WHERE kind = 'repository'
+    `;
+  }
 });

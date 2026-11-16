@@ -88,9 +88,29 @@ describe("Multi-repo schema", () => {
         INSERT INTO task_folders (root, project_id, home_worktree_path, repositories_json, created_at, updated_at)
         VALUES ('/tasks/old', 'project-1', '/tasks/old/home', '[]', 'then', 'then')
       `;
+      yield* sql`
+        INSERT INTO orchestration_v2_projection_checkpoint_scopes (
+          scope_id, thread_id, node_id, kind, ordinal_within_parent, advances_app_run_count,
+          created_at, payload_json
+        )
+        VALUES (
+          'scope-repo', 'thread-1', 'node-1', 'repository', 1, 0, 'then',
+          '{"id":"scope-repo","kind":"repository","repositoryPath":"/code/app"}'
+        )
+      `;
 
       yield* runMigrations();
       yield* runMigrations();
+
+      assert.deepStrictEqual(
+        yield* sql`SELECT kind, payload_json FROM orchestration_v2_projection_checkpoint_scopes`,
+        [
+          {
+            kind: "manual",
+            payload_json: '{"id":"scope-repo","kind":"manual","repositoryPath":"/code/app"}',
+          },
+        ],
+      );
 
       assert.deepStrictEqual(yield* readShape, {
         ...currentShape,
