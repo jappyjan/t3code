@@ -2,9 +2,9 @@ import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useSyncExternalStore } from "react";
-import { DEFAULT_POSSIBLY_STUCK_AFTER_HOURS } from "@t3tools/contracts/settings";
+import { possiblyStuckClock } from "@t3tools/client-runtime/state/pipeline-nesting";
 
-import { useEnvironments } from "../../state/environments";
+import { environmentPresentations } from "../../state/presentation";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../../state/olderSettledShelf";
 import { serverEnvironment } from "../../state/server";
@@ -76,27 +76,10 @@ export function useThreadListV2(input: {
   readonly selectedThreadKey: string | null;
 }) {
   const { threads, workingShelfEnabled } = input;
-  // The hours come from each environment's server settings; the key keeps the clock stable between ticks.
-  const { environments } = useEnvironments();
-  const stuckHoursKey = environments
-    .map(
-      (environment) =>
-        `${environment.environmentId}=${environment.serverConfig === null ? "" : (environment.serverConfig.settings.possiblyStuckAfterHours ?? DEFAULT_POSSIBLY_STUCK_AFTER_HOURS)}`,
-    )
-    .join("\n");
-  const stuckClockOf = useMemo(() => {
-    const nowMs = Date.parse(input.now);
-    const hoursByEnvironment = new Map(
-      stuckHoursKey.split("\n").map((entry) => {
-        const [id, hours] = entry.split("=");
-        return [id, hours === "" ? undefined : Number(hours)] as const;
-      }),
-    );
-    return (environmentId: EnvironmentId) => {
-      const afterHours = hoursByEnvironment.get(environmentId);
-      return afterHours === undefined ? undefined : { nowMs, afterHours };
-    };
-  }, [stuckHoursKey, input.now]);
+  const serverConfigs = useAtomValue(environmentPresentations.serverConfigsAtom);
+  const nowMs = Date.parse(input.now);
+  const stuckClockOf = (environmentId: EnvironmentId) =>
+    possiblyStuckClock(serverConfigs.get(environmentId)?.settings, nowMs);
   const stuckThreadKeys = useKeySet(possiblyStuckThreadKeys(threads, stuckClockOf).join("\n"));
   // Hermes lacks toSorted.
   const pipelineRuns = useAtomValue(

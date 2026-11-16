@@ -28,6 +28,7 @@ import {
   pipelineStepLabel,
   pipelineStepsOfParents,
   isShellPossiblyStuck,
+  pipelineCurrentStepIsStuck,
   threadBackgroundWait,
   type PipelineStepWaitOf,
   type PossiblyStuckClock,
@@ -358,7 +359,6 @@ export function threadListV2RowAccessibilityLabel(input: {
     .join(", ");
 }
 
-/** Row status: a failure the user has already opened settles to ready, like Done. */
 /**
  * The threads past the user's threshold. The list keys its layout on this set, not on the
  * clock, so a minute tick rebuilds nothing until a thread actually crosses the line.
@@ -373,6 +373,7 @@ export function possiblyStuckThreadKeys(
     .sort();
 }
 
+/** Row status: a failure the user has already opened settles to ready, like Done. */
 export function resolveThreadListV2RowStatus(
   thread: Parameters<typeof resolveThreadListV2Status>[0] &
     Pick<EnvironmentThreadShell, "latestRun" | "lastVisitedAt">,
@@ -991,7 +992,11 @@ export function buildThreadListV2Items(input: {
       pinned.push(thread);
     } else if (
       isStuck(owner) ||
-      (stepsOfParent.get(`${owner.environmentId}:${owner.id}`) ?? []).some(isStuck)
+      pipelineCurrentStepIsStuck(
+        livePipelineRunOf(input.pipelineRuns, owner),
+        stepsOfParent.get(`${owner.environmentId}:${owner.id}`) ?? [],
+        waitOf,
+      )
     ) {
       stuck.push(thread);
     } else if (

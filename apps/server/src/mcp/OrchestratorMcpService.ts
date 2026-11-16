@@ -106,7 +106,7 @@ import {
 import { getProviderOptionCurrentValue, withLegacyUltracodeEffort } from "@t3tools/shared/model";
 import {
   backgroundWorkHoldsCompletion,
-  isThreadPossiblyStuck,
+  classifyBackgroundWait,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -2514,16 +2514,17 @@ const make = Effect.gen(function* () {
     const shell = yield* threadManagement
       .getThreadShell(threadId)
       .pipe(Effect.mapError(threadManagementFailure));
-    if (pauseReason === null) {
+    // A turn running again (a wake turn or the user's reply) is busy, as clients show it.
+    if (pauseReason === null || shell?.activeRunId != null) {
       return shell?.pendingRuntimeRequest == null ? null : ("pending_request" as const);
     }
-    // A step waiting on its own background work is not waiting on the user, until it looks stuck.
-    if (shell === null || (shell.pendingBackgroundTasks ?? []).length === 0) return pauseReason;
+    if (shell === null) return pauseReason;
     const settings = yield* serverSettings.getSettings.pipe(
       Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
     );
     const nowMs = yield* Clock.currentTimeMillis;
-    return isThreadPossiblyStuck(
+    // A step waiting on its own background work is not waiting on the user, until it looks stuck.
+    const wait = classifyBackgroundWait(
       {
         activeRunId: shell.activeRunId,
         archived: shell.archivedAt !== null,
@@ -2533,11 +2534,9 @@ const make = Effect.gen(function* () {
             ? null
             : DateTime.toEpochMillis(shell.latestRunCompletedAt),
       },
-      nowMs,
-      settings.possiblyStuckAfterHours,
-    )
-      ? ("possibly_stuck" as const)
-      : null;
+      { nowMs, afterHours: settings.possiblyStuckAfterHours },
+    );
+    return wait === null ? pauseReason : wait === "possibly_stuck" ? wait : null;
   });
 
   const resolvePipeline = Effect.fn("OrchestratorMcpService.resolvePipeline")(function* (

@@ -1,8 +1,11 @@
-import { threadBackgroundWait } from "@t3tools/client-runtime/state/pipeline-nesting";
+import { minuteTickToEpochMs } from "@t3tools/client-runtime/clock";
+import {
+  possiblyStuckClock,
+  threadBackgroundWait,
+} from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId } from "@t3tools/contracts";
 
-import { resolveSidebarStuckClock } from "../components/Sidebar.logic";
 import { useServerConfigs } from "../state/entities";
 import { useNowMinute } from "./useNowMinute";
 
@@ -10,7 +13,7 @@ import { useNowMinute } from "./useNowMinute";
 export function useStepWait(environmentId: EnvironmentId) {
   const config = useServerConfigs().get(environmentId);
   const nowMinute = useNowMinute();
-  const clock = resolveSidebarStuckClock(config, nowMinute);
+  const clock = possiblyStuckClock(config?.settings, minuteTickToEpochMs(nowMinute));
   return {
     stuckAfterHours: clock?.afterHours,
     waitOf: (shell: EnvironmentThreadShell | null) =>

@@ -86,6 +86,18 @@ export function pipelineAwaitingHandoffThreadId(run: PipelineRun | null) {
   return run.steps[run.currentStepIndex]?.childThreadId ?? null;
 }
 
+/** A step row's status while its thread waits after ending its turn without a handoff. */
+export function pipelineStepWaitLabel(wait: PipelineStepWait): string {
+  switch (wait) {
+    case "pull_request":
+      return "Waiting on pull request";
+    case "background_work":
+      return "Waiting on background work";
+    case "possibly_stuck":
+      return "Possibly stuck";
+  }
+}
+
 /** How long a step may wait on background work before the label calls it stuck. */
 function stuckAfterText(hours: number | undefined): string {
   return hours === undefined ? "a long time" : `over ${hours} h`;
@@ -156,7 +168,7 @@ export function pipelineRunStateLabel(
             : wait === "background_work"
               ? "Background work"
               : wait === "possibly_stuck"
-                ? "May be stuck"
+                ? "Possibly stuck"
                 : "No handoff";
         case "step_failed":
           return "Failed";

@@ -18,14 +18,15 @@ import {
   pipelineStepAwaitsHandoff,
   pipelineStepPosition,
   pipelineStepStatusLabel,
+  pipelineStepWaitLabel,
   stepName,
 } from "@t3tools/client-runtime/pipeline-run-presentation";
 import {
   pipelineRunStepShells,
+  possiblyStuckClock,
   threadBackgroundWait,
   type PipelineStepWait,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
-import { DEFAULT_POSSIBLY_STUCK_AFTER_HOURS } from "@t3tools/contracts/settings";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -43,7 +44,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { formatMessageTime } from "../../lib/time";
 import { useNowMinuteMs } from "../../lib/clock";
-import { useEnvironments } from "../../state/environments";
+import { environmentPresentations } from "../../state/presentation";
 import { useQuietThreadShell, useQuietThreadShells } from "../../state/entities";
 import { resolveThreadListV2Status, threadHasUnseenCompletion } from "./threadListV2";
 import { useEnvironmentQuery } from "../../state/query";
@@ -85,16 +86,13 @@ function useStepWait(environmentId: EnvironmentId, run: PipelineRun | null) {
   const shell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId, threadId: childThreadId },
   );
-  const { environments } = useEnvironments();
+  const config = useAtomValue(environmentPresentations.serverConfigsAtom).get(environmentId);
   const nowMs = useNowMinuteMs();
-  const afterHours =
-    environments.find((environment) => environment.environmentId === environmentId)?.serverConfig
-      ?.settings.possiblyStuckAfterHours ?? DEFAULT_POSSIBLY_STUCK_AFTER_HOURS;
-  const clock = { nowMs, afterHours };
+  const clock = possiblyStuckClock(config?.settings, nowMs);
   return {
     wait: threadBackgroundWait(shell, clock),
     waitOf: (step: Parameters<typeof threadBackgroundWait>[0]) => threadBackgroundWait(step, clock),
-    afterHours,
+    afterHours: clock?.afterHours,
   };
 }
 
@@ -106,7 +104,8 @@ function runTone(run: PipelineRun, wait: PipelineStepWait | null): StatusTone {
       if (!pipelineRunNeedsAttention(run, wait)) {
         return { label: "Waiting", ...STEP_TONES.active };
       }
-      if (wait === "possibly_stuck") return { label: "May be stuck", ...ATTENTION_TONE };
+      if (wait === "possibly_stuck")
+        return { label: pipelineStepWaitLabel(wait), ...ATTENTION_TONE };
       return {
         label: run.pauseReason === "awaiting_continue" ? "Paused" : "Needs attention",
         ...ATTENTION_TONE,
@@ -522,6 +521,7 @@ export function PipelineRunPanel(props: {
               environmentId={environmentId}
               run={run}
               step={step}
+              wait={step.index === stepIndex ? wait : null}
               current={step.index === stepIndex && run.status !== "completed"}
               needsYou={needsYou?.threadId != null && needsYou.stepIndex === step.index}
               pauseBeforeEditable={
@@ -560,6 +560,8 @@ function PipelineStepRow(props: {
   readonly environmentId: EnvironmentId;
   readonly run: PipelineRun;
   readonly step: PipelineRun["steps"][number];
+  /** What the step's thread waits on after ending its turn without a handoff. */
+  readonly wait: PipelineStepWait | null;
   readonly current: boolean;
   /** The step the run's "needs you" line points at. */
   readonly needsYou: boolean;
@@ -579,11 +581,18 @@ function PipelineStepRow(props: {
   const childShell = useQuietThreadShell(
     childThreadId === null ? null : { environmentId: props.environmentId, threadId: childThreadId },
   );
-  const tone = props.needsYou ? ATTENTION_TONE : STEP_TONES[pipelineStepTone(step.status)];
+  const awaitsHandoff = step.status === "running" && pipelineStepAwaitsHandoff(run, step.index);
+  const tone = props.needsYou
+    ? ATTENTION_TONE
+    : awaitsHandoff && props.wait !== null
+      ? STEP_TONES.muted
+      : STEP_TONES[pipelineStepTone(step.status)];
   const statusLabel =
-    props.needsYou && step.status === "running" && pipelineStepAwaitsHandoff(run, step.index)
-      ? "No handoff"
-      : pipelineStepStatusLabel(step);
+    awaitsHandoff && props.wait !== null
+      ? pipelineStepWaitLabel(props.wait)
+      : props.needsYou && awaitsHandoff
+        ? "No handoff"
+        : pipelineStepStatusLabel(step);
   const revisions = stepRevisions(run, step.index);
   const needsInput = childShell?.runtime?.status === "waiting";
   const details = [

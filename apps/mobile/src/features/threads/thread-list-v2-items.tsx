@@ -411,8 +411,8 @@ function ThreadListV2ShelfHeader(
         expanded: props.expanded,
         disabled: props.disabled,
         onToggle: props.onToggle,
-        accessibilityLabel: `${props.count} ${props.kind} ${props.count === 1 ? "thread" : "threads"}`,
-        accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the ${props.kind} threads.`,
+        accessibilityLabel: `${props.count} ${label.toLowerCase()} ${props.count === 1 ? "thread" : "threads"}`,
+        accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the ${label.toLowerCase()} threads.`,
       }}
     />
   );
@@ -947,7 +947,6 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
     props.attentionTarget !== undefined &&
     props.stepStatus != null &&
     props.stepStatus !== "working" &&
-    props.stepStatus !== "stuck" &&
     status === props.stepStatus;
   const attentionTargetThread = props.attentionTarget ?? thread;
   const attentionBadgeLabel =

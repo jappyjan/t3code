@@ -17,7 +17,10 @@ vi.mock("../../state/threads", () => ({
   threadFamilies: { mountRows: () => () => {} },
 }));
 vi.mock("../../state/atom-registry", () => ({ appAtomRegistry: undefined }));
-vi.mock("../../state/environments", () => ({ useEnvironments: () => ({ environments: [] }) }));
+vi.mock("../../state/presentation", async () => {
+  const { Atom } = await import("effect/reactivity");
+  return { environmentPresentations: { serverConfigsAtom: Atom.make(new Map()) } };
+});
 vi.mock("../../state/server", async () => {
   const { Atom } = await import("effect/reactivity");
   const noPipelineRuns = Atom.make(undefined);

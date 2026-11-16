@@ -1,7 +1,10 @@
 import { formatModelSelectionEffort } from "@t3tools/client-runtime/state/thread-execution";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import { pipelineStepStatusLabel } from "@t3tools/client-runtime/pipeline-run-presentation";
+import {
+  pipelineStepStatusLabel,
+  pipelineStepWaitLabel,
+} from "@t3tools/client-runtime/pipeline-run-presentation";
 import type { PipelineStepWait } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { ModelSelection, PipelineRun, PipelineRunStep } from "@t3tools/contracts";
 import { formatModelSlugName, resolveSelectableModel } from "@t3tools/shared/model";
@@ -77,7 +80,7 @@ export function pipelineStepStatusDisplay(
   pausedAtStep = false,
 ): PipelineStepStatusDisplay {
   if (step.status === "running" && awaitingHandoff && wait === "possibly_stuck") {
-    return { label: "May be stuck", tone: "attention" };
+    return { label: pipelineStepWaitLabel(wait), tone: "attention" };
   }
   if (step.status === "running" && liveState !== null) {
     return {
@@ -85,11 +88,8 @@ export function pipelineStepStatusDisplay(
       tone: liveState === "working" ? "working" : "attention",
     };
   }
-  if (step.status === "running" && awaitingHandoff && wait === "pull_request") {
-    return { label: "Waiting on pull request", tone: "default" };
-  }
-  if (step.status === "running" && awaitingHandoff && wait === "background_work") {
-    return { label: "Waiting on background work", tone: "default" };
+  if (step.status === "running" && awaitingHandoff && wait !== null) {
+    return { label: pipelineStepWaitLabel(wait), tone: "default" };
   }
   if (step.status === "running" && awaitingHandoff) {
     return { label: "No handoff", tone: "attention" };

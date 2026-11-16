@@ -294,6 +294,18 @@ describe("threadBackgroundWait", () => {
     ],
     ["a dev server with no clock yet", ended([dev]), undefined, "background_work"],
     ["a dev server in a running turn", ended([dev], "run-1"), clock(9), "background_work"],
+    [
+      "an archived thread past the threshold",
+      { ...ended([dev]), archivedAt: completedAt },
+      clock(9),
+      "background_work",
+    ],
+    [
+      "a thread with no finished run",
+      { ...ended([dev]), latestRun: { completedAt: null } },
+      clock(9),
+      "background_work",
+    ],
     ["a thread that is not loaded", null, clock(9), null],
   ] as const)("reads %s as %s", (_case, shell, stuck, expected) => {
     expect(threadBackgroundWait(shell, stuck)).toBe(expected);
@@ -301,8 +313,10 @@ describe("threadBackgroundWait", () => {
 });
 
 describe("a paused run waiting on its step's background work", () => {
-  const waits: Record<string, PipelineStepWait | null> = {};
-  const waitOf = (s: { id: string }) => waits[s.id] ?? null;
+  const waitOn =
+    (waits: Record<string, PipelineStepWait>) =>
+    (s: { id: string }): PipelineStepWait | null =>
+      waits[s.id] ?? null;
   const steps = [{ ...step("s0", "r1", "step-0", "2026-01-01T00:01:00Z"), title: "Run · Build" }];
   const run = (pauseReason: "awaiting_handoff" | "step_failed") =>
     ({
@@ -314,32 +328,47 @@ describe("a paused run waiting on its step's background work", () => {
   const ready = () => "ready";
 
   it.each([
-    { wait: null, attention: true },
-    { wait: "pull_request", attention: false },
-    { wait: "background_work", attention: false },
-    { wait: "possibly_stuck", attention: true },
-  ] as const)("with wait $wait, needs the user: $attention", ({ wait, attention }) => {
-    waits["s0"] = wait;
+    { wait: null, status: "input" },
+    { wait: "pull_request", status: null },
+    { wait: "background_work", status: null },
+    { wait: "possibly_stuck", status: "stuck" },
+  ] as const)("with wait $wait, the parent reads $status", ({ wait, status }) => {
+    const waitOf = waitOn(wait === null ? {} : { s0: wait });
     const awaiting = run("awaiting_handoff");
-    expect(aggregatePipelineStepStatus(steps, ready, awaiting, waitOf)).toBe(
-      attention ? "input" : null,
-    );
+    expect(aggregatePipelineStepStatus(steps, ready, awaiting, waitOf)).toBe(status);
     const [segment] = pipelineProgressSegments(awaiting, steps, ready, waitOf);
-    expect(segment?.status).toBe(attention ? "attention" : "running");
-    expect(pipelineAttentionTargets(awaiting, steps, ready, waitOf).target !== null).toBe(
-      attention,
-    );
+    expect(segment?.status).toBe(status === null ? "running" : "attention");
+    const targets = pipelineAttentionTargets(awaiting, steps, ready, waitOf);
+    expect(targets.target !== null).toBe(status !== null);
+    expect([...targets.attentionThreads.values()][0] ?? null).toBe(status);
   });
 
   it("still needs the user for a failed step, whatever its thread waits on", () => {
-    waits["s0"] = "background_work";
+    const waitOf = waitOn({ s0: "background_work" });
     expect(aggregatePipelineStepStatus(steps, ready, run("step_failed"), waitOf)).toBe("input");
   });
 
-  it("rolls a possibly stuck step up even when the run is not paused", () => {
-    waits["s0"] = "possibly_stuck";
+  it("rolls a possibly stuck current step up even when the run is not paused", () => {
     const running = { ...run("awaiting_handoff"), status: "running" } as PipelineRunSummary;
-    expect(aggregatePipelineStepStatus(steps, ready, running, waitOf)).toBe("stuck");
+    expect(
+      aggregatePipelineStepStatus(steps, ready, running, waitOn({ s0: "possibly_stuck" })),
+    ).toBe("stuck");
+  });
+
+  it("ignores work an earlier step left running", () => {
+    const earlier = {
+      ...step("old", "r1", "step-old", "2026-01-01T00:00:30Z"),
+      title: "Run · Plan",
+    };
+    const running = { ...run("awaiting_handoff"), status: "running" } as PipelineRunSummary;
+    expect(
+      aggregatePipelineStepStatus(
+        [earlier, ...steps],
+        (s) => (s.id === "s0" ? "working" : "ready"),
+        running,
+        waitOn({ old: "possibly_stuck" }),
+      ),
+    ).toBe("working");
   });
 });
 

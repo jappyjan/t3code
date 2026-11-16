@@ -35,7 +35,6 @@ import {
   resolveSidebarDropVerb,
   groupSidebarThreadsByProject,
   resolveSidebarFolderDot,
-  resolveSidebarStuckClock,
   sidebarFolderExpansionKeys,
 } from "./Sidebar.logic";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -317,6 +316,17 @@ describe("resolveSidebarRowStatus", () => {
     expect(hasUnseenCompletion(opened)).toBe(false);
     // A runtime failure without a failed run has no date, so a visit cannot settle it.
     expect(resolveSidebarRowStatus({ ...opened, latestRun: null })).toBe("failed");
+  });
+
+  it("marks a quiet thread possibly stuck, but never hides a status that needs the user", () => {
+    const quiet = {
+      ...failed,
+      runtime: { ...failedRuntime, status: "idle" as const, lastError: null },
+      latestRun: makeLatestRun(),
+    };
+    expect(resolveSidebarRowStatus(quiet, true)).toBe("stuck");
+    expect(resolveSidebarRowStatus({ ...quiet, hasPendingUserInput: true }, true)).toBe("input");
+    expect(resolveSidebarRowStatus({ ...failed, lastVisitedAt: undefined }, true)).toBe("failed");
   });
 
   it("does not show a stopped run as an unseen completion", () => {
@@ -1124,12 +1134,16 @@ describe("Working shelf (beta)", () => {
       row("a2", "active"),
       marker("working-header"),
       row("w1", "working"),
+      marker("stuck-header"),
+      row("k1", "stuck"),
       marker("settled-header"),
       row("s1", "settled"),
     ];
 
-    it("never drops into the Working shelf, and keeps it out of the inbox order", () => {
+    it("never drops into the Working or Possibly stuck shelf, and keeps them out of the inbox order", () => {
       expect(resolveSidebarDropTarget(items, "a1", "w1")).toBeNull();
+      expect(resolveSidebarDropTarget(items, "a1", "k1")).toBeNull();
+      expect(resolveSidebarDropVerb("active", "stuck")).toBeNull();
       expect(resolveSidebarDropTarget(items, "p1", "a2")).toEqual({
         section: "active",
         pinnedOrder: [],
@@ -1139,18 +1153,19 @@ describe("Working shelf (beta)", () => {
     });
 
     it.each([
-      ["pinned", "p1"],
-      ["active", "a2"],
-      ["settled", "s1"],
+      ["working", "w1", "pinned", "p1"],
+      ["working", "w1", "active", "a2"],
+      ["working", "w1", "settled", "s1"],
+      ["stuck", "k1", "active", "a2"],
     ] as const)(
-      "does not move a Working thread into %s when its reference drag ends in the sidebar",
-      (section, overKey) => {
-        const target = resolveSidebarDropTarget(items, "w1", overKey);
+      "does not move a %s thread into %s when its reference drag ends in the sidebar",
+      (from, activeKey, section, overKey) => {
+        const target = resolveSidebarDropTarget(items, activeKey, overKey);
         expect(target?.section).toBe(section);
         expect(
           planSidebarThreadDrop({
-            activeKey: "w1",
-            activeSection: "working",
+            activeKey,
+            activeSection: from,
             target: target!,
             pinnedOrder: ["p1"],
             pinnedKeysById: new Map([["p1", "m"]]),
@@ -1681,31 +1696,5 @@ describe("shouldCreateNewThreadInCurrentProject", () => {
     expect(shouldCreateNewThreadInCurrentProject(false, 1, 3)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(false, 0, 0)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(true, 2, 2)).toBe(true);
-  });
-});
-
-describe("resolveSidebarStuckClock", () => {
-  const config = { settings: { possiblyStuckAfterHours: 2 } } as Parameters<
-    typeof resolveSidebarStuckClock
-  >[0];
-
-  it("reads the minute clock as UTC whatever the local timezone", () => {
-    const zone = process.env.TZ;
-    try {
-      for (const tz of ["America/Los_Angeles", "Europe/Berlin", "UTC"]) {
-        process.env.TZ = tz;
-        expect(resolveSidebarStuckClock(config, "2026-01-02T00:01")).toEqual({
-          nowMs: Date.UTC(2026, 0, 2, 0, 1),
-          afterHours: 2,
-        });
-      }
-    } finally {
-      if (zone === undefined) delete process.env.TZ;
-      else process.env.TZ = zone;
-    }
-  });
-
-  it("stays undefined until the environment config loads", () => {
-    expect(resolveSidebarStuckClock(undefined, "2026-01-02T00:01")).toBeUndefined();
   });
 });

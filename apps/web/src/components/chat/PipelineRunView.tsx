@@ -410,6 +410,7 @@ function PipelineRunBody(props: {
                   environmentId={environmentId}
                   run={run}
                   step={step}
+                  waitOf={waitOf}
                   providerEntries={providerEntries}
                   cwd={props.cwd}
                   canTogglePauseBefore={
@@ -473,6 +474,7 @@ function PipelineStepRow(props: {
   readonly environmentId: EnvironmentId;
   readonly run: PipelineRun;
   readonly step: PipelineRunStep;
+  readonly waitOf: ReturnType<typeof useStepWait>["waitOf"];
   readonly providerEntries: ReturnType<typeof deriveProviderInstanceEntries>;
   readonly cwd: string | undefined;
   readonly canTogglePauseBefore: boolean;
@@ -490,7 +492,6 @@ function PipelineStepRow(props: {
     step.childThreadId === null ? null : scopeThreadRef(environmentId, step.childThreadId),
   );
   const liveState = pipelineChildLiveState(shell);
-  const { waitOf } = useStepWait(environmentId);
   const { Icon, className: iconClassName } = STEP_STATUS_ICON[step.status];
   const model =
     definitionStep === undefined
@@ -501,7 +502,7 @@ function PipelineStepRow(props: {
     step,
     liveState,
     pipelineStepAwaitsHandoff(run, step.index),
-    waitOf(shell),
+    props.waitOf(shell),
     isCurrent && run.status === "paused",
   );
   const childThreadId = step.childThreadId;

@@ -8,6 +8,7 @@ import {
   type PipelineNestable,
   type PipelineProgressStatus,
   type PipelineStepStatus,
+  possiblyStuckClock,
   type PipelineStepWaitOf,
   type PossiblyStuckClock,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
@@ -34,11 +35,7 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
-import {
-  DEFAULT_POSSIBLY_STUCK_AFTER_HOURS,
-  type SidebarProjectSortOrder,
-  type SidebarThreadSortOrder,
-} from "@t3tools/contracts/settings";
+import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
 import {
   effectiveSnoozed,
@@ -57,7 +54,12 @@ import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
 import { THREAD_STATUS_TEXT } from "@t3tools/client-runtime/state/thread-activity-announcement";
 import { observeIntersection } from "../lib/observeIntersection";
-import { deadlineAfter, deadlineStore, type ClockStore } from "@t3tools/client-runtime/clock";
+import {
+  deadlineAfter,
+  deadlineStore,
+  minuteTickToEpochMs,
+  type ClockStore,
+} from "@t3tools/client-runtime/clock";
 import { useDeadlinePassed } from "../hooks/useDeadline";
 import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
 import { isElectron } from "../env";
@@ -209,14 +211,7 @@ export function resolveSidebarStuckClock(
   config: EnvironmentServerConfig | undefined,
   nowMinute: string,
 ): PossiblyStuckClock | undefined {
-  if (config === undefined) return undefined;
-  // The minute clock is a UTC date-time without an offset, which `Date.parse` would read as local time.
-  const nowMs = Date.parse(`${nowMinute}:00.000Z`);
-  if (Number.isNaN(nowMs)) return undefined;
-  return {
-    nowMs,
-    afterHours: config.settings.possiblyStuckAfterHours ?? DEFAULT_POSSIBLY_STUCK_AFTER_HOURS,
-  };
+  return possiblyStuckClock(config?.settings, minuteTickToEpochMs(nowMinute));
 }
 
 export type SidebarSection = "pinned" | "active" | "working" | "stuck" | "snoozed" | "settled";

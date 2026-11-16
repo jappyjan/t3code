@@ -5995,6 +5995,11 @@ describe("OrchestratorMcpService pipelines", () => {
           pauseReason: "awaiting_handoff",
           steps: runningStep(1, "thread:finished-step"),
         }),
+        run({
+          id: PipelineRunId.make("pipeline-run:waking"),
+          pauseReason: "awaiting_handoff",
+          steps: runningStep(1, "thread:waking-step"),
+        }),
       ];
       // A step thread whose turn ended with work still running; the clock below sits 3 hours in.
       const endedWithWork = (id: string, endedAtMs: number, taskId = "command:dev-server") => ({
@@ -6026,6 +6031,8 @@ describe("OrchestratorMcpService pipelines", () => {
               ...endedWithWork("thread:finished-step", 0),
               pendingBackgroundTasks: [],
             },
+            // Work that ended woke the agent; the run stays paused until that turn hands off.
+            liveThreadShell(ThreadId.make("thread:waking-step")),
           ],
         },
       );
@@ -6053,7 +6060,7 @@ describe("OrchestratorMcpService pipelines", () => {
       assert.equal(rest.nextCursor, null);
 
       const all = yield* withService(h, (service) => service.listPipelineRuns(h.scope, {}));
-      assert.equal(all.total, 7);
+      assert.equal(all.total, 8);
       assert.deepEqual(
         all.runs.map((entry) => entry.attention),
         [
@@ -6064,6 +6071,7 @@ describe("OrchestratorMcpService pipelines", () => {
           null,
           "possibly_stuck",
           "awaiting_handoff",
+          null,
         ],
       );
       assert.isString(all.runs[1]?.steps[1]?.link);

@@ -1,10 +1,10 @@
 import type { EnvironmentId, PipelineRunSummary, ThreadId } from "@t3tools/contracts";
 
 import {
-  hasStaleableBackgroundWork,
-  isPullRequestWatchTask,
-  isThreadPossiblyStuck,
+  classifyBackgroundWait,
+  type BackgroundWait,
   type PendingBackgroundWorkTask,
+  type PossiblyStuckClock,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 
 import { scopedThreadKey, scopeThreadRef } from "../environment/scoped.ts";
@@ -112,14 +112,18 @@ type PausedRunInput = Pick<
  * What a step thread's background work means for a run paused at its handoff: waiting on a pull
  * request alone, on other background work, or that work has run so long the step may be stuck.
  */
-export type PipelineStepWait = "pull_request" | "background_work" | "possibly_stuck";
+export type PipelineStepWait = BackgroundWait;
 
 export type PipelineStepWaitOf<T> = (step: T) => PipelineStepWait | null;
 
-/** The staleness inputs: a shared coarse clock and the user's threshold (0 = off). */
-export interface PossiblyStuckClock {
-  readonly nowMs: number;
-  readonly afterHours: number;
+export type { PossiblyStuckClock };
+
+/** An environment's staleness inputs; none until its settings load, so nothing flashes stuck. */
+export function possiblyStuckClock(
+  settings: { readonly possiblyStuckAfterHours: number } | null | undefined,
+  nowMs: number,
+): PossiblyStuckClock | undefined {
+  return settings == null ? undefined : { nowMs, afterHours: settings.possiblyStuckAfterHours };
 }
 
 interface BackgroundWaitShell {
@@ -129,29 +133,22 @@ interface BackgroundWaitShell {
   readonly archivedAt?: string | null;
 }
 
+function stuckCheckThread(shell: BackgroundWaitShell) {
+  const completedAtMs = Date.parse(shell.latestRun?.completedAt ?? "");
+  return {
+    activeRunId: shell.runtime?.activeRunId,
+    archived: shell.archivedAt != null,
+    pendingBackgroundTasks: shell.pendingBackgroundTasks,
+    lastRunEndedAtMs: Number.isNaN(completedAtMs) ? null : completedAtMs,
+  };
+}
+
 /** Whether a thread with no active run has background work that has run past the threshold. */
 export function isShellPossiblyStuck(
   shell: BackgroundWaitShell | null | undefined,
   stuck: PossiblyStuckClock | undefined,
 ): boolean {
-  if (
-    shell == null ||
-    stuck === undefined ||
-    !hasStaleableBackgroundWork(shell.pendingBackgroundTasks)
-  ) {
-    return false;
-  }
-  const completedAtMs = Date.parse(shell.latestRun?.completedAt ?? "");
-  return isThreadPossiblyStuck(
-    {
-      activeRunId: shell.runtime?.activeRunId,
-      archived: shell.archivedAt != null,
-      pendingBackgroundTasks: shell.pendingBackgroundTasks,
-      lastRunEndedAtMs: Number.isNaN(completedAtMs) ? null : completedAtMs,
-    },
-    stuck.nowMs,
-    stuck.afterHours,
-  );
+  return threadBackgroundWait(shell, stuck) === "possibly_stuck";
 }
 
 /** The one rule every surface shares for a step thread that ended its turn with work still pending. */
@@ -159,10 +156,8 @@ export function threadBackgroundWait(
   shell: BackgroundWaitShell | null | undefined,
   stuck?: PossiblyStuckClock,
 ): PipelineStepWait | null {
-  const tasks = shell?.pendingBackgroundTasks ?? [];
-  if (tasks.length === 0) return null;
-  if (isShellPossiblyStuck(shell, stuck)) return "possibly_stuck";
-  return tasks.every(isPullRequestWatchTask) ? "pull_request" : "background_work";
+  if (shell == null || (shell.pendingBackgroundTasks ?? []).length === 0) return null;
+  return classifyBackgroundWait(stuckCheckThread(shell), stuck);
 }
 
 /** A paused handoff's step that is still waiting on its own work is not waiting on the user. */
@@ -187,6 +182,16 @@ function pausedRunCurrentStep<T extends PipelineNestable>(
 ): T | undefined {
   const childThreadId = run.steps[run.currentStepIndex]?.childThreadId;
   return childThreadId == null ? undefined : steps.find((step) => step.id === childThreadId);
+}
+
+/** Whether the current step's thread has had background work running past the user's threshold. */
+export function pipelineCurrentStepIsStuck<T extends PipelineNestable>(
+  run: PausedRunInput | null | undefined,
+  steps: readonly T[],
+  waitOf: PipelineStepWaitOf<T> | undefined,
+): boolean {
+  const current = run == null ? undefined : pausedRunCurrentStep(run, steps);
+  return current !== undefined && waitOf?.(current) === "possibly_stuck";
 }
 
 /**
@@ -308,7 +313,8 @@ const BUSY_THREAD_STATUSES: ReadonlySet<string> = new Set(["working", "waiting"]
 /**
  * The most urgent status among a pipeline's steps (needs you before running), or null. A paused
  * run counts as `input` while it waits on the user: on Continue, a handoff, or a failed or
- * stopped step. Once its current step is busy again, the step's own status shows.
+ * stopped step. Once its current step is busy again, the step's own status shows. Only the
+ * current step reads as `stuck`: work an earlier step left running does not hold the run.
  */
 export function aggregatePipelineStepStatus<T extends PipelineNestable>(
   steps: readonly T[],
@@ -317,8 +323,8 @@ export function aggregatePipelineStepStatus<T extends PipelineNestable>(
   waitOf?: PipelineStepWaitOf<T>,
 ): PipelineStepStatus | null {
   const seen = new Set<string>(steps.map(threadStatus));
-  if (steps.some((step) => waitOf?.(step) === "possibly_stuck")) seen.add("stuck");
-  if (
+  if (pipelineCurrentStepIsStuck(run, steps, waitOf)) seen.add("stuck");
+  else if (
     run?.status === "paused" &&
     pausedRunWaitsOnUser(run, steps, (step) => pausedStepIsBusy(run, step, threadStatus, waitOf))
   ) {
@@ -424,18 +430,24 @@ export function countFinishedPipelineSegments(
   ).length;
 }
 
-export type PipelineAttentionStatus = Exclude<PipelineStepStatus, "working" | "stuck">;
+export type PipelineAttentionStatus = Exclude<PipelineStepStatus, "working">;
 
 /** Whether a row's status is one that waits on the user, so its badge leads to the step. */
 export function isPipelineAttentionStatus(
   status: string | null,
 ): status is PipelineAttentionStatus {
-  return status !== null && ATTENTION_THREAD_STATUSES.has(status);
+  return status !== null && (status === "stuck" || ATTENTION_THREAD_STATUSES.has(status));
 }
 
 /** What a step waiting on the user wants, for "<Step> needs your …". */
 export function pipelineAttentionNoun(status: PipelineAttentionStatus): string {
-  return status === "approval" ? "approval" : status === "request" ? "response" : "input";
+  return status === "approval"
+    ? "approval"
+    : status === "request"
+      ? "response"
+      : status === "stuck"
+        ? "attention"
+        : "input";
 }
 
 export interface PipelineAttentionTargets<T> {
@@ -470,7 +482,14 @@ export function pipelineAttentionTargets<T extends PipelineNestable & { readonly
       run.pauseReason !== "awaiting_continue" &&
       !pausedStepIsBusy(run, thread, threadStatus, waitOf);
     if (!isPipelineAttentionStatus(own) && !pausedHere) return;
-    attentionThreads.set(shellKey(thread), isPipelineAttentionStatus(own) ? own : "input");
+    attentionThreads.set(
+      shellKey(thread),
+      isPipelineAttentionStatus(own)
+        ? own
+        : waitOf?.(thread) === "possibly_stuck"
+          ? "stuck"
+          : "input",
+    );
     first ??= thread;
     if (isCurrent) current = thread;
   });

@@ -291,7 +291,7 @@ const StartPipelineTool = Tool.make("start_pipeline", {
 
 const PipelineStatusTool = Tool.make("pipeline_status", {
   description:
-    "Status of a pipeline run: each step's status, thread `link`, output preview, and the feedback sent to steps so far (`revisions`). `paused` with `awaiting_continue`: `continue_pipeline` if you started the run, or if you are the run's own coordinator chat and the user's latest message asks you to; else wait for the user. The user's feedback on an earlier step: `revise_pipeline_step`. `awaiting_handoff`: the step's agent ended its turn without handing off, usually with a question; tell the user, unless its thread still has background work: it waits on that. No tool retries or skips a failed or stopped step: tell the user.",
+    "Status of a pipeline run: each step's status, thread `link`, output preview, and the feedback sent to steps so far (`revisions`). `paused` with `awaiting_continue`: `continue_pipeline` if you started the run, or if you are the run's own coordinator chat and the user's latest message asks you to; else wait for the user. The user's feedback on an earlier step: `revise_pipeline_step`. `awaiting_handoff`: the step's agent ended its turn without handing off, usually with a question; tell the user, unless its thread still has background work: it waits on that until `list_pipeline_runs` reports `possibly_stuck`. No tool retries or skips a failed or stopped step: tell the user.",
   parameters: OrchestratorMcpPipelineRunInput,
   success: OrchestratorMcpPipelineRun,
   failure: OrchestratorMcpFailure,

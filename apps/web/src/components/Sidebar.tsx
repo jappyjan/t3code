@@ -39,6 +39,7 @@ import {
   isPipelineGroupActive,
   isShellPossiblyStuck,
   livePipelineRunOf,
+  pipelineCurrentStepIsStuck,
   nestPipelineSteps,
   pipelineParentsOfSteps,
   pipelineEarlierFoldKey,
@@ -741,15 +742,17 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   } = input;
   const preciseNow = new Date().toISOString();
   const stuckClocks = new Map<EnvironmentId, PossiblyStuckClock | undefined>();
-  const isStuck = (thread: EnvironmentThreadShell) => {
-    if (!stuckClocks.has(thread.environmentId)) {
+  const stuckClockOf = (environmentId: EnvironmentId) => {
+    if (!stuckClocks.has(environmentId)) {
       stuckClocks.set(
-        thread.environmentId,
-        resolveSidebarStuckClock(serverConfigs.get(thread.environmentId), input.nowMinute),
+        environmentId,
+        resolveSidebarStuckClock(serverConfigs.get(environmentId), input.nowMinute),
       );
     }
-    return isShellPossiblyStuck(thread, stuckClocks.get(thread.environmentId));
+    return stuckClocks.get(environmentId);
   };
+  const waitOf = (shell: EnvironmentThreadShell) =>
+    threadBackgroundWait(shell, stuckClockOf(shell.environmentId));
   const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, delegatedUnderParent);
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
@@ -761,7 +764,12 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   // A pipeline counts as working while any of its steps does, so it stays on the shelf.
   const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) =>
     // A thread whose background work outlived the threshold leaves the inbox for its own shelf.
-    isStuck(thread) || (pipelineStepsOf.get(threadShellKey(thread)) ?? []).some(isStuck)
+    isShellPossiblyStuck(thread, stuckClockOf(thread.environmentId)) ||
+    pipelineCurrentStepIsStuck(
+      livePipelineRunOf(pipelineLiveRuns, thread),
+      pipelineStepsOf.get(threadShellKey(thread)) ?? [],
+      waitOf,
+    )
       ? stuck
       : workingShelfEnabled &&
           isPipelineGroupActive(
@@ -880,6 +888,8 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   return {
     pipelineStepsByParentKey,
     pipelineParentKeyByStepKey,
+    stuckClockOf,
+    waitOf,
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
         ? sortedPinned
@@ -1493,8 +1503,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
 
-  const nowMinute = useNowMinute();
   const {
+    stuckClockOf,
+    waitOf,
     workingShelfEnabled,
     pinnedThreads,
     draggableThreadKeys,
@@ -3626,10 +3637,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             thread: row,
                             possiblyStuck: isShellPossiblyStuck(
                               row,
-                              resolveSidebarStuckClock(
-                                serverConfigs.get(row.environmentId),
-                                nowMinute,
-                              ),
+                              stuckClockOf(row.environmentId),
                             ),
                             // Steps follow their parent's section, so they offer no settle, snooze or pin of their own.
                             settlementSupported: !isStep && serverConfigs.has(row.environmentId),
@@ -3703,14 +3711,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         };
                         const steps = pipelineStepsByParentKey.get(threadKey);
                         const liveRun = livePipelineRunOf(pipelineLiveRuns, thread);
-                        const waitOf = (shell: EnvironmentThreadShell) =>
-                          threadBackgroundWait(
-                            shell,
-                            resolveSidebarStuckClock(
-                              serverConfigs.get(shell.environmentId),
-                              nowMinute,
-                            ),
-                          );
                         const isPipelineParent =
                           thread.pipeline != null && thread.pipeline.stepId === null;
                         const attention = isPipelineParent

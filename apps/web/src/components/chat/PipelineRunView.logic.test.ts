@@ -53,7 +53,7 @@ describe("pipelineStepStatusDisplay", () => {
     expect(
       pipelineStepStatusDisplay({ status: "running" }, "working", true, "possibly_stuck"),
     ).toEqual({
-      label: "May be stuck",
+      label: "Possibly stuck",
       tone: "attention",
     });
     expect(pipelineStepStatusDisplay({ status: "running" }, null, true, null).tone).toBe(

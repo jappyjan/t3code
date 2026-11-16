@@ -303,7 +303,7 @@ describe("missing handoff", () => {
     expect(pipelineRunStatusLabel(run, false, "possibly_stuck", 2)).toBe(
       "Implement may be stuck: background work has run for over 2 h",
     );
-    expect(pipelineRunStateLabel(run, "possibly_stuck")).toBe("May be stuck");
+    expect(pipelineRunStateLabel(run, "possibly_stuck")).toBe("Possibly stuck");
     expect(pipelineRunNeedsAttention(run, "background_work")).toBe(false);
     expect(pipelineRunNeedsAttention(run, "possibly_stuck")).toBe(true);
     expect(

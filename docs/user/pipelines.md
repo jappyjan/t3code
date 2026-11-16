@@ -94,8 +94,8 @@ run's current step, and when the pull request merges; the merge wakes the step, 
 merges through a queue needs no one to confirm it.
 
 If background work, other than a pull request watch, keeps running for hours after the step's last
-turn ended, the step shows **may be stuck** and the run asks for your attention. See
-[Mark threads as possibly stuck](thread-sidebar.md#find-threads-that-may-be-stuck).
+turn ended, the step shows **Possibly stuck** and the run asks for your attention. See
+[Find threads that may be stuck](thread-sidebar.md#find-threads-that-may-be-stuck).
 
 If a step's turn fails or you stop it, the run pauses and the step shows **Failed** or **Stopped**.
 Fix the cause and ask the agent to go on in the step's thread; when it hands off, the run continues

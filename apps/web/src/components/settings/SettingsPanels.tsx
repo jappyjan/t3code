@@ -1933,6 +1933,34 @@ export function ThreadsSettingsPanel() {
         />
       </SettingsSection>
 
+      <SettingsSection id="possibly-stuck" title="Possibly stuck">
+        <SettingsRow
+          serverScoped
+          settingKeys={["possiblyStuckAfterHours"]}
+          {...searchableSetting("possibly-stuck-after-hours")}
+          description="A thread whose last turn ended while background work kept running for this many hours is listed under Possibly stuck. Pull request watches never count. 0 turns it off."
+          resetAction={
+            settings.possiblyStuckAfterHours !==
+            DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours ? (
+              <SettingResetButton
+                label="possibly stuck"
+                onClick={() =>
+                  updateSettings({
+                    possiblyStuckAfterHours: DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <PossiblyStuckHoursInput
+              value={settings.possiblyStuckAfterHours}
+              onCommit={(hours) => updateSettings({ possiblyStuckAfterHours: hours })}
+            />
+          }
+        />
+      </SettingsSection>
+
       {hasServerTargets ? (
         <SettingsSection id="auto-settle" title="Auto-settle">
           <SettingsRow
@@ -2013,31 +2041,6 @@ export function ThreadsSettingsPanel() {
               }
             />
           ) : null}
-          <SettingsRow
-            serverScoped
-            settingKeys={["possiblyStuckAfterHours"]}
-            {...searchableSetting("possibly-stuck-after-hours")}
-            description="A thread whose last turn ended while background work kept running for this many hours is listed under Possibly stuck. Pull request watches never count. 0 turns it off."
-            resetAction={
-              settings.possiblyStuckAfterHours !==
-              DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours ? (
-                <SettingResetButton
-                  label="possibly stuck"
-                  onClick={() =>
-                    updateSettings({
-                      possiblyStuckAfterHours: DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <PossiblyStuckHoursInput
-                value={settings.possiblyStuckAfterHours}
-                onCommit={(hours) => updateSettings({ possiblyStuckAfterHours: hours })}
-              />
-            }
-          />
           {settings.sidebarAutoSettleAfterDays !== null && supportsAutoSettlementScope ? (
             <SettingsRow
               serverScoped

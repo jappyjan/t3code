@@ -1,4 +1,4 @@
-import { deadlineStore, minuteTick } from "@t3tools/client-runtime/clock";
+import { deadlineStore, minuteTick, minuteTickToEpochMs } from "@t3tools/client-runtime/clock";
 import { useState, useSyncExternalStore } from "react";
 
 /** Re-renders once when `deadlineMs` (epoch ms) is reached; `null` never passes. */
@@ -20,14 +20,6 @@ export function useNowAfter(deadlineMs: number | null): number {
   // the first reading. React discards this render and re-runs with the update.
   if (snapshot.deadlineMs !== deadlineMs || snapshot.passed !== passed) setSnapshot(readNow);
   return snapshot.nowMs;
-}
-
-/**
- * `minuteTick`'s UTC `YYYY-MM-DDTHH:mm` as epoch ms. The snapshot carries no
- * offset, and `Date.parse` reads offset-less date-times as local time.
- */
-export function minuteTickToEpochMs(minute: string): number {
-  return Date.parse(`${minute}:00Z`);
 }
 
 /** Epoch ms floored to the minute, advancing each wall-clock minute. */
