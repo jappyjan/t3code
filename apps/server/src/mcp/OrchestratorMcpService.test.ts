@@ -7095,7 +7095,36 @@ describe("OrchestratorMcpService pipelines", () => {
           steps: runningStep(1, "thread:busy-step"),
         }),
         run({ id: PipelineRunId.make("pipeline-run:handoff"), pauseReason: "awaiting_handoff" }),
+        run({
+          id: PipelineRunId.make("pipeline-run:background"),
+          pauseReason: "awaiting_handoff",
+          steps: runningStep(1, "thread:background-step"),
+        }),
+        run({
+          id: PipelineRunId.make("pipeline-run:stuck"),
+          pauseReason: "awaiting_handoff",
+          steps: runningStep(1, "thread:stuck-step"),
+        }),
+        run({
+          id: PipelineRunId.make("pipeline-run:finished-work"),
+          pauseReason: "awaiting_handoff",
+          steps: runningStep(1, "thread:finished-step"),
+        }),
+        run({
+          id: PipelineRunId.make("pipeline-run:waking"),
+          pauseReason: "awaiting_handoff",
+          steps: runningStep(1, "thread:waking-step"),
+        }),
       ];
+      // A step thread whose turn ended with work still running; the clock below sits 3 hours in.
+      const endedWithWork = (id: string, endedAtMs: number, taskId = "command:dev-server") => ({
+        ...liveThreadShell(ThreadId.make(id), { activeRunId: null }),
+        status: "completed" as const,
+        latestRunCompletedAt: DateTime.makeUnsafe(endedAtMs),
+        pendingBackgroundTasks: [{ taskId, kind: "command" as const }],
+      });
+      const hours = (count: number) => count * 3_600_000;
+      yield* TestClock.adjust(Duration.hours(3));
       const asking = {
         ...liveThreadShell(ThreadId.make("thread:asking-step")),
         pendingRuntimeRequest: {
@@ -7106,13 +7135,27 @@ describe("OrchestratorMcpService pipelines", () => {
       };
       const h = harness(
         { runtimeMode: "full-access", interactionMode: "default" },
-        { runs, shells: [asking, liveThreadShell(ThreadId.make("thread:busy-step"))] },
+        {
+          runs,
+          shells: [
+            asking,
+            liveThreadShell(ThreadId.make("thread:busy-step")),
+            endedWithWork("thread:background-step", hours(2.5)),
+            endedWithWork("thread:stuck-step", 0),
+            {
+              ...endedWithWork("thread:finished-step", 0),
+              pendingBackgroundTasks: [],
+            },
+            // Work that ended woke the agent; the run stays paused until that turn hands off.
+            liveThreadShell(ThreadId.make("thread:waking-step")),
+          ],
+        },
       );
 
       const waiting = yield* withService(h, (service) =>
         service.listPipelineRuns(h.scope, { needsAttention: true, limit: 1 }),
       );
-      assert.equal(waiting.total, 2);
+      assert.equal(waiting.total, 4);
       assert.equal(waiting.nextCursor, 1);
       assert.deepEqual<unknown>(
         waiting.runs.map((entry) => [entry.runId, entry.attention]),
@@ -7123,15 +7166,28 @@ describe("OrchestratorMcpService pipelines", () => {
       );
       assert.deepEqual<unknown>(
         rest.runs.map((entry) => [entry.runId, entry.attention]),
-        [["pipeline-run:handoff", "awaiting_handoff"]],
+        [
+          ["pipeline-run:handoff", "awaiting_handoff"],
+          ["pipeline-run:stuck", "possibly_stuck"],
+          ["pipeline-run:finished-work", "awaiting_handoff"],
+        ],
       );
       assert.equal(rest.nextCursor, null);
 
       const all = yield* withService(h, (service) => service.listPipelineRuns(h.scope, {}));
-      assert.equal(all.total, 4);
+      assert.equal(all.total, 8);
       assert.deepEqual(
         all.runs.map((entry) => entry.attention),
-        [null, "pending_request", null, "awaiting_handoff"],
+        [
+          null,
+          "pending_request",
+          null,
+          "awaiting_handoff",
+          null,
+          "possibly_stuck",
+          "awaiting_handoff",
+          null,
+        ],
       );
       assert.isString(all.runs[1]?.steps[1]?.link);
       assert.notProperty(all.runs[0]?.steps[0], "outputPreview");

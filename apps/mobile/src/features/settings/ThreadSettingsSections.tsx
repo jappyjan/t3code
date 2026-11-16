@@ -8,6 +8,7 @@ import {
 } from "@t3tools/contracts";
 import { useEnvironmentsWithScope } from "../../state/session";
 import { AutoSettleDaysField } from "./components/AutoSettleDaysField";
+import { PossiblyStuckHoursField } from "./components/PossiblyStuckHoursField";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -15,7 +16,7 @@ import type { ComponentProps } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
+import { DEFAULT_POSSIBLY_STUCK_AFTER_HOURS, DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import { supportsSharedSettingsSync } from "@t3tools/client-runtime/state/shared-settings";
 import { AppText as Text } from "../../components/ui/AppText";
 import { useEnvironments } from "../../state/environments";
@@ -111,6 +112,7 @@ export function AutoSettleSettingsRows(props: {
     patch: Partial<AutoSettleSettings> & {
       autoResumeLimitedThreads?: boolean;
       snoozeLimitedThreads?: boolean;
+      possiblyStuckAfterHours?: number;
     },
   ) => props.write(patch);
 
@@ -157,6 +159,28 @@ export function AutoSettleSettingsRows(props: {
             disabled={disabledFor("snoozeLimitedThreads")}
             onValueChange={(value) => writeToAll({ snoozeLimitedThreads: value })}
           />
+        </SettingsSection>
+      ) : null}
+      {!projectSelected ? (
+        <SettingsSection title="Possibly stuck">
+          <View className="flex-row items-center gap-4 px-4 py-4 android:min-h-14 android:py-3">
+            <View className="flex-1 gap-1">
+              <Text className="text-foreground text-lg android:text-base">
+                Mark threads as possibly stuck after
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                A thread whose last turn ended while background work kept running this long is
+                listed under Possibly stuck. Pull request watches never count. 0 turns it off.
+              </Text>
+            </View>
+            <PossiblyStuckHoursField
+              value={
+                referenceSettings.possiblyStuckAfterHours ?? DEFAULT_POSSIBLY_STUCK_AFTER_HOURS
+              }
+              disabled={disabledFor("possiblyStuckAfterHours")}
+              onValueChange={(value) => writeToAll({ possiblyStuckAfterHours: value })}
+            />
+          </View>
         </SettingsSection>
       ) : null}
       <SettingsSection title={gt("Auto-settle")}>

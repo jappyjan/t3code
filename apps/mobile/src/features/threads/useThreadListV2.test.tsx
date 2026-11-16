@@ -17,6 +17,10 @@ vi.mock("../../state/threads", () => ({
   threadFamilies: { mountRows: () => () => {} },
 }));
 vi.mock("../../state/atom-registry", () => ({ appAtomRegistry: undefined }));
+vi.mock("../../state/presentation", async () => {
+  const { Atom } = await import("effect/reactivity");
+  return { environmentPresentations: { serverConfigsAtom: Atom.make(new Map()) } };
+});
 vi.mock("../../state/server", async () => {
   const { Atom } = await import("effect/reactivity");
   const noPipelineRuns = Atom.make(undefined);
@@ -62,6 +66,7 @@ it("reuses a large thread list across tab renders and updates when its inputs ch
     shelfPreferencesLoaded: true,
     workingShelfEnabled: true,
     workingShelfExpanded: false,
+    stuckShelfExpanded: false,
     snoozedShelfExpanded: false,
     settledShelfExpanded: true,
     pipelineEnvironmentIds: environmentIds,

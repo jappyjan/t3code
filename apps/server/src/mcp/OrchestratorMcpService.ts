@@ -105,7 +105,10 @@ import {
   SECRET_REQUEST_UNSAVED_NOTE,
 } from "@t3tools/contracts";
 import { getProviderOptionCurrentValue, withLegacyUltracodeEffort } from "@t3tools/shared/model";
-import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import {
+  backgroundWorkHoldsCompletion,
+  classifyBackgroundWait,
+} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
@@ -2780,14 +2783,37 @@ const make = Effect.gen(function* () {
   const runAttention = Effect.fn("OrchestratorMcpService.runAttention")(function* (
     run: PipelineRun,
   ) {
-    if (run.status === "paused") return run.pauseReason ?? "awaiting_continue";
-    if (run.status !== "running") return null;
+    const pauseReason = run.status === "paused" ? (run.pauseReason ?? "awaiting_continue") : null;
+    if (run.status !== "running" && run.status !== "paused") return null;
+    if (pauseReason !== null && pauseReason !== "awaiting_handoff") return pauseReason;
     const threadId = run.steps[run.currentStepIndex]?.childThreadId ?? null;
-    if (threadId === null) return null;
+    if (threadId === null) return pauseReason;
     const shell = yield* threadManagement
       .getThreadShell(threadId)
       .pipe(Effect.mapError(threadManagementFailure));
-    return shell?.pendingRuntimeRequest == null ? null : ("pending_request" as const);
+    // A turn running again (a wake turn or the user's reply) is busy, as clients show it.
+    if (pauseReason === null || shell?.activeRunId != null) {
+      return shell?.pendingRuntimeRequest == null ? null : ("pending_request" as const);
+    }
+    if (shell === null) return pauseReason;
+    const settings = yield* serverSettings.getSettings.pipe(
+      Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
+    );
+    const nowMs = yield* Clock.currentTimeMillis;
+    // A step waiting on its own background work is not waiting on the user, until it looks stuck.
+    const wait = classifyBackgroundWait(
+      {
+        activeRunId: shell.activeRunId,
+        archived: shell.archivedAt !== null,
+        pendingBackgroundTasks: shell.pendingBackgroundTasks,
+        lastRunEndedAtMs:
+          shell.latestRunCompletedAt == null
+            ? null
+            : DateTime.toEpochMillis(shell.latestRunCompletedAt),
+      },
+      { nowMs, afterHours: settings.possiblyStuckAfterHours },
+    );
+    return wait === null ? pauseReason : wait === "possibly_stuck" ? wait : null;
   });
 
   const resolvePipeline = Effect.fn("OrchestratorMcpService.resolvePipeline")(function* (

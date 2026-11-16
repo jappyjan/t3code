@@ -97,6 +97,13 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
 const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 7;
+export const MAX_POSSIBLY_STUCK_AFTER_HOURS = 168;
+/** Whole hours; 0 turns the "Possibly stuck" indicator off. */
+export const PossiblyStuckAfterHours = Schema.Int.check(
+  Schema.isBetween({ minimum: 0, maximum: MAX_POSSIBLY_STUCK_AFTER_HOURS }),
+);
+export type PossiblyStuckAfterHours = typeof PossiblyStuckAfterHours.Type;
+export const DEFAULT_POSSIBLY_STUCK_AFTER_HOURS: PossiblyStuckAfterHours = 2;
 
 export const MAX_SNOOZE_PRESET_MINUTES = 30 * 24 * 60;
 export const MAX_SNOOZE_PRESETS = 8;
@@ -1509,6 +1516,9 @@ export const ServerSettings = Schema.Struct({
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  possiblyStuckAfterHours: PossiblyStuckAfterHours.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_POSSIBLY_STUCK_AFTER_HOURS)),
+  ),
   snoozePresets: SnoozePresetSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SNOOZE_PRESETS)),
   ),
@@ -1968,6 +1978,7 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
+  possiblyStuckAfterHours: Schema.optionalKey(PossiblyStuckAfterHours),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozePresets: Schema.optionalKey(SnoozePresetSettings),
   hiddenThreadTags: Schema.optionalKey(Schema.Array(Schema.String)),

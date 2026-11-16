@@ -43,6 +43,7 @@ import {
   resolveThreadListV2SnoozePresets,
   resolveThreadListV2RowStatus,
   resolveThreadListV2Status,
+  possiblyStuckThreadKeys,
   resolveThreadListV2WokeAt,
   threadListV2ListItemsAreEqual,
   threadListV2RowAccessibilityLabel,
@@ -701,6 +702,45 @@ describe("buildThreadListV2Items", () => {
     // A live run names its steps; without one the title is parsed.
     expect(paused.items.map((item) => item.stepLabel)).toEqual([undefined, "Plan"]);
     expect(build(new Set(["one"])).items[1]?.stepLabel).toBe("one");
+  });
+
+  it("lists a thread whose background work outlived the threshold on the Possibly stuck shelf", () => {
+    const withWork = (id: string, endedAt: string, taskId = "dev-server") =>
+      makeThread({
+        id: ThreadId.make(id),
+        title: id,
+        runtime: null,
+        latestRun: { completedAt: endedAt } as never,
+        pendingBackgroundTasks: [{ taskId, kind: "command" }],
+      });
+    const threads = [
+      withWork("stale", "2026-06-01T20:00:00.000Z"),
+      withWork("fresh", "2026-06-01T23:00:00.000Z"),
+      withWork("watching", "2026-06-01T20:00:00.000Z", "pull-request-watch:github.com/o/r#1"),
+    ];
+    const build = (afterHours: number) =>
+      buildThreadListV2Items({
+        threads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        stuckThreadKeys: new Set(
+          possiblyStuckThreadKeys(threads, () => ({ nowMs: Date.parse(NOW), afterHours })),
+        ),
+        stuckShelfExpanded: true,
+      });
+
+    const layout = build(2);
+    expect(layout.stuckCount).toBe(1);
+    expect(layout.items.map((item) => [item.thread.id, item.possiblyStuck === true])).toEqual([
+      ["fresh", false],
+      ["watching", false],
+      ["stale", true],
+    ]);
+    expect(layout.stuckShelfHeaderIndex).toBe(2);
+    expect(resolveThreadListV2RowStatus(layout.items[2]!.thread, true)).toBe("stuck");
+    // 0 turns the indicator off.
+    expect(build(0).stuckCount).toBe(0);
   });
 
   it("moves a settled pinned thread into the settled shelf — parity with web (#7969)", () => {

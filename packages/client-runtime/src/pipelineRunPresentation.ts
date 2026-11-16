@@ -1,6 +1,10 @@
 import type { PipelineRun, PipelineRunStep, ThreadId } from "@t3tools/contracts";
-import { pullRequestWatchHoldsThread } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
-import { pipelineAttentionTargets, type PipelineNestable } from "./state/pipelineNesting.ts";
+import {
+  pipelineAttentionTargets,
+  type PipelineNestable,
+  type PipelineStepWait,
+  type PipelineStepWaitOf,
+} from "./state/pipelineNesting.ts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput } from "@t3tools/shared/toolOutput";
 
@@ -76,29 +80,39 @@ export function pipelineStepAwaitsHandoff(
   );
 }
 
-/** Whether a thread waits on a pull request watch, by the rule the sidebar's busy state uses. */
-export function threadWatchesPullRequest(
-  shell: {
-    readonly pullRequests?: ReadonlyArray<Parameters<typeof pullRequestWatchHoldsThread>[0]>;
-  } | null,
-): boolean {
-  return shell?.pullRequests?.some(pullRequestWatchHoldsThread) ?? false;
-}
-
 /** The thread of the current step when the run waits for its handoff, else null. */
 export function pipelineAwaitingHandoffThreadId(run: PipelineRun | null) {
   if (run === null || !pipelineStepAwaitsHandoff(run, run.currentStepIndex)) return null;
   return run.steps[run.currentStepIndex]?.childThreadId ?? null;
 }
 
+/** A step row's status while its thread waits after ending its turn without a handoff. */
+export function pipelineStepWaitLabel(wait: PipelineStepWait): string {
+  switch (wait) {
+    case "pull_request":
+      return "Waiting on pull request";
+    case "background_work":
+      return "Waiting on background work";
+    case "possibly_stuck":
+      return "Possibly stuck";
+  }
+}
+
+/** How long a step may wait on background work before the label calls it stuck. */
+function stuckAfterText(hours: number | undefined): string {
+  return hours === undefined ? "a long time" : `over ${hours} h`;
+}
+
 /**
  * `feedingActive`: the step before a still-pending current step is still working.
- * `waitingOnPullRequest`: the current step's thread watches a pull request.
+ * `wait`: what the current step's thread is waiting on after its turn ended without a handoff.
+ * `stuckAfterHours`: the threshold behind a `possibly_stuck` wait.
  */
 export function pipelineRunStatusLabel(
   run: PipelineRun,
   feedingActive = false,
-  waitingOnPullRequest = false,
+  wait: PipelineStepWait | null = null,
+  stuckAfterHours?: number,
 ): string {
   const name = stepName(run, run.currentStepIndex);
   switch (run.status) {
@@ -112,9 +126,16 @@ export function pipelineRunStatusLabel(
         case "awaiting_continue":
           return `Paused before ${name}`;
         case "awaiting_handoff":
-          return waitingOnPullRequest
-            ? `${name} is waiting on a pull request`
-            : `${name} ended without handing off`;
+          switch (wait) {
+            case "pull_request":
+              return `${name} is waiting on a pull request`;
+            case "background_work":
+              return `${name} is waiting on background work`;
+            case "possibly_stuck":
+              return `${name} may be stuck: background work has run for ${stuckAfterText(stuckAfterHours)}`;
+            default:
+              return `${name} ended without handing off`;
+          }
         case "step_failed":
           return `Step ${name} failed`;
         case "step_stopped":
@@ -134,7 +155,7 @@ export function pipelineRunStatusLabel(
 /** The run's state without a step name, for headers that already show the current step. */
 export function pipelineRunStateLabel(
   run: Pick<PipelineRun, "status" | "pauseReason">,
-  waitingOnPullRequest = false,
+  wait: PipelineStepWait | null = null,
 ): string {
   switch (run.status) {
     case "running":
@@ -142,7 +163,13 @@ export function pipelineRunStateLabel(
     case "paused":
       switch (run.pauseReason) {
         case "awaiting_handoff":
-          return waitingOnPullRequest ? "Waiting on pull request" : "No handoff";
+          return wait === "pull_request"
+            ? "Waiting on pull request"
+            : wait === "background_work"
+              ? "Background work"
+              : wait === "possibly_stuck"
+                ? "Possibly stuck"
+                : "No handoff";
         case "step_failed":
           return "Failed";
         case "step_stopped":
@@ -358,13 +385,16 @@ export function createPipelineEscalationWatcher() {
   };
 }
 
-/** A paused run's step is not stuck when its thread is watching a pull request. */
+/** A paused run's step waits on its own work, not the user, until that work looks stuck. */
 export function pipelineRunNeedsAttention(
   run: Pick<PipelineRun, "status" | "pauseReason">,
-  waitingOnPullRequest: boolean,
+  wait: PipelineStepWait | null,
 ): boolean {
   if (run.status !== "paused") return false;
-  return !(run.pauseReason === "awaiting_handoff" && waitingOnPullRequest);
+  return !(
+    run.pauseReason === "awaiting_handoff" &&
+    (wait === "pull_request" || wait === "background_work")
+  );
 }
 
 export interface PipelineNeedsYou {
@@ -384,6 +414,8 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
   run: PipelineRun,
   steps: readonly T[],
   threadStatus: (step: T) => string,
+  waitOf?: PipelineStepWaitOf<T>,
+  stuckAfterHours?: number,
 ): PipelineNeedsYou | null {
   const { target } = pipelineAttentionTargets(
     {
@@ -399,6 +431,7 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
     },
     steps,
     threadStatus,
+    waitOf,
   );
   if (target === null) {
     if (run.status === "paused" && run.pauseReason === "awaiting_continue") {
@@ -428,7 +461,9 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
         : own === "request"
           ? "is waiting for your response"
           : pausedHere && run.pauseReason === "awaiting_handoff"
-            ? "ended without handing off"
+            ? waitOf?.(target) === "possibly_stuck"
+              ? `may be stuck: background work has run for ${stuckAfterText(stuckAfterHours)}`
+              : "ended without handing off"
             : pausedHere && run.pauseReason === "step_failed"
               ? "failed"
               : pausedHere && run.pauseReason === "step_stopped"

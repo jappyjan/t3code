@@ -11,6 +11,9 @@ import {
   type PipelineNestable,
   type PipelineProgressStatus,
   type PipelineStepStatus,
+  possiblyStuckClock,
+  type PipelineStepWaitOf,
+  type PossiblyStuckClock,
 } from "@t3tools/client-runtime/state/pipeline-nesting";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
@@ -56,7 +59,12 @@ import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
 import { THREAD_STATUS_TEXT } from "@t3tools/client-runtime/state/thread-activity-announcement";
 import { observeIntersection } from "../lib/observeIntersection";
-import { deadlineAfter, deadlineStore, type ClockStore } from "@t3tools/client-runtime/clock";
+import {
+  deadlineAfter,
+  deadlineStore,
+  minuteTickToEpochMs,
+  type ClockStore,
+} from "@t3tools/client-runtime/clock";
 import { useDeadlinePassed } from "../hooks/useDeadline";
 import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
 import { isElectron } from "../env";
@@ -210,7 +218,15 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 
 // Snoozed rows cannot accept drops without a wake time. Working rows only drag out as chat context.
 
-export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
+/** The staleness inputs for an environment; undefined until its config loads, so nothing flashes stuck. */
+export function resolveSidebarStuckClock(
+  config: EnvironmentServerConfig | undefined,
+  nowMinute: string,
+): PossiblyStuckClock | undefined {
+  return possiblyStuckClock(config?.settings, minuteTickToEpochMs(nowMinute));
+}
+
+export type SidebarSection = "pinned" | "active" | "working" | "stuck" | "snoozed" | "settled";
 
 export function resolveSidebarThreadSection(input: {
   readonly snoozed: boolean;
@@ -231,6 +247,7 @@ export type SidebarListMarker =
   | "settled-placeholder"
   | "pinned-divider"
   | "working-header"
+  | "stuck-header"
   | "snoozed-header"
   | "settled-header";
 
@@ -253,6 +270,7 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
     if (item.kind !== "marker") continue;
     if (item.marker === "pinned-divider") section = "active";
     else if (item.marker === "working-header") section = "working";
+    else if (item.marker === "stuck-header") section = "stuck";
     else if (item.marker === "snoozed-header") section = "snoozed";
     else if (item.marker === "settled-header") section = "settled";
   }
@@ -276,7 +294,7 @@ export function resolveSidebarDropTarget(
   const moved = items.filter((_, index) => index !== activeIndex);
   moved.splice(overIndex, 0, items[activeIndex]!);
   const section = sectionAtSidebarSlot(moved, overIndex);
-  if (section === "working" || section === "snoozed") return null;
+  if (section === "working" || section === "stuck" || section === "snoozed") return null;
   const pinnedOrder: string[] = [];
   const activeOrder: string[] = [];
   let currentSection: SidebarSection = "pinned";
@@ -285,6 +303,7 @@ export function resolveSidebarDropTarget(
       if (item.marker === "pinned-divider") currentSection = "active";
       else if (
         item.marker === "working-header" ||
+        item.marker === "stuck-header" ||
         item.marker === "snoozed-header" ||
         item.marker === "settled-header"
       )
@@ -324,7 +343,9 @@ export function resolveSidebarDropVerb(
   from: SidebarSection,
   to: SidebarSection | null,
 ): SidebarDropVerb | null {
-  if (to === null || to === from || to === "working" || to === "snoozed") return null;
+  if (to === null || to === from || to === "working" || to === "stuck" || to === "snoozed") {
+    return null;
+  }
   if (to === "pinned") return "pin";
   if (to === "settled") return "settle";
   if (from === "pinned") return "unpin";
@@ -409,7 +430,7 @@ export function planSidebarThreadDrop(input: {
     activeKeysById,
     activeReorderableKeys,
   } = input;
-  if (activeSection === "working") return { kind: "none" };
+  if (activeSection === "working" || activeSection === "stuck") return { kind: "none" };
   if (input.supportsSettlement === false && (target.section === "settled" || activeSettled)) {
     return { kind: "none" };
   }
@@ -939,6 +960,7 @@ export type SidebarThreadStatus =
   | "preparing"
   | "working"
   | "waiting"
+  | "stuck"
   | "failed"
   | "limited"
   | "ready";
@@ -1017,8 +1039,10 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
 /** Sidebar row status: a failure the user has already opened settles to ready, like Done. */
 export function resolveSidebarRowStatus(
   thread: ThreadStatusInput & SidebarThreadStatusInput,
+  possiblyStuck = false,
 ): SidebarThreadStatus {
   const status = resolveSidebarThreadStatus(thread);
+  if (possiblyStuck && (status === "ready" || status === "waiting")) return "stuck";
   // A runtime failure without a failed run has nothing to date it, so it stays.
   if (status !== "failed" || thread.latestRun?.status !== "failed") return status;
   return hasUnseenRunFailure(thread) ? status : "ready";
@@ -1047,18 +1071,21 @@ export function resolveWindowTitleThreadStatus(
 }
 
 /** What a pipeline's parent row shows for its steps and live run; see `mergePipelineParentStatus`. */
-export function resolveSidebarPipelineStepStatus(
-  steps: ReadonlyArray<SidebarThreadStatusInput & PipelineNestable>,
-  run?: Pick<PipelineRunSummary, "status" | "currentStepIndex" | "steps"> | null,
+export function resolveSidebarPipelineStepStatus<
+  T extends SidebarThreadStatusInput & PipelineNestable,
+>(
+  steps: ReadonlyArray<T>,
+  run?: Pick<PipelineRunSummary, "status" | "currentStepIndex" | "steps" | "pauseReason"> | null,
+  waitOf?: PipelineStepWaitOf<T>,
 ): PipelineStepStatus | null {
-  return aggregatePipelineStepStatus(steps, resolveSidebarThreadStatus, run);
+  return aggregatePipelineStepStatus(steps, resolveSidebarThreadStatus, run, waitOf);
 }
 
 /** Which of a pipeline's step threads need the user, and the one its parent's attention badge opens. */
 export function resolveSidebarPipelineAttention<
   T extends SidebarThreadStatusInput & PipelineNestable & { readonly title: string },
->(run: PipelineRunSummary | undefined, steps: readonly T[]) {
-  return pipelineAttentionTargets(run, steps, resolveSidebarThreadStatus);
+>(run: PipelineRunSummary | undefined, steps: readonly T[], waitOf?: PipelineStepWaitOf<T>) {
+  return pipelineAttentionTargets(run, steps, resolveSidebarThreadStatus, waitOf);
 }
 
 /** One segment of a pipeline parent's progress bar, flat so row props compare by value. */
@@ -1076,8 +1103,9 @@ export function resolveSidebarPipelineProgress<
 >(
   run: PipelineRunSummary | undefined,
   steps: readonly T[],
+  waitOf?: PipelineStepWaitOf<T>,
 ): ReadonlyArray<SidebarPipelineProgressSegment> | undefined {
-  const segments = pipelineProgressSegments(run, steps, resolveSidebarThreadStatus);
+  const segments = pipelineProgressSegments(run, steps, resolveSidebarThreadStatus, waitOf);
   if (segments.length === 0) return undefined;
   return segments.map((segment) => ({
     stepId: segment.stepId,
@@ -1094,7 +1122,7 @@ export function resolveSidebarPipelineProgress<
 export function resolveSidebarFolderDot(
   threads: ReadonlyArray<ThreadStatusInput & SidebarThreadStatusInput>,
 ): "attention" | "failed" | "unread" | "working" | null {
-  const statuses = new Set(threads.map(resolveSidebarRowStatus));
+  const statuses = new Set(threads.map((thread) => resolveSidebarRowStatus(thread)));
   if (
     statuses.has("input") ||
     statuses.has("approval") ||

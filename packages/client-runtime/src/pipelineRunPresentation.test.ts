@@ -20,7 +20,6 @@ import {
   pipelineStepPosition,
   pipelineRunNeedsAttention,
   pipelineRunNeedsYou,
-  threadWatchesPullRequest,
 } from "./pipelineRunPresentation.ts";
 
 const NAMES = ["Plan", "Implement", "Review"] as const;
@@ -290,6 +289,65 @@ describe("missing handoff", () => {
     ]);
   });
 
+  it("reads a step waiting on background work, or stuck on it, by its wait", () => {
+    const run = makeRun({
+      status: "paused",
+      pauseReason: "awaiting_handoff",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "running", "pending"],
+    });
+    expect(pipelineRunStatusLabel(run, false, "background_work")).toBe(
+      "Implement is waiting on background work",
+    );
+    expect(pipelineRunStateLabel(run, "background_work")).toBe("Background work");
+    expect(pipelineRunStatusLabel(run, false, "possibly_stuck", 2)).toBe(
+      "Implement may be stuck: background work has run for over 2 h",
+    );
+    expect(pipelineRunStateLabel(run, "possibly_stuck")).toBe("Possibly stuck");
+    expect(pipelineRunNeedsAttention(run, "background_work")).toBe(false);
+    expect(pipelineRunNeedsAttention(run, "possibly_stuck")).toBe(true);
+    expect(
+      pipelineRunNeedsAttention({ ...run, pauseReason: "step_failed" }, "background_work"),
+    ).toBe(true);
+  });
+
+  it("leads the overview with the step's wait instead of 'ended without handing off'", () => {
+    const run = makeRun({
+      status: "paused",
+      pauseReason: "awaiting_handoff",
+      currentStepIndex: 1,
+      stepStatuses: ["completed", "running", "pending"],
+    });
+    const steps = [
+      {
+        id: ThreadId.make("child-1"),
+        environmentId: "env" as never,
+        createdAt: "2026-01-01T00:00:00Z",
+        title: "Pipeline · Implement",
+        pipeline: { runId: "r", stepId: "step-1" },
+      },
+    ];
+    const withChild: PipelineRun = {
+      ...run,
+      steps: run.steps.map((entry) =>
+        entry.index === 1 ? { ...entry, childThreadId: steps[0]!.id } : entry,
+      ),
+    };
+    const needsYou = (wait: "background_work" | "possibly_stuck" | null) =>
+      pipelineRunNeedsYou(
+        withChild,
+        steps,
+        () => "ready",
+        () => wait,
+        2,
+      )?.text ?? null;
+    expect(needsYou(null)).toBe("Implement ended without handing off");
+    expect(needsYou("background_work")).toBeNull();
+    expect(needsYou("possibly_stuck")).toBe(
+      "Implement may be stuck: background work has run for over 2 h",
+    );
+  });
+
   it("reads a step that watches its pull request as waiting, not as needing attention", () => {
     const run = makeRun({
       status: "paused",
@@ -297,21 +355,15 @@ describe("missing handoff", () => {
       currentStepIndex: 1,
       stepStatuses: ["completed", "running", "pending"],
     });
-    expect(pipelineRunStatusLabel(run, false, true)).toBe("Implement is waiting on a pull request");
-    expect(pipelineRunStateLabel(run, true)).toBe("Waiting on pull request");
-    expect(pipelineRunNeedsAttention(run, true)).toBe(false);
-    expect(pipelineRunNeedsAttention(run, false)).toBe(true);
-    expect(pipelineRunNeedsAttention({ ...run, pauseReason: "step_failed" }, true)).toBe(true);
-    const watch = { startedAt: "now" };
-    const link = { source: "agent" as const, snapshot: null };
-    expect(threadWatchesPullRequest({ pullRequests: [link, { ...link, watch }] })).toBe(true);
-    // A merged pull request's watch holds nothing, as the sidebar's busy state reads it.
-    expect(
-      threadWatchesPullRequest({
-        pullRequests: [{ ...link, watch, snapshot: { state: "merged" as const } }],
-      }),
-    ).toBe(false);
-    expect(threadWatchesPullRequest(null)).toBe(false);
+    expect(pipelineRunStatusLabel(run, false, "pull_request")).toBe(
+      "Implement is waiting on a pull request",
+    );
+    expect(pipelineRunStateLabel(run, "pull_request")).toBe("Waiting on pull request");
+    expect(pipelineRunNeedsAttention(run, "pull_request")).toBe(false);
+    expect(pipelineRunNeedsAttention(run, null)).toBe(true);
+    expect(pipelineRunNeedsAttention({ ...run, pauseReason: "step_failed" }, "pull_request")).toBe(
+      true,
+    );
   });
 });
 

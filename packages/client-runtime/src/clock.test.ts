@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   deadlineStore,
   observeServerTime,
+  minuteTickToEpochMs,
   recordServerClock,
   secondTick,
   toServerClock,
@@ -197,5 +198,21 @@ describe("server clock", () => {
     const unrecorded = EnvironmentId.make("unrecorded");
     observeServerTime(unrecorded, HOUR, 1_000);
     expect(toServerClock(unrecorded, 1_000)).toBe(1_000);
+  });
+});
+
+describe("minuteTickToEpochMs", () => {
+  // Forked test workers (the default pool) apply a changed TZ to later Date calls.
+  it("reads the minute tick as UTC whatever the local timezone", () => {
+    const zone = process.env.TZ;
+    try {
+      for (const tz of ["America/Los_Angeles", "Europe/Berlin", "UTC"]) {
+        process.env.TZ = tz;
+        expect(minuteTickToEpochMs("2026-10-26T02:14")).toBe(Date.UTC(2026, 9, 26, 2, 14));
+      }
+    } finally {
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
   });
 });

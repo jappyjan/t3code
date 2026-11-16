@@ -163,6 +163,12 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-foreground-muted",
     iconTintClassName: "accent-foreground-muted",
   },
+  stuck: {
+    label: "Possibly stuck",
+    icon: "exclamationmark.circle",
+    className: "text-warning-foreground",
+    iconTintClassName: "accent-warning-foreground",
+  },
   failed: {
     label: msg("Failed", { $context: "thread status" }),
     icon: "exclamationmark.circle",
@@ -447,6 +453,12 @@ const SHELF_COPY = {
     collapse: msg("Collapses the working threads."),
     expand: msg("Expands the working threads."),
   },
+  stuck: {
+    label: "Possibly stuck",
+    count: "{count, plural, one {{count} possibly stuck thread} other {{count} possibly stuck threads}}",
+    collapse: "Collapses the possibly stuck threads.",
+    expand: "Expands the possibly stuck threads.",
+  },
   snoozed: {
     label: msg("Snoozed", { $context: "thread list section" }),
     count: msg("{count, plural, one {{count} snoozed thread} other {{count} snoozed threads}}"),
@@ -488,6 +500,12 @@ export const ThreadListV2WorkingShelfHeader = memo(function ThreadListV2WorkingS
   props: ThreadListV2ShelfHeaderProps,
 ) {
   return <ThreadListV2ShelfHeader {...props} kind="working" />;
+});
+
+export const ThreadListV2StuckShelfHeader = memo(function ThreadListV2StuckShelfHeader(
+  props: ThreadListV2ShelfHeaderProps,
+) {
+  return <ThreadListV2ShelfHeader {...props} kind="stuck" />;
 });
 
 export const ThreadListV2SnoozedShelfHeader = memo(function ThreadListV2SnoozedShelfHeader(
@@ -865,6 +883,8 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
   readonly stepLabel?: string;
   /** On a step of a live run that will redo it: no unseen "Done". */
   readonly suppressUnseenDone?: boolean;
+  /** Background work outlived the user's threshold since the last turn ended. */
+  readonly possiblyStuck?: boolean;
   /** On an earlier attempt of a step: its number; the row is dimmed. */
   readonly earlierAttempt?: number;
   /** On a pipeline's parent: the step its attention badge opens; null opens the parent. */
@@ -999,7 +1019,7 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
 
   const rawStatus = resolveThreadListV2Status(thread);
   const status = mergePipelineParentStatus(
-    resolveThreadListV2RowStatus(thread),
+    resolveThreadListV2RowStatus(thread, props.possiblyStuck === true),
     props.stepStatus ?? null,
   );
   const isUnread =

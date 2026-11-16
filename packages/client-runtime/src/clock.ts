@@ -72,6 +72,14 @@ export const minuteTick: ClockStore<string> = makeTickStore(
   60_000,
 );
 
+/**
+ * `minuteTick`'s UTC `YYYY-MM-DDTHH:mm` as epoch ms. The snapshot carries no
+ * offset, and `Date.parse` reads offset-less date-times as local time.
+ */
+export function minuteTickToEpochMs(minute: string): number {
+  return Date.parse(`${minute}:00Z`);
+}
+
 // How far each environment's clock runs ahead of this one. Timers read it on
 // every tick, so a reconnect's new reading lands without a re-render.
 const serverClockOffsets = new Map<EnvironmentId, number>();

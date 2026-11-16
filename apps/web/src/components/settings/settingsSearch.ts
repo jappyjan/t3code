@@ -509,6 +509,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("usage quota rate limit reset recover continue")],
   },
   {
+    id: "possibly-stuck-after-hours",
+    title: "Mark threads as possibly stuck after",
+    to: "/settings/threads",
+    searchTerms: ["stale stuck background work hours monitor dev server sidebar group"],
+  },
+  {
     id: "working-shelf",
     title: msg("Working section"),
     to: "/settings/general",

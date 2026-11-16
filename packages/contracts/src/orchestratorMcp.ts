@@ -1092,9 +1092,10 @@ const RequestSecretFields = Schema.Array(
 export const OrchestratorMcpPipelineRunAttention = Schema.Literals([
   ...PipelinePauseReason.literals,
   "pending_request",
+  "possibly_stuck",
 ]).annotate({
   description:
-    "Why the run waits for the user: a pause reason, or `pending_request` when the running step's thread has an open approval or question. Null: nothing to do.",
+    "Why the run waits for the user: a pause reason, `pending_request` when the running step's thread has an open approval or question, or `possibly_stuck` for a step without a handoff whose background work ran for hours. Null: nothing to do.",
 });
 export type OrchestratorMcpPipelineRunAttention = typeof OrchestratorMcpPipelineRunAttention.Type;
 

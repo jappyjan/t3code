@@ -188,6 +188,7 @@ export interface Preferences {
   readonly threadListSettledShelfExpanded?: boolean;
   readonly threadListSnoozedShelfExpanded?: boolean;
   readonly threadListWorkingShelfExpanded?: boolean;
+  readonly threadListStuckShelfExpanded?: boolean;
   /** Pipeline parents, as `environmentId:threadId`, that list all their steps. */
   readonly threadListExpandedPipelines?: readonly string[];
   readonly threadListFilters?: ThreadListFilters;
@@ -283,6 +284,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListSettledShelfExpanded?: boolean;
     threadListSnoozedShelfExpanded?: boolean;
     threadListWorkingShelfExpanded?: boolean;
+    threadListStuckShelfExpanded?: boolean;
     threadListExpandedPipelines?: readonly string[];
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
@@ -462,6 +464,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.threadListWorkingShelfExpanded === "boolean") {
     preferences.threadListWorkingShelfExpanded = parsed.threadListWorkingShelfExpanded;
+  }
+  if (typeof parsed.threadListStuckShelfExpanded === "boolean") {
+    preferences.threadListStuckShelfExpanded = parsed.threadListStuckShelfExpanded;
   }
   if (Array.isArray(parsed.threadListExpandedPipelines)) {
     preferences.threadListExpandedPipelines = parsed.threadListExpandedPipelines.filter(

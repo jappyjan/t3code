@@ -19,6 +19,7 @@ import {
 import {
   DEFAULT_UNIFIED_SETTINGS,
   type DiffLayout,
+  MAX_POSSIBLY_STUCK_AFTER_HOURS,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   type ResponseStreamingMode,
@@ -557,6 +558,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarAutoSettleOnMerge !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge
       ? [gt("Auto-settle merged threads")]
       : []),
+    ...(settings.possiblyStuckAfterHours !== DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours
+      ? ["Mark threads as possibly stuck after"]
+      : []),
     ...(settings.autoResumeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads
       ? [gt("Resume after usage limits")]
       : []),
@@ -742,6 +746,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
+      possiblyStuckAfterHours: DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       snoozePresets: DEFAULT_UNIFIED_SETTINGS.snoozePresets,
@@ -792,6 +797,53 @@ export function useSettingsRestore(onRestored?: () => void) {
     changedSettingLabels,
     restoreDefaults,
   };
+}
+
+/** Whole hours; 0 turns the indicator off. An invalid draft snaps back to the saved value. */
+function PossiblyStuckHoursInput({
+  value,
+  onCommit,
+}: {
+  value: number;
+  onCommit: (hours: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const hours = Number(draft);
+    setDraft(null);
+    if (
+      draft.trim() !== "" &&
+      Number.isInteger(hours) &&
+      hours >= 0 &&
+      hours <= MAX_POSSIBLY_STUCK_AFTER_HOURS &&
+      hours !== value
+    ) {
+      onCommit(hours);
+    }
+  };
+  return (
+    <Input
+      size="sm"
+      type="number"
+      min={0}
+      max={MAX_POSSIBLY_STUCK_AFTER_HOURS}
+      className="w-full sm:w-24"
+      value={draft ?? String(value)}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.nativeEvent.isComposing) return;
+        if (event.key === "Enter") commit();
+        if (event.key === "Escape" && draft !== null) {
+          event.preventDefault();
+          event.stopPropagation();
+          setDraft(null);
+        }
+      }}
+      aria-label="Hours before a thread is marked possibly stuck"
+    />
+  );
 }
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ?? 7;
@@ -2097,6 +2149,34 @@ export function ThreadsSettingsPanel() {
                 updateSettings({ snoozeLimitedThreads: Boolean(checked) })
               }
               aria-label={gt("Snooze until limits reset")}
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection id="possibly-stuck" title="Possibly stuck">
+        <SettingsRow
+          serverScoped
+          settingKeys={["possiblyStuckAfterHours"]}
+          {...searchableSetting("possibly-stuck-after-hours")}
+          description="A thread whose last turn ended while background work kept running for this many hours is listed under Possibly stuck. Pull request watches never count. 0 turns it off."
+          resetAction={
+            settings.possiblyStuckAfterHours !==
+            DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours ? (
+              <SettingResetButton
+                label="possibly stuck"
+                onClick={() =>
+                  updateSettings({
+                    possiblyStuckAfterHours: DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <PossiblyStuckHoursInput
+              value={settings.possiblyStuckAfterHours}
+              onCommit={(hours) => updateSettings({ possiblyStuckAfterHours: hours })}
             />
           }
         />

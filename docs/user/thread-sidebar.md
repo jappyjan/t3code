@@ -35,6 +35,19 @@ Enabled by default (**Settings → General → Working section**, per device). U
 
 While enabled, Active is sorted by most recent return (manual reordering is paused until you turn it off).
 
+### Find threads that may be stuck
+
+A thread whose last turn ended while background work kept running, such as a dev server, a monitor,
+a background task or a subagent, shows **Possibly stuck** once that work has run longer than a set
+time. These threads move into a collapsed **Possibly stuck** section below the Working section.
+Watched pull requests never count, because they wait on people or checks by design. The mark clears
+when the work ends, when the thread starts a new turn, or when you archive it. Stop the work or send a
+message to clear it sooner. A pipeline step marked this way also needs your attention.
+
+Set the time with **Settings → Threads → Mark threads as possibly stuck after** on web and desktop,
+or **Settings → Threads** on iOS and Android. The default is 2 hours, and 0 turns it off. The
+setting belongs to the environment, so every device connected to it agrees.
+
 ### Group threads by project (beta)
 
 Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Pinned threads stay above; Snoozed and Settled stay below. In this mode, the Working section and sidebar drag-reordering are disabled (dragging a thread onto the composer still works).
