@@ -386,8 +386,8 @@ interface SidebarThreadPartitionInput {
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
   readonly clockKey: string;
-  /** The minute clock as an ISO timestamp, for the Possibly stuck check. */
-  readonly nowIso: string;
+  /** The minute clock, for the Possibly stuck check. */
+  readonly nowMinute: string;
 }
 
 function scrollSidebarToTop(content: HTMLElement | null) {
@@ -532,7 +532,7 @@ function useSidebarThreads(input: {
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
-    nowIso: nowMinute,
+    nowMinute,
   });
 
   const {
@@ -745,7 +745,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     if (!stuckClocks.has(thread.environmentId)) {
       stuckClocks.set(
         thread.environmentId,
-        resolveSidebarStuckClock(serverConfigs.get(thread.environmentId), input.nowIso),
+        resolveSidebarStuckClock(serverConfigs.get(thread.environmentId), input.nowMinute),
       );
     }
     return isShellPossiblyStuck(thread, stuckClocks.get(thread.environmentId));

@@ -207,10 +207,11 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 /** The staleness inputs for an environment; undefined until its config loads, so nothing flashes stuck. */
 export function resolveSidebarStuckClock(
   config: EnvironmentServerConfig | undefined,
-  nowIso: string,
+  nowMinute: string,
 ): PossiblyStuckClock | undefined {
   if (config === undefined) return undefined;
-  const nowMs = Date.parse(nowIso);
+  // The minute clock is a UTC date-time without an offset, which `Date.parse` would read as local time.
+  const nowMs = Date.parse(`${nowMinute}:00.000Z`);
   if (Number.isNaN(nowMs)) return undefined;
   return {
     nowMs,
