@@ -1,6 +1,12 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { deadlineStore, recordServerClock, secondTick, toServerClock } from "./clock.ts";
+import {
+  deadlineStore,
+  minuteTickToEpochMs,
+  recordServerClock,
+  secondTick,
+  toServerClock,
+} from "./clock.ts";
 
 describe("deadlineStore", () => {
   afterEach(() => {
@@ -171,5 +177,21 @@ describe("server clock", () => {
       receivedAtMs: 9_000,
     });
     expect(toServerClock(environmentId, 12_345)).toBe(12_345);
+  });
+});
+
+describe("minuteTickToEpochMs", () => {
+  // Forked test workers (the default pool) apply a changed TZ to later Date calls.
+  it("reads the minute tick as UTC whatever the local timezone", () => {
+    const zone = process.env.TZ;
+    try {
+      for (const tz of ["America/Los_Angeles", "Europe/Berlin", "UTC"]) {
+        process.env.TZ = tz;
+        expect(minuteTickToEpochMs("2026-10-26T02:14")).toBe(Date.UTC(2026, 9, 26, 2, 14));
+      }
+    } finally {
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
   });
 });

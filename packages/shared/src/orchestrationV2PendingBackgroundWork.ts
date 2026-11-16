@@ -330,7 +330,7 @@ export function derivePendingBackgroundWork(input: {
 }
 
 /** Whether a link's watch still holds its thread open as pending work. */
-export function pullRequestWatchHoldsThread(
+function pullRequestWatchHoldsThread(
   link: Pick<PendingBackgroundWorkPullRequest, "source" | "snapshot"> & {
     readonly watch?: unknown;
   },
@@ -367,4 +367,61 @@ function pullRequestWatchTasks(
           },
         ],
   );
+}
+
+const MS_PER_HOUR = 3_600_000;
+
+/** Pending work other than pull request watches, which wait on people or CI by design. */
+const hasStaleableBackgroundWork = (
+  tasks: ReadonlyArray<Pick<PendingBackgroundWorkTask, "taskId">> | undefined,
+): boolean => (tasks ?? []).some((task) => !isPullRequestWatchTask(task));
+
+interface StuckCheckThread {
+  readonly activeRunId: unknown;
+  readonly archived?: boolean;
+  readonly pendingBackgroundTasks:
+    | ReadonlyArray<Pick<PendingBackgroundWorkTask, "taskId">>
+    | undefined;
+  readonly lastRunEndedAtMs: number | null;
+}
+
+/** The staleness inputs: a shared coarse clock and the user's threshold (0 = off). */
+export interface PossiblyStuckClock {
+  readonly nowMs: number;
+  readonly afterHours: number;
+}
+
+/**
+ * Whether a thread's last turn ended and its background work has run past `afterHours` since.
+ * `afterHours` of 0 turns the check off. A wake turn moves `lastRunEndedAtMs`, so it restarts the clock.
+ */
+export function isThreadPossiblyStuck(
+  thread: StuckCheckThread,
+  nowMs: number,
+  afterHours: number,
+): boolean {
+  if (!(afterHours > 0) || thread.activeRunId != null || thread.archived === true) return false;
+  if (thread.lastRunEndedAtMs === null || !Number.isFinite(thread.lastRunEndedAtMs)) return false;
+  return (
+    hasStaleableBackgroundWork(thread.pendingBackgroundTasks) &&
+    nowMs - thread.lastRunEndedAtMs > afterHours * MS_PER_HOUR
+  );
+}
+
+/**
+ * What a thread whose turn ended still waits on: a pull request watch alone, other background
+ * work, or work that ran so long the thread may be stuck. Without a clock nothing reads as stuck.
+ */
+export type BackgroundWait = "pull_request" | "background_work" | "possibly_stuck";
+
+export function classifyBackgroundWait(
+  thread: StuckCheckThread,
+  clock: PossiblyStuckClock | undefined,
+): BackgroundWait | null {
+  const tasks = thread.pendingBackgroundTasks ?? [];
+  if (tasks.length === 0) return null;
+  if (clock !== undefined && isThreadPossiblyStuck(thread, clock.nowMs, clock.afterHours)) {
+    return "possibly_stuck";
+  }
+  return tasks.every(isPullRequestWatchTask) ? "pull_request" : "background_work";
 }
