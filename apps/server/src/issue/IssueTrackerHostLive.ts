@@ -17,6 +17,7 @@ import {
 import * as IssueTrackerHost from "@t3tools/source-control-core/server/IssueTrackerHost";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import { adoptLegacyLinearKey } from "./legacyLinearKey.ts";
 
 export function issueTrackerSecretName(
   tracker: IssueTrackerKind,
@@ -53,6 +54,8 @@ export function decodeIssueTrackerCredential(bytes: Uint8Array): IssueTrackerCre
 
 const make = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
+  // A failed move leaves Linear disconnected, which Settings shows; it must not stop the server.
+  yield* adoptLegacyLinearKey(secrets, issueTrackerSecretName).pipe(Effect.ignore);
   return IssueTrackerHost.IssueTrackerHost.of({
     credentials: {
       get: (tracker) =>

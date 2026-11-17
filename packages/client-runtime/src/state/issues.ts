@@ -286,6 +286,21 @@ export function createIssueEnvironmentAtoms<R, E>(
     detail,
     /** Marks a detail atom so its next read skips the server's shared copy of the issue. */
     oweDetailRefresh: owe,
+    /** One level of a tracker's container tree; the browse view reads each level it shows. */
+    browse: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:issues:browse",
+      tag: WS_METHODS.issuesBrowse,
+      staleTimeMs: 30_000,
+    }),
+    browsePage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:issues:browse-page",
+      tag: WS_METHODS.issuesBrowse,
+      scheduler: commandScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input]),
+      },
+    }),
     /** Older comments past the cursor the detail handed over; the panel prepends what arrives. */
     comments: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:issues:comments",

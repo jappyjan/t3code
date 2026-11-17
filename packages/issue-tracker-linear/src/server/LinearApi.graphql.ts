@@ -173,6 +173,25 @@ export const LinearIssue = Schema.Struct({
 })
 export interface LinearIssue extends Schema.Struct.Type<typeof LinearIssue.fields> {}
 
+/**
+ * `fragment LinearIssueRef on Issue`
+ *
+ * An issue is the core work item in Linear. Issues belong to a team, have a workflow status, can be assigned to users, carry a priority level, and can be organized into projects and cycles. Issues support sub-issues (parent-child hierarchy up to 10 levels deep), labels, due dates, estimates, and SLA tracking. They can also be linked to other issues via relations, attached to releases, and tracked through their full history of changes.
+ */
+export const LinearIssueRef = Schema.Struct({
+  /** The unique identifier of the entity. */
+  id: Shared.ID,
+  /** Issue's human readable identifier (e.g. ENG-123). */
+  identifier: Schema.String,
+  /** The issue's title. This is the primary human-readable summary of the work item. */
+  title: Schema.String,
+  /** Issue URL. */
+  url: Schema.String,
+  /** The workflow state (issue status) that the issue is currently in. Workflow states represent the issue's progress through the team's workflow, such as Triage, Todo, In Progress, Done, or Canceled. */
+  state: LinearWorkflowState
+})
+export interface LinearIssueRef extends Schema.Struct.Type<typeof LinearIssueRef.fields> {}
+
 /** `fragment LinearPageInfo on PageInfo` */
 export const LinearPageInfo = Schema.Struct({
   /** Indicates if there are more results when paginating forward. */
@@ -232,11 +251,11 @@ export declare namespace T3Viewer {
   export type Result = typeof T3Viewer.result.Type
 }
 
-export const IssueConnection = Schema.Struct({
+export const T3IssuesIssuesIssueConnection = Schema.Struct({
   nodes: Schema.Array(LinearIssue),
   pageInfo: LinearPageInfo
 })
-export interface IssueConnection extends Schema.Struct.Type<typeof IssueConnection.fields> {}
+export interface T3IssuesIssuesIssueConnection extends Schema.Struct.Type<typeof T3IssuesIssuesIssueConnection.fields> {}
 
 /** `query T3Issues` */
 export const T3Issues = GraphQL.query("T3Issues", {
@@ -267,7 +286,7 @@ export const T3Issues = GraphQL.query("T3Issues", {
   },
   result: Schema.Struct({
     /** All issues. Returns a paginated list of issues visible to the authenticated user. Can be filtered by various criteria including team, assignee, state, labels, project, and cycle. */
-    issues: IssueConnection
+    issues: T3IssuesIssuesIssueConnection
   })
 })
 export declare namespace T3Issues {
@@ -288,6 +307,57 @@ export const IssueTeamTeam = Schema.Struct({
   states: TeamStatesWorkflowStateConnection
 })
 export interface IssueTeamTeam extends Schema.Struct.Type<typeof IssueTeamTeam.fields> {}
+
+/** A project is a collection of issues working toward a shared goal. Projects have start and target dates, milestones, status tracking, and progress metrics. They can span multiple teams and be grouped under initiatives. */
+export const IssueProjectProject = Schema.Struct({
+  /** The unique identifier of the entity. */
+  id: Shared.ID,
+  /** The name of the project. */
+  name: Schema.String
+})
+export interface IssueProjectProject extends Schema.Struct.Type<typeof IssueProjectProject.fields> {}
+
+/** A milestone within a project. Milestones break a project into phases or target checkpoints, each with its own target date and set of issues. Issues can be assigned to a milestone to track progress toward that checkpoint. */
+export const ProjectMilestoneProjectMilestone = Schema.Struct({
+  /** The unique identifier of the entity. */
+  id: Shared.ID,
+  /** The name of the project milestone. */
+  name: Schema.String
+})
+export interface ProjectMilestoneProjectMilestone extends Schema.Struct.Type<typeof ProjectMilestoneProjectMilestone.fields> {}
+
+export const IssueChildrenIssueConnection = Schema.Struct({
+  nodes: Schema.Array(LinearIssueRef)
+})
+export interface IssueChildrenIssueConnection extends Schema.Struct.Type<typeof IssueChildrenIssueConnection.fields> {}
+
+/** A relation between two issues. Issue relations represent directional relationships such as blocking, being blocked by, relating to, or duplicating another issue. Each relation connects a source issue to a related issue with a specific type describing the nature of the relationship. */
+export const RelationsNodesIssueRelation = Schema.Struct({
+  /** The type of relationship between the source issue and the related issue. Possible values include blocks, duplicate, and related. */
+  type: Schema.String,
+  /** The target issue that the source issue is related to. The relation type describes how the source issue relates to this issue. */
+  relatedIssue: LinearIssueRef
+})
+export interface RelationsNodesIssueRelation extends Schema.Struct.Type<typeof RelationsNodesIssueRelation.fields> {}
+
+export const RelationsIssueRelationConnection = Schema.Struct({
+  nodes: Schema.Array(RelationsNodesIssueRelation)
+})
+export interface RelationsIssueRelationConnection extends Schema.Struct.Type<typeof RelationsIssueRelationConnection.fields> {}
+
+/** A relation between two issues. Issue relations represent directional relationships such as blocking, being blocked by, relating to, or duplicating another issue. Each relation connects a source issue to a related issue with a specific type describing the nature of the relationship. */
+export const IssueInverseRelationsNodesIssueRelation = Schema.Struct({
+  /** The type of relationship between the source issue and the related issue. Possible values include blocks, duplicate, and related. */
+  type: Schema.String,
+  /** The source issue whose relationship is being described. This is the issue from which the relation originates. */
+  issue: LinearIssueRef
+})
+export interface IssueInverseRelationsNodesIssueRelation extends Schema.Struct.Type<typeof IssueInverseRelationsNodesIssueRelation.fields> {}
+
+export const IssueInverseRelationsIssueRelationConnection = Schema.Struct({
+  nodes: Schema.Array(IssueInverseRelationsNodesIssueRelation)
+})
+export interface IssueInverseRelationsIssueRelationConnection extends Schema.Struct.Type<typeof IssueInverseRelationsIssueRelationConnection.fields> {}
 
 export const CommentConnection = Schema.Struct({
   nodes: Schema.Array(LinearComment),
@@ -384,6 +454,22 @@ export const T3IssueIssueIssue = Schema.Struct({
   labels: LinearIssueLabelsIssueLabelConnection,
   /** The issue's description in markdown format. */
   description: Schema.NullOr(Schema.String),
+  /** Suggested branch name for the issue. */
+  branchName: Schema.String,
+  /** Label for the priority. */
+  priorityLabel: Schema.String,
+  /** The project that the issue is associated with. Null if the issue is not part of any project. */
+  project: Schema.NullOr(IssueProjectProject),
+  /** The project milestone that the issue is associated with. Null if the issue is not assigned to a specific milestone within its project. */
+  projectMilestone: Schema.NullOr(ProjectMilestoneProjectMilestone),
+  /** The parent of the issue. */
+  parent: Schema.NullOr(LinearIssueRef),
+  /** Children of the issue. */
+  children: IssueChildrenIssueConnection,
+  /** Relations associated with this issue. */
+  relations: RelationsIssueRelationConnection,
+  /** Inverse relations associated with this issue. */
+  inverseRelations: IssueInverseRelationsIssueRelationConnection,
   /** Comments associated with the issue, including inline comments on the issue's description. */
   comments: CommentConnection,
   /** Reactions associated with the issue. */
@@ -403,10 +489,11 @@ export const T3Issue = GraphQL.query("T3Issue", {
       { name: "comments", body: "Int!" }
     ],
     selections: [
-      { name: "issue", body: ["(id:$", "id", "){...LinearIssue description team{states(first:100){nodes{...LinearWorkflowState}}}comments(first:$", "comments", " orderBy:createdAt){nodes{...LinearComment}pageInfo{...LinearPageInfo}}reactions{...LinearReaction}attachments(first:50){nodes{url title sourceType metadata}}history(first:100 orderBy:createdAt){nodes{id createdAt actor{...LinearUser}botActor{...LinearBot}fromState{...LinearWorkflowState}toState{...LinearWorkflowState}fromAssignee{...LinearUser}toAssignee{...LinearUser}addedLabels{...LinearLabel}removedLabels{...LinearLabel}fromTitle toTitle}}}"] }
+      { name: "issue", body: ["(id:$", "id", "){...LinearIssue description branchName priorityLabel project{id name}projectMilestone{id name}parent{...LinearIssueRef}children(first:50){nodes{...LinearIssueRef}}relations(first:50){nodes{type relatedIssue{...LinearIssueRef}}}inverseRelations(first:50){nodes{type issue{...LinearIssueRef}}}team{states(first:100){nodes{...LinearWorkflowState}}}comments(first:$", "comments", " orderBy:createdAt){nodes{...LinearComment}pageInfo{...LinearPageInfo}}reactions{...LinearReaction}attachments(first:50){nodes{url title sourceType metadata}}history(first:100 orderBy:createdAt){nodes{id createdAt actor{...LinearUser}botActor{...LinearBot}fromState{...LinearWorkflowState}toState{...LinearWorkflowState}fromAssignee{...LinearUser}toAssignee{...LinearUser}addedLabels{...LinearLabel}removedLabels{...LinearLabel}fromTitle toTitle}}}"] }
     ],
     fragments: [
       { name: "LinearIssue", body: ["on Issue{id identifier number title url createdAt updatedAt completedAt canceledAt state{...LinearWorkflowState}team{key}creator{...LinearUser}botActor{...LinearBot}assignee{...LinearUser}labels{nodes{...LinearLabel}}}"] },
+      { name: "LinearIssueRef", body: ["on Issue{id identifier title url state{...LinearWorkflowState}}"] },
       { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position}"] },
       { name: "LinearComment", body: ["on Comment{id body createdAt url user{...LinearUser}botActor{...LinearBot}reactions{...LinearReaction}}"] },
       { name: "LinearPageInfo", body: ["on PageInfo{hasNextPage endCursor}"] },
@@ -815,5 +902,220 @@ export declare namespace T3CommentReactions {
   export type Result = typeof T3CommentReactions.result.Type
 }
 
+/** A custom project status within a workspace. Statuses are grouped by type (backlog, planned, started, paused, completed, canceled) and define the lifecycle stages a project can move through. Each workspace can customize the names and colors of its project statuses. */
+export const ProjectStatus = Schema.Struct({
+  /** The name of the status. */
+  name: Schema.String,
+  /** The category type of the project status (e.g., backlog, planned, started, paused, completed, canceled). Determines the status's behavior and position in the project lifecycle. */
+  type: GraphQL.enumLiterals(Shared.ProjectStatusType.literals)
+})
+export interface ProjectStatus extends Schema.Struct.Type<typeof ProjectStatus.fields> {}
+
+/** A project is a collection of issues working toward a shared goal. Projects have start and target dates, milestones, status tracking, and progress metrics. They can span multiple teams and be grouped under initiatives. */
+export const NodesProject = Schema.Struct({
+  /** The unique identifier of the entity. */
+  id: Shared.ID,
+  /** The name of the project. */
+  name: Schema.String,
+  /** Project URL. */
+  url: Schema.String,
+  /** The overall progress of the project. This is the (completed estimate points + 0.25 * in progress estimate points) / total estimate points. */
+  progress: Shared.Float,
+  /** The estimated completion date of the project. Null if no target date is set. */
+  targetDate: Schema.NullOr(Shared.TimelessDate),
+  /** The time at which the project was moved into a completed status. Null if the project has not been completed. */
+  completedAt: Schema.NullOr(Shared.DateTime),
+  /** The time at which the project was moved into a canceled status. Null if the project has not been canceled. */
+  canceledAt: Schema.NullOr(Shared.DateTime),
+  /** The current project status. Defines the project's position in its lifecycle (e.g., backlog, planned, started, paused, completed, canceled). */
+  status: ProjectStatus
+})
+export interface NodesProject extends Schema.Struct.Type<typeof NodesProject.fields> {}
+
+export const ProjectConnection = Schema.Struct({
+  nodes: Schema.Array(NodesProject)
+})
+export interface ProjectConnection extends Schema.Struct.Type<typeof ProjectConnection.fields> {}
+
+/** A team is the primary organizational unit in Linear. Issues belong to teams, and each team has its own workflow states, cycles, labels, and settings. Teams can be public (visible to all workspace members), private (visible only to team members), or restricted (visible only within an enclosing private-team boundary). Teams can also have sub-teams that inherit settings from their parent. */
+export const T3TeamProjectsTeamsNodesTeam = Schema.Struct({
+  /** Projects associated with the team. */
+  projects: ProjectConnection
+})
+export interface T3TeamProjectsTeamsNodesTeam extends Schema.Struct.Type<typeof T3TeamProjectsTeamsNodesTeam.fields> {}
+
+export const T3TeamProjectsTeamsTeamConnection = Schema.Struct({
+  nodes: Schema.Array(T3TeamProjectsTeamsNodesTeam)
+})
+export interface T3TeamProjectsTeamsTeamConnection extends Schema.Struct.Type<typeof T3TeamProjectsTeamsTeamConnection.fields> {}
+
+/** `query T3TeamProjects` */
+export const T3TeamProjects = GraphQL.query("T3TeamProjects", {
+  document: {
+    variables: [
+      { name: "key", body: "String!" }
+    ],
+    selections: [
+      { name: "teams", body: ["(first:1 filter:{key:{eq:$", "key", "}}){nodes{projects(first:100){nodes{id name url progress targetDate completedAt canceledAt status{name type}}}}}"] }
+    ],
+    fragments: []
+  },
+  variables: {
+    key: Schema.String
+  },
+  result: Schema.Struct({
+    /** All teams whose issues the user can access. This includes public teams and private teams the user is a member of. This may differ from `administrableTeams`, which returns teams whose settings the user can change but whose issues they don't necessarily have access to. */
+    teams: T3TeamProjectsTeamsTeamConnection
+  })
+})
+export declare namespace T3TeamProjects {
+  export type Variables = typeof T3TeamProjects.variables.Type
+  export type Result = typeof T3TeamProjects.result.Type
+}
+
+/** A milestone within a project. Milestones break a project into phases or target checkpoints, each with its own target date and set of issues. Issues can be assigned to a milestone to track progress toward that checkpoint. */
+export const NodesProjectMilestone = Schema.Struct({
+  /** The unique identifier of the entity. */
+  id: Shared.ID,
+  /** The name of the project milestone. */
+  name: Schema.String,
+  /** The progress % of the project milestone. */
+  progress: Shared.Float,
+  /** The planned completion date of the milestone. Null if no target date is set. */
+  targetDate: Schema.NullOr(Shared.TimelessDate),
+  /** The order of the milestone in relation to other milestones within a project. */
+  sortOrder: Shared.Float
+})
+export interface NodesProjectMilestone extends Schema.Struct.Type<typeof NodesProjectMilestone.fields> {}
+
+export const ProjectMilestoneConnection = Schema.Struct({
+  nodes: Schema.Array(NodesProjectMilestone)
+})
+export interface ProjectMilestoneConnection extends Schema.Struct.Type<typeof ProjectMilestoneConnection.fields> {}
+
+/** A project is a collection of issues working toward a shared goal. Projects have start and target dates, milestones, status tracking, and progress metrics. They can span multiple teams and be grouped under initiatives. */
+export const T3ProjectMilestonesProjectProject = Schema.Struct({
+  /** Milestones associated with the project. */
+  projectMilestones: ProjectMilestoneConnection
+})
+export interface T3ProjectMilestonesProjectProject extends Schema.Struct.Type<typeof T3ProjectMilestonesProjectProject.fields> {}
+
+/** `query T3ProjectMilestones` */
+export const T3ProjectMilestones = GraphQL.query("T3ProjectMilestones", {
+  document: {
+    variables: [
+      { name: "id", body: "String!" }
+    ],
+    selections: [
+      { name: "project", body: ["(id:$", "id", "){projectMilestones(first:100){nodes{id name progress targetDate sortOrder}}}"] }
+    ],
+    fragments: []
+  },
+  variables: {
+    id: Schema.String
+  },
+  result: Schema.Struct({
+    /** Returns a single project by its identifier or URL slug. */
+    project: T3ProjectMilestonesProjectProject
+  })
+})
+export declare namespace T3ProjectMilestones {
+  export type Variables = typeof T3ProjectMilestones.variables.Type
+  export type Result = typeof T3ProjectMilestones.result.Type
+}
+
+/** An issue is the core work item in Linear. Issues belong to a team, have a workflow status, can be assigned to users, carry a priority level, and can be organized into projects and cycles. Issues support sub-issues (parent-child hierarchy up to 10 levels deep), labels, due dates, estimates, and SLA tracking. They can also be linked to other issues via relations, attached to releases, and tracked through their full history of changes. */
+export const ParentIssue = Schema.Struct({
+  /** Issue's human readable identifier (e.g. ENG-123). */
+  identifier: Schema.String
+})
+export interface ParentIssue extends Schema.Struct.Type<typeof ParentIssue.fields> {}
+
+export const NodesChildrenIssueConnection = Schema.Struct({
+  nodes: Schema.Array(CommentIssueIssue)
+})
+export interface NodesChildrenIssueConnection extends Schema.Struct.Type<typeof NodesChildrenIssueConnection.fields> {}
+
+/** A state in a team's workflow, representing an issue status such as Triage, Backlog, Todo, In Progress, In Review, Done, or Canceled. Each team has its own set of workflow states that define the progression of issues through the team's process. Workflow states have a type that categorizes them (triage, backlog, unstarted, started, completed, canceled), a position that determines their display order, and a color for visual identification. States can be inherited from parent teams to sub-teams. */
+export const WorkflowState = Schema.Struct({
+  /** The type of the state. One of "triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate". */
+  type: Schema.String
+})
+export interface WorkflowState extends Schema.Struct.Type<typeof WorkflowState.fields> {}
+
+/** An issue is the core work item in Linear. Issues belong to a team, have a workflow status, can be assigned to users, carry a priority level, and can be organized into projects and cycles. Issues support sub-issues (parent-child hierarchy up to 10 levels deep), labels, due dates, estimates, and SLA tracking. They can also be linked to other issues via relations, attached to releases, and tracked through their full history of changes. */
+export const NodesIssueIssue = Schema.Struct({
+  /** The workflow state (issue status) that the issue is currently in. Workflow states represent the issue's progress through the team's workflow, such as Triage, Todo, In Progress, Done, or Canceled. */
+  state: WorkflowState
+})
+export interface NodesIssueIssue extends Schema.Struct.Type<typeof NodesIssueIssue.fields> {}
+
+/** A relation between two issues. Issue relations represent directional relationships such as blocking, being blocked by, relating to, or duplicating another issue. Each relation connects a source issue to a related issue with a specific type describing the nature of the relationship. */
+export const NodesInverseRelationsNodesIssueRelation = Schema.Struct({
+  /** The type of relationship between the source issue and the related issue. Possible values include blocks, duplicate, and related. */
+  type: Schema.String,
+  /** The source issue whose relationship is being described. This is the issue from which the relation originates. */
+  issue: NodesIssueIssue
+})
+export interface NodesInverseRelationsNodesIssueRelation extends Schema.Struct.Type<typeof NodesInverseRelationsNodesIssueRelation.fields> {}
+
+export const NodesInverseRelationsIssueRelationConnection = Schema.Struct({
+  nodes: Schema.Array(NodesInverseRelationsNodesIssueRelation)
+})
+export interface NodesInverseRelationsIssueRelationConnection extends Schema.Struct.Type<typeof NodesInverseRelationsIssueRelationConnection.fields> {}
+
+/** An issue is the core work item in Linear. Issues belong to a team, have a workflow status, can be assigned to users, carry a priority level, and can be organized into projects and cycles. Issues support sub-issues (parent-child hierarchy up to 10 levels deep), labels, due dates, estimates, and SLA tracking. They can also be linked to other issues via relations, attached to releases, and tracked through their full history of changes. */
+export const NodesIssue = Schema.Struct({
+  ...LinearIssue.fields,
+  /** The parent of the issue. */
+  parent: Schema.NullOr(ParentIssue),
+  /** Children of the issue. */
+  children: NodesChildrenIssueConnection,
+  /** Inverse relations associated with this issue. */
+  inverseRelations: NodesInverseRelationsIssueRelationConnection
+})
+export interface NodesIssue extends Schema.Struct.Type<typeof NodesIssue.fields> {}
+
+export const T3BrowseIssuesIssuesIssueConnection = Schema.Struct({
+  nodes: Schema.Array(NodesIssue),
+  pageInfo: LinearPageInfo
+})
+export interface T3BrowseIssuesIssuesIssueConnection extends Schema.Struct.Type<typeof T3BrowseIssuesIssuesIssueConnection.fields> {}
+
+/** `query T3BrowseIssues` */
+export const T3BrowseIssues = GraphQL.query("T3BrowseIssues", {
+  document: {
+    variables: [
+      { name: "first", body: "Int!" },
+      { name: "after", body: "String" },
+      { name: "filter", body: "IssueFilter!" }
+    ],
+    selections: [
+      { name: "issues", body: ["(first:$", "first", " after:$", "after", " filter:$", "filter", " orderBy:updatedAt){nodes{...LinearIssue parent{identifier}children(first:50){nodes{id}}inverseRelations(first:20){nodes{type issue{state{type}}}}}pageInfo{...LinearPageInfo}}"] }
+    ],
+    fragments: [
+      { name: "LinearIssue", body: ["on Issue{id identifier number title url createdAt updatedAt completedAt canceledAt state{...LinearWorkflowState}team{key}creator{...LinearUser}botActor{...LinearBot}assignee{...LinearUser}labels{nodes{...LinearLabel}}}"] },
+      { name: "LinearPageInfo", body: ["on PageInfo{hasNextPage endCursor}"] },
+      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position}"] },
+      { name: "LinearUser", body: ["on User{id name displayName email avatarUrl}"] },
+      { name: "LinearBot", body: ["on ActorBot{name userDisplayName avatarUrl}"] },
+      { name: "LinearLabel", body: ["on IssueLabel{id name color}"] }
+    ]
+  },
+  variables: {
+    first: Shared.Int,
+    after: Schema.optional(Schema.NullOr(Schema.String)),
+    filter: Shared.IssueFilter
+  },
+  result: Schema.Struct({
+    /** All issues. Returns a paginated list of issues visible to the authenticated user. Can be filtered by various criteria including team, assignee, state, labels, project, and cycle. */
+    issues: T3BrowseIssuesIssuesIssueConnection
+  })
+})
+export declare namespace T3BrowseIssues {
+  export type Variables = typeof T3BrowseIssues.variables.Type
+  export type Result = typeof T3BrowseIssues.result.Type
+}
+
 /** Every operation in LinearApi.graphql. */
-export const LinearApiGraphQLGroup = GraphQLGroup.make(T3Viewer, T3Issues, T3Issue, T3Comments, T3Team, T3IssueCreate, T3IssueUpdate, T3CommentCreate, T3ReactionCreate, T3ReactionDelete, T3IssueReactions, T3CommentReactions)
+export const LinearApiGraphQLGroup = GraphQLGroup.make(T3Viewer, T3Issues, T3Issue, T3Comments, T3Team, T3IssueCreate, T3IssueUpdate, T3CommentCreate, T3ReactionCreate, T3ReactionDelete, T3IssueReactions, T3CommentReactions, T3TeamProjects, T3ProjectMilestones, T3BrowseIssues)

@@ -185,6 +185,7 @@ export interface StartThreadBootstrap {
     readonly baseBranch: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
+    readonly freeBranchName?: boolean;
     /** Tracked repositories to give a worktree; absent leaves the choice to the server. */
     readonly repositories?: ReadonlyArray<{ readonly path: string }>;
   };
@@ -794,6 +795,7 @@ export function draftWorkspaceStrategy(
       ...(prepareWorktree.startFromOrigin === undefined
         ? {}
         : { startFromOrigin: prepareWorktree.startFromOrigin }),
+      ...(prepareWorktree.freeBranchName === true ? { freeBranchName: true } : {}),
       ...(prepareWorktree.repositories === undefined
         ? {}
         : { repositories: prepareWorktree.repositories }),

@@ -16,6 +16,8 @@ import {
   IssueUnavailableError,
   type IssueTrackerAccountId,
   SourceControlProviderKind,
+  type IssueBrowseInput,
+  type IssueBrowseResult,
   type IssueCandidates,
   type IssueCandidatesInput,
   type IssueCommentInput,
@@ -199,6 +201,7 @@ export class IssueService extends Context.Service<
     readonly list: (input: IssueListInput) => Effect.Effect<IssueListResult, IssueError>;
     readonly detail: (input: IssueDetailInput) => Effect.Effect<IssueDetail, IssueError>;
     readonly linkMetadata: (input: IssueRef) => Effect.Effect<TrackerIssueLink, IssueError>;
+    readonly browse: (input: IssueBrowseInput) => Effect.Effect<IssueBrowseResult, IssueError>;
     readonly comments: (
       input: IssueCommentsPageInput,
     ) => Effect.Effect<IssueCommentsPage, IssueError>;
@@ -676,6 +679,38 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  const browse: IssueService["Service"]["browse"] = (input) =>
+    requireProject(input).pipe(
+      Effect.flatMap((project) => {
+        const run = project.api.browse;
+        return run === undefined || project.api.capabilities.browse !== true
+          ? Effect.fail(unsupported("browse", "browsing by project"))
+          : run({
+              cwd: project.project.workspaceRoot,
+              host: project.host,
+              scope: project.scope,
+              container: input.container,
+              state: input.state,
+              limit: DEFAULT_LIST_LIMIT,
+              cursor: input.cursor,
+            }).pipe(
+              Effect.mapError(toIssueError("browse")),
+              Effect.map((page): IssueBrowseResult => ({
+                containers: page.containers,
+                nextCursor: page.nextCursor,
+                entries: page.items.map((item) => ({
+                  ...item,
+                  tracker: project.tracker,
+                  host: project.host,
+                  scope: project.scope,
+                  projectId: project.project.id,
+                  projectTitle: project.project.title,
+                })),
+              })),
+            );
+      }),
+    );
+
   const comments: IssueService["Service"]["comments"] = (input) =>
     requireProject(input).pipe(
       Effect.flatMap((project) =>
@@ -1037,6 +1072,7 @@ const make = Effect.gen(function* () {
     list,
     detail: traced("detail", detail),
     linkMetadata: traced("linkMetadata", linkMetadata),
+    browse: traced("browse", browse),
     comments: traced("comments", comments),
     templates: traced("templates", templates),
     candidates: interactive(traced("candidates", candidates)),

@@ -46,6 +46,19 @@ export const PaginationOrderBy = Schema.Literals(["createdAt", "updatedAt"])
 export type PaginationOrderBy = typeof PaginationOrderBy.Type
 
 /**
+ * A type of project status.
+ *
+ * - `backlog`
+ * - `canceled`
+ * - `completed`
+ * - `paused`
+ * - `planned`
+ * - `started`
+ */
+export const ProjectStatusType = Schema.Literals(["backlog", "canceled", "completed", "paused", "planned", "started"])
+export type ProjectStatusType = typeof ProjectStatusType.Type
+
+/**
  * The type of a release pipeline, which determines how releases are created and managed. Continuous pipelines create a new completed release for each sync. Scheduled pipelines accumulate issues into a started release that is explicitly completed.
  *
  * - `continuous`

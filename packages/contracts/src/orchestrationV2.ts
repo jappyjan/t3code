@@ -809,6 +809,8 @@ export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
     baseRef: GitRefName,
     branch: Schema.optional(GitRefName),
     startFromOrigin: Schema.optional(Schema.Boolean),
+    /** A taken `branch` gets the next free `-2`, `-3` suffix instead of refusing the launch. */
+    freeBranchName: Schema.optional(Schema.Boolean),
     repositories: Schema.optional(
       Schema.Array(Schema.Struct({ path: TrimmedNonEmptyString }))
         .check(Schema.isMaxLength(PROJECT_TRACKED_FOLDERS_MAX))

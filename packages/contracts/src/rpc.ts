@@ -198,6 +198,8 @@ import {
 } from "./provider.ts";
 import { ProviderInstanceId, ProviderInstanceMutation } from "./providerInstance.ts";
 import {
+  IssueBrowseInput,
+  IssueBrowseResult,
   IssueCandidates,
   IssueCandidatesInput,
   IssueCommentInput,
@@ -743,6 +745,7 @@ export const WS_METHODS = {
   // Issue tracking methods
   issuesList: "issues.list",
   issuesDetail: "issues.detail",
+  issuesBrowse: "issues.browse",
   issuesComments: "issues.comments",
   issuesTemplates: "issues.templates",
   issuesCandidates: "issues.candidates",
@@ -1508,6 +1511,12 @@ const WsIssuesListRpc = Rpc.make(WS_METHODS.issuesList, {
 const WsIssuesDetailRpc = Rpc.make(WS_METHODS.issuesDetail, {
   payload: IssueDetailInput,
   success: IssueDetail,
+  error: IssueRpcError,
+});
+
+const WsIssuesBrowseRpc = Rpc.make(WS_METHODS.issuesBrowse, {
+  payload: IssueBrowseInput,
+  success: IssueBrowseResult,
   error: IssueRpcError,
 });
 
@@ -2622,6 +2631,7 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 export const WsRpcGroup = RpcGroup.make(
   WsIssuesListRpc,
   WsIssuesDetailRpc,
+  WsIssuesBrowseRpc,
   WsIssuesCommentsRpc,
   WsIssuesTemplatesRpc,
   WsIssuesCandidatesRpc,

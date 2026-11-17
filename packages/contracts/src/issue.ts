@@ -229,6 +229,8 @@ export const IssueCapabilities = Schema.Struct({
   search: Schema.Boolean,
   /** Some issues keep internal notes apart from customer replies; see `commentAudiences`. */
   internalComments: Schema.optional(Schema.Boolean),
+  /** Issues can be browsed by container (a Linear team's projects and milestones). */
+  browse: Schema.optional(Schema.Boolean),
 });
 export type IssueCapabilities = typeof IssueCapabilities.Type;
 
@@ -246,7 +248,44 @@ export const IssueViewerPermissions = Schema.Struct({
 });
 export type IssueViewerPermissions = typeof IssueViewerPermissions.Type;
 
+/** Another issue this one points at: its parent, a sub-issue, a blocker. */
+export const IssueRelatedRef = Schema.Struct({
+  key: TrimmedNonEmptyString,
+  displayKey: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  url: TrimmedNonEmptyString,
+  state: IssueState,
+});
+export type IssueRelatedRef = typeof IssueRelatedRef.Type;
+
+export const IssueContainerKind = Schema.Literals(["project", "milestone"]);
+export type IssueContainerKind = typeof IssueContainerKind.Type;
+
+export const IssueContainerRef = Schema.Struct({
+  kind: IssueContainerKind,
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+export type IssueContainerRef = typeof IssueContainerRef.Type;
+
+/**
+ * What a tracker with `browse` knows beyond the common detail. Every field is optional so other
+ * trackers, and servers that predate it, simply leave it out.
+ */
+const IssueDetailExtras = {
+  /** The git branch the tracker suggests for work on the issue; it links a PR by this name. */
+  branchName: Schema.optional(TrimmedNonEmptyString),
+  priorityLabel: Schema.optional(TrimmedNonEmptyString),
+  /** Outermost first: the project, then its milestone. */
+  containers: Schema.optional(Schema.Array(IssueContainerRef)),
+  parent: Schema.optional(IssueRelatedRef),
+  subIssues: Schema.optional(Schema.Array(IssueRelatedRef)),
+  blockedBy: Schema.optional(Schema.Array(IssueRelatedRef)),
+  blocks: Schema.optional(Schema.Array(IssueRelatedRef)),
+};
+
 export const IssueDetail = Schema.Struct({
+  ...IssueDetailExtras,
   ...IssueSummary.fields,
   projectId: ProjectId,
   projectTitle: TrimmedNonEmptyString,
@@ -751,3 +790,47 @@ export class IssueTrackerConnectionError extends Schema.TaggedError<IssueTracker
     return `${this.tracker} connection failed: ${this.detail}`;
   }
 }
+
+/** A container a scope's issues are grouped in: a Linear project, or one of its milestones. */
+export const IssueContainer = Schema.Struct({
+  ...IssueContainerRef.fields,
+  /** 0..1, where the tracker reports it. */
+  progress: Schema.NullOr(Schema.Number),
+  targetDate: Schema.NullOr(Schema.String),
+  /** The tracker's status name for a project ("In Progress"), null for a milestone. */
+  status: Schema.NullOr(Schema.String),
+  completed: Schema.Boolean,
+  url: Schema.NullOr(Schema.String),
+});
+export type IssueContainer = typeof IssueContainer.Type;
+
+/**
+ * One level of a scope's tree. Without `container` it names the scope's projects; with a project
+ * its milestones and the issues outside any milestone; with a milestone that milestone's issues.
+ */
+export const IssueBrowseInput = Schema.Struct({
+  ...IssueScopeRef.fields,
+  container: Schema.optional(
+    Schema.Struct({ kind: IssueContainerKind, id: TrimmedNonEmptyString }),
+  ),
+  state: IssueListState,
+  cursor: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(4_096))),
+});
+export type IssueBrowseInput = typeof IssueBrowseInput.Type;
+
+export const IssueBrowseEntry = Schema.Struct({
+  ...IssueListEntry.fields,
+  /** The parent's key when the parent sits in the same listing's scope. */
+  parentKey: Schema.NullOr(TrimmedNonEmptyString),
+  subIssueCount: NonNegativeInt,
+  /** An open issue blocks this one. */
+  blocked: Schema.Boolean,
+});
+export type IssueBrowseEntry = typeof IssueBrowseEntry.Type;
+
+export const IssueBrowseResult = Schema.Struct({
+  containers: Schema.Array(IssueContainer),
+  entries: Schema.Array(IssueBrowseEntry),
+  nextCursor: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type IssueBrowseResult = typeof IssueBrowseResult.Type;

@@ -89,6 +89,7 @@ export type ThreadLaunchWorkspaceStrategy =
       readonly branch?: string | undefined;
       readonly startFromOrigin?: boolean | undefined;
       readonly repositories?: ReadonlyArray<{ readonly path: string }> | undefined;
+      readonly freeBranchName?: boolean | undefined;
     };
 
 export interface ThreadLaunchInitialMessage {
@@ -285,6 +286,19 @@ function failureDetail(error: unknown): string {
     return `Workspace preparation failed during ${error.operation.replaceAll("-", " ")}: ${detail}`;
   }
   return `Workspace preparation failed: ${error instanceof Error ? error.message : String(error)}`;
+}
+
+// Repeat launches from one issue request the same branch; Linear still links `<name>-2`.
+// Refs collide by case on case-insensitive filesystems, and an existing `a/b` blocks `a`.
+function freeBranchName(requested: string, existingBranchNames: readonly string[]): string {
+  const taken = existingBranchNames.map((name) => name.toLowerCase());
+  const isTaken = (candidate: string) => {
+    const lower = candidate.toLowerCase();
+    return taken.some((name) => name === lower || name.startsWith(`${lower}/`));
+  };
+  let candidate = requested;
+  for (let suffix = 2; isTaken(candidate); suffix += 1) candidate = `${requested}-${suffix}`;
+  return candidate;
 }
 
 const make = Effect.gen(function* () {
@@ -510,7 +524,7 @@ const make = Effect.gen(function* () {
         workspaceRoot: project.workspaceRoot,
         baseRef,
       });
-    if (branch === undefined) return;
+    if (branch === undefined || strategy.freeBranchName === true) return;
     if (localBranches.includes(branch))
       return yield* new ThreadLaunchBranchExistsError({
         projectId: project.id,
@@ -841,6 +855,18 @@ const make = Effect.gen(function* () {
               break;
             }
           }
+        }
+        if (
+          input.workspaceStrategy.type === "worktree" &&
+          input.workspaceStrategy.freeBranchName === true &&
+          branch !== null
+        ) {
+          branch = freeBranchName(
+            branch,
+            yield* git
+              .listLocalBranchNames(project.workspaceRoot)
+              .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId))),
+          );
         }
         yield* setupTracker.stageStatus(threadId, "checkout", "running");
         let submoduleProgressReportedAt = Number.NEGATIVE_INFINITY;

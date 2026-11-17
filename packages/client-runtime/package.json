@@ -3,6 +3,22 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./issue-browse": {
+      "types": "./src/issueBrowse.ts",
+      "default": "./src/issueBrowse.ts"
+    },
+    "./linear/launch": {
+      "types": "./src/linear/launch.ts",
+      "default": "./src/linear/launch.ts"
+    },
+    "./linear/pipeline-machines": {
+      "types": "./src/linear/pipelineMachines.ts",
+      "default": "./src/linear/pipelineMachines.ts"
+    },
+    "./state/host-resources-balancing": {
+      "types": "./src/state/hostResourcesBalancing.ts",
+      "default": "./src/state/hostResourcesBalancing.ts"
+    },
     "./pull-request-diff-fold": {
       "types": "./src/pullRequestDiffFold.ts",
       "default": "./src/pullRequestDiffFold.ts"

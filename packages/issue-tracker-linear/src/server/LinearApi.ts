@@ -37,8 +37,11 @@ import {
   type LinearReaction,
   type LinearTeamLabel,
   type LinearUser,
+  type T3BrowseIssues,
   type T3Issue,
+  type T3ProjectMilestones,
   type T3Team,
+  type T3TeamProjects,
   type Template,
 } from "./LinearApi.graphql.ts";
 
@@ -51,6 +54,13 @@ export type {
 } from "./LinearApi.graphql.ts";
 export type { LinearWorkflowState } from "./LinearApi.graphql.ts";
 export type LinearAttachment = Attachment;
+export type LinearProject =
+  T3TeamProjects.Result["teams"]["nodes"][number]["projects"]["nodes"][number];
+export type LinearMilestone = NonNullable<
+  T3ProjectMilestones.Result["project"]
+>["projectMilestones"]["nodes"][number];
+export type LinearBrowseIssue = T3BrowseIssues.Result["issues"]["nodes"][number];
+export type LinearIssueDetail = NonNullable<T3Issue.Result["issue"]>;
 export type LinearHistoryEntry = IssueHistory;
 
 export const KIND = LINEAR_KIND;
@@ -78,7 +88,6 @@ export interface LinearTemplate extends Omit<Template, "templateData"> {
 }
 
 type LinearTeamDetail = T3Team.Result["teams"]["nodes"][number];
-type LinearIssueDetail = NonNullable<T3Issue.Result["issue"]>;
 
 /** The team with the workspace-wide labels that any of its issues may also carry. */
 export interface LinearTeamScope {
@@ -127,6 +136,21 @@ export class LinearApi extends Context.Service<
       readonly after: string;
     }) => Effect.Effect<
       { readonly nodes: ReadonlyArray<LinearComment>; readonly nextCursor: string | null },
+      IssueTrackerError
+    >;
+    /** Null when no team has that key. */
+    readonly listProjects: (
+      teamKey: string,
+    ) => Effect.Effect<ReadonlyArray<LinearProject> | null, IssueTrackerError>;
+    readonly listMilestones: (
+      projectId: string,
+    ) => Effect.Effect<ReadonlyArray<LinearMilestone>, IssueTrackerError>;
+    readonly browseIssues: (input: {
+      readonly filter: IssueFilter;
+      readonly first: number;
+      readonly after?: string | undefined;
+    }) => Effect.Effect<
+      { readonly nodes: ReadonlyArray<LinearBrowseIssue>; readonly nextCursor: string | null },
       IssueTrackerError
     >;
     readonly getTeam: (key: string) => Effect.Effect<LinearTeamScope | null, IssueTrackerError>;
@@ -342,6 +366,30 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const listProjects: LinearApi["Service"]["listProjects"] = (key) =>
+    call("listProjects", (linear) => linear.T3TeamProjects({ key })).pipe(
+      Effect.map((data) => data.teams.nodes[0]?.projects.nodes ?? null),
+    );
+
+  const listMilestones: LinearApi["Service"]["listMilestones"] = (id) =>
+    call("listMilestones", (linear) => linear.T3ProjectMilestones({ id })).pipe(
+      Effect.map((data) => data.project.projectMilestones.nodes),
+    );
+
+  const browseIssues: LinearApi["Service"]["browseIssues"] = (input) =>
+    call("browseIssues", (linear) =>
+      linear.T3BrowseIssues({
+        first: input.first,
+        after: input.after ?? null,
+        filter: input.filter,
+      }),
+    ).pipe(
+      Effect.map((data) => ({
+        nodes: data.issues.nodes,
+        nextCursor: nextCursor(data.issues.pageInfo),
+      })),
+    );
+
   const getTeam: LinearApi["Service"]["getTeam"] = (key) =>
     call("getTeam", (linear) => linear.T3Team({ key })).pipe(
       Effect.map((data) => {
@@ -429,6 +477,9 @@ export const make = Effect.gen(function* () {
     getIssue,
     getComments,
     getTeam,
+    listProjects,
+    listMilestones,
+    browseIssues,
     createIssue,
     updateIssue,
     createComment,

@@ -5,6 +5,10 @@
 import * as Schema from "effect/Schema";
 import type * as Effect from "effect/Effect";
 import type {
+  IssueContainer,
+  IssueContainerKind,
+  IssueContainerRef,
+  IssueRelatedRef,
   IssueState,
   IssueCandidates,
   IssueCapabilities,
@@ -95,6 +99,25 @@ export interface TrackerIssueDetail extends TrackerIssueSummary {
   readonly commentsCursor: string | null;
   readonly events: ReadonlyArray<IssueEvent>;
   readonly linkedPullRequests: ReadonlyArray<IssueLinkedPullRequest>;
+  readonly branchName?: string;
+  readonly priorityLabel?: string;
+  readonly containers?: ReadonlyArray<IssueContainerRef>;
+  readonly parent?: IssueRelatedRef;
+  readonly subIssues?: ReadonlyArray<IssueRelatedRef>;
+  readonly blockedBy?: ReadonlyArray<IssueRelatedRef>;
+  readonly blocks?: ReadonlyArray<IssueRelatedRef>;
+}
+
+export interface TrackerBrowsePage {
+  readonly containers: ReadonlyArray<IssueContainer>;
+  readonly items: ReadonlyArray<
+    TrackerIssueSummary & {
+      readonly parentKey: string | null;
+      readonly subIssueCount: number;
+      readonly blocked: boolean;
+    }
+  >;
+  readonly nextCursor: string | null;
 }
 
 /**
@@ -146,6 +169,16 @@ export interface IssueTrackerApi {
   readonly getComments: (
     input: IssueTarget & { readonly cursor: string },
   ) => Effect.Effect<IssueCommentsPage, IssueTrackerError>;
+
+  /** One level of the scope's container tree. Only called when `capabilities.browse` is true. */
+  readonly browse?: (
+    input: IssueScopeTarget & {
+      readonly container?: { readonly kind: IssueContainerKind; readonly id: string } | undefined;
+      readonly state: IssueListState;
+      readonly limit: number;
+      readonly cursor?: string | undefined;
+    },
+  ) => Effect.Effect<TrackerBrowsePage, IssueTrackerError>;
 
   /** Only called when `capabilities.create` is true. */
   readonly create?: (

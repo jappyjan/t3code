@@ -59,7 +59,23 @@ const issue = (
   botActor: null,
   assignee: THEO,
   labels: { nodes: [{ id: "lbl_bug", name: "Bug", color: "#f00" }] },
+  branchName: `eng/${identifier.toLowerCase()}`,
+  priorityLabel: "High",
+  project: null,
+  projectMilestone: null,
+  parent: null,
+  children: { nodes: [] },
+  relations: { nodes: [] },
+  inverseRelations: { nodes: [] },
   ...overrides,
+});
+
+const ref = (identifier: string, stateName = "Todo", type = "unstarted") => ({
+  id: `iss_${identifier}`,
+  identifier,
+  title: `Issue ${identifier}`,
+  url: `https://linear.app/acme/issue/${identifier}`,
+  state: state(stateName, type),
 });
 
 /** An issue as the detail query answers it, with nothing hanging off it. */
@@ -513,6 +529,160 @@ describe("LinearIssueTracker", () => {
 
       const missing = yield* Effect.flip(api.getIssue({ ...target, key: "123" }));
       expect(missing.reason).toBe("not-found");
+    }),
+  );
+
+  it.effect("reads the branch, project, milestone, sub-issues and blockers of an issue", () =>
+    Effect.gen(function* () {
+      const { tracker } = fakeLinear({
+        T3Viewer: () => ({ viewer: JULIUS, teams: { nodes: [] } }),
+        T3Issue: () => ({
+          issue: {
+            ...bareDetail("ENG-7"),
+            project: { id: "prj_1", name: "Launch" },
+            projectMilestone: { id: "ms_1", name: "Beta" },
+            parent: ref("ENG-1"),
+            children: { nodes: [ref("ENG-8"), ref("ENG-9", "Done", "completed")] },
+            // ENG-2 blocks ENG-7; ENG-7 blocks ENG-10; a related link is neither.
+            inverseRelations: {
+              nodes: [
+                { type: "blocks", issue: ref("ENG-2") },
+                { type: "related", issue: ref("ENG-3") },
+              ],
+            },
+            relations: { nodes: [{ type: "blocks", relatedIssue: ref("ENG-10") }] },
+          },
+        }),
+      });
+      const api = yield* tracker;
+      const detail = yield* api.getIssue({ ...target, key: "ENG-7" });
+      expect(detail.branchName).toBe("eng/eng-7");
+      expect(detail.containers).toEqual([
+        { kind: "project", id: "prj_1", name: "Launch" },
+        { kind: "milestone", id: "ms_1", name: "Beta" },
+      ]);
+      expect(detail.parent?.key).toBe("ENG-1");
+      expect(detail.subIssues?.map((sub) => [sub.key, sub.state.category])).toEqual([
+        ["ENG-8", "open"],
+        ["ENG-9", "closed"],
+      ]);
+      expect(detail.blockedBy?.map((blocker) => blocker.key)).toEqual(["ENG-2"]);
+      expect(detail.blocks?.map((blocked) => blocked.key)).toEqual(["ENG-10"]);
+    }),
+  );
+
+  it.effect("browses a team's projects, a project's milestones and a milestone's issues", () =>
+    Effect.gen(function* () {
+      const filters: Array<Record<string, unknown>> = [];
+      const { tracker } = fakeLinear({
+        T3TeamProjects: (variables) => ({
+          teams: {
+            nodes:
+              variables["key"] === "ENG"
+                ? [
+                    {
+                      projects: {
+                        nodes: [
+                          {
+                            id: "prj_1",
+                            name: "Launch",
+                            url: "https://linear.app/acme/project/launch",
+                            progress: 0.5,
+                            targetDate: "2026-12-01",
+                            completedAt: null,
+                            canceledAt: null,
+                            status: { name: "In Progress", type: "started" },
+                          },
+                        ],
+                      },
+                    },
+                  ]
+                : [],
+          },
+        }),
+        T3ProjectMilestones: () => ({
+          project: {
+            projectMilestones: {
+              nodes: [
+                { id: "ms_2", name: "GA", progress: 0, targetDate: null, sortOrder: 2 },
+                { id: "ms_1", name: "Beta", progress: 1, targetDate: null, sortOrder: 1 },
+              ],
+            },
+          },
+        }),
+        T3BrowseIssues: (variables) => {
+          filters.push(variables["filter"] as Record<string, unknown>);
+          return {
+            issues: {
+              nodes: [
+                issue("ENG-7", {
+                  parent: { identifier: "ENG-1" },
+                  children: { nodes: [{ id: "a" }, { id: "b" }] },
+                  inverseRelations: {
+                    nodes: [
+                      { type: "blocks", issue: { state: { type: "completed" } } },
+                      { type: "blocks", issue: { state: { type: "started" } } },
+                    ],
+                  },
+                }),
+              ],
+              pageInfo: { hasNextPage: true, endCursor: "cur_1" },
+            },
+          };
+        },
+      });
+      const api = yield* tracker;
+
+      const team = yield* api.browse({ ...target, state: "open", limit: 50 });
+      expect(team.items).toEqual([]);
+      expect(team.containers).toEqual([
+        expect.objectContaining({
+          kind: "project",
+          id: "prj_1",
+          status: "In Progress",
+          progress: 0.5,
+          completed: false,
+        }),
+      ]);
+      const unknown = yield* Effect.flip(
+        api.browse({ ...target, scope: "OPS", state: "open", limit: 50 }),
+      );
+      expect(unknown.reason).toBe("failed");
+
+      const project = yield* api.browse({
+        ...target,
+        container: { kind: "project", id: "prj_1" },
+        state: "open",
+        limit: 50,
+      });
+      expect(project.containers.map((milestone) => [milestone.name, milestone.completed])).toEqual([
+        ["Beta", true],
+        ["GA", false],
+      ]);
+      expect(project.items[0]).toMatchObject({
+        key: "ENG-7",
+        parentKey: "ENG-1",
+        subIssueCount: 2,
+        blocked: true,
+      });
+      expect(project.nextCursor).toBe("cur_1");
+
+      const milestone = yield* api.browse({
+        ...target,
+        container: { kind: "milestone", id: "ms_1" },
+        state: "all",
+        limit: 50,
+        cursor: "cur_1",
+      });
+      expect(milestone.containers).toEqual([]);
+      expect(filters).toEqual([
+        expect.objectContaining({
+          project: { id: { eq: "prj_1" } },
+          projectMilestone: { null: true },
+          state: { type: { nin: ["completed", "canceled", "duplicate"] } },
+        }),
+        { team: { key: { eq: "ENG" } }, projectMilestone: { id: { eq: "ms_1" } } },
+      ]);
     }),
   );
 
