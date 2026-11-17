@@ -39,6 +39,7 @@ import { issueEnvironment } from "~/state/issues";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 
+import { IssueGlyph } from "./issuePresentation";
 import { IssueRow, type IssueRowTarget } from "./IssueRow";
 import {
   appendIssueBrowseEntries,
@@ -126,7 +127,7 @@ export function IssueBrowseView({
   }
 
   const breadcrumb = (
-    <WorkspaceBreadcrumb ariaLabel="Browse breadcrumb" className="[&_ol]:flex-wrap [&_ol]:gap-y-0">
+    <WorkspaceBreadcrumb ariaLabel="Browse breadcrumb" wrap>
       {crumbs.map((crumb, index) => (
         <Fragment key={crumb.level}>
           {index > 0 ? (
@@ -134,16 +135,18 @@ export function IssueBrowseView({
               <ChevronRightIcon className="size-3.5" />
             </WorkspaceBreadcrumbSeparator>
           ) : null}
-          <WorkspaceBreadcrumbItem current={crumb.target === null}>
+          {/* An ancestor may shrink too: a long project name truncates on its own line. */}
+          <WorkspaceBreadcrumbItem current={crumb.target === null} className="max-w-full shrink">
             {crumb.target === null ? (
               <WorkspaceBreadcrumbText>{crumb.label}</WorkspaceBreadcrumbText>
             ) : (
               <Button
                 size="xs"
                 variant="ghost-muted"
+                className="max-w-full min-w-0 shrink"
                 onClick={() => onNavigate(crumb.target ?? {})}
               >
-                {crumb.label}
+                <span className="truncate">{crumb.label}</span>
               </Button>
             )}
           </WorkspaceBreadcrumbItem>
@@ -176,6 +179,7 @@ export function IssueBrowseView({
       ) : teams.length === 0 && teamsError ? (
         <PullRequestsUnavailableState
           title="Could not load teams"
+          icon={<IssueGlyph.issue />}
           error={teamsError}
           onRetry={onRetryTeams}
           refreshing={teamsPending}
@@ -304,6 +308,7 @@ function BrowseLevel({
         {query.error !== null && !query.isPending ? (
           <PullRequestsUnavailableState
             title="Could not load this view"
+            icon={<IssueGlyph.issue />}
             error={query.error}
             onRetry={query.refresh}
             refreshing={query.isPending}
