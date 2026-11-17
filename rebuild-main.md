@@ -25,9 +25,9 @@ In stack order. Each branch is rebased onto the last branch before it that made 
 | #   | Branch                     | Needs               | Status | What it is                                                                                                                                                                                       |
 | --- | -------------------------- | ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1   | `feat/pipelines`           | -                   | active | Pipelines. Proposed upstream in discussion `pingdotgg/t3code#26694`, so it must keep working on its own.                                                                                         |
-| 2   | `feat/linear`              | pipelines           | active | Linear integration.                                                                                                                                                                              |
+| 2   | `feat/linear`              | pipelines           | active | Linear on upstream's Issues: project/milestone drill-down and Start chat / Run pipeline from an issue.                                                                                           |
 | 3   | `feat/host-capacity`       | -                   | active | Host capacity. First commit ports upstream PR `pingdotgg/t3code#27253` (memory pressure warnings); later commits cap concurrent turns per machine.                                              |
-| 4   | `feat/multi-repo-projects` | pipelines, linear   | active | Multi-repo projects: upstream's open PR series #35921, #35923, #35924, #35925 (one commit each), their schema moved into `MultiRepoSchema.ts`, plus Pipelines glue and a desktop SSH-agent fix. |
+| 4   | `feat/multi-repo-projects` | pipelines           | active | Multi-repo projects: upstream's open PR series #35921, #35923, #35924, #35925 (one commit each), their schema moved into `MultiRepoSchema.ts`, plus Pipelines glue and a desktop SSH-agent fix. |
 
 "Needs" lists the branches whose code it builds on. If one of them dropped out this run, skip the
 branch too (report it as "skipped: needs <branch>").
@@ -106,6 +106,12 @@ text. The fork adds MCP tools, so after a rebase it is often wrong; when
    upstream reworked the code, keep the commit's tests (`claude_background_task_wake/output.ts`
    and the "release a finished background task" adapter test) and make them pass. Once upstream
    fixes it, the rebase empties the commit; report that.
+
+   Linear builds on upstream's Issues system (`packages/issue-tracker-linear`, `IssueService`, the
+   Issues page and panel, the mobile Issues tab). It adds the project and milestone drill-down
+   (`issues.browse`) and Start chat / Run pipeline from an issue, linking the new thread through
+   upstream's issue link. On a conflict, keep upstream's Issues behaviour and re-apply those
+   additions; never bring back a separate Linear page, route, tab, package or connection.
 
    Multi-repo carries upstream's open series #35921 → #35923 → #35924 → #35925 as cherry-picks
    (`-x`, so each commit names its upstream sha). Check each PR (`gh pr view <n> --repo

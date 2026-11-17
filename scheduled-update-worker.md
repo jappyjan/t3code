@@ -92,7 +92,8 @@ One short line each:
 - **Discussion**: the news from section 1 (with drafted replies), or "nothing new".
 - **Upstream**: how many upstream commits came in, and which touch areas the feature branches
   use (Pipelines: orchestration, thread shells, sidebar, MCP toolkit, settings, mobile threads;
-  Linear: the pull request page and source control, composer context, settings secrets, routes;
+  Linear: upstream's Issues (issue trackers, the Linear tracker, the Issues page and panel, the
+  mobile Issues tab), thread launch and worktrees, composer context;
   multi-repo: projects/settings, checkpointing, worktrees/TaskFolders, diff/review, Git
   actions, provider adapters, mobile review/Git; host capacity: resource telemetry/HostResources,
   agent scope, run admission and the run queue, settings, sidebar, mobile home).
