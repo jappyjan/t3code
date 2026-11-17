@@ -1065,6 +1065,7 @@ it("readThread names the pipeline run on a pipeline's parent and step threads", 
               projections.get(threadId)!.thread as unknown as OrchestrationV2ThreadShell,
             ),
           getProjectThreadRecords: (input) => Effect.succeed(projections.get(input.threadId)!),
+          getRunCount: (threadId) => Effect.succeed(projections.get(threadId)!.runs.length),
         } satisfies Partial<ThreadManagementService.ThreadManagementService["Service"]>),
         ServerSettings.layerTest(),
         Layer.mock(ProviderRegistry.ProviderRegistry)({

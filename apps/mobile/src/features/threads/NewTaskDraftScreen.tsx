@@ -18,6 +18,7 @@ import { ThreadId } from "@t3tools/contracts";
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/reactivity";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
 import { draftWorkspaceStrategy } from "@t3tools/client-runtime/operations";
@@ -57,6 +58,7 @@ import { composerContextImportsAtom } from "../../state/use-composer-drafts";
 import { abortComposerDraftOperations } from "../../state/composerDraftOperations";
 import { composerContextSendBlockReason, uploadedComposerContext } from "../../lib/composerContext";
 import { prepareTurnAttachments, type UploadedMobileAttachment } from "../../lib/attachmentUpload";
+import { uploadComposerAttachmentShared } from "../../state/composer-attachment-uploads";
 import { ComposerInlineControl } from "../../components/ComposerToolbar";
 
 import {
@@ -827,11 +829,15 @@ export function NewTaskDraftScreen(props: {
         draft.attachments.length === 0
           ? null
           : await settlePromise(() =>
-              prepareTurnAttachments({
-                environmentId: selectedProject.environmentId,
-                attachments: draft.attachments,
-                supportsImageUploads: true,
-              }),
+              Effect.runPromise(
+                prepareTurnAttachments({
+                  environmentId: selectedProject.environmentId,
+                  attachments: draft.attachments,
+                  supportsImageUploads: true,
+                  uploadAttachment: (attachment) =>
+                    uploadComposerAttachmentShared(selectedProject.environmentId, attachment),
+                }),
+              ),
             );
       if (
         prepared !== null &&
