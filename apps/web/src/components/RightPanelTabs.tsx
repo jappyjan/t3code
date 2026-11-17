@@ -82,7 +82,7 @@ import type { DesktopPreviewOverlay } from "~/previewStateStore";
 import { linkedThreadTitle } from "~/linkedThreadSurface";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
-import { issueStatePresentation } from "~/components/issue/issuePresentation";
+import { IssueStateIcon } from "~/components/issue/issuePresentation";
 import { issueEnvironment } from "~/state/issues";
 import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import { readLocalApi } from "~/localApi";
@@ -843,14 +843,7 @@ function IssueSurfaceIcon({
         }),
   ).data;
   if (detail === null) return <CircleDotIcon className="size-3 shrink-0" />;
-  const presentation = issueStatePresentation(detail.state);
-  return (
-    <presentation.Icon
-      role="img"
-      aria-label={presentation.label}
-      className={cn("size-3 shrink-0", presentation.toneClassName)}
-    />
-  );
+  return <IssueStateIcon labelled state={detail.state} className="size-3" />;
 }
 
 function PullRequestSurfaceIcon({

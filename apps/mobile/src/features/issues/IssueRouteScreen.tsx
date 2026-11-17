@@ -67,6 +67,7 @@ import { issueIdentity, issueParamsKey, issueTarget, type IssueParams } from "./
 import {
   IssueLabelPill,
   issueCommandError,
+  IssueStatusIcon,
   issueStatus,
   useIssueAccess,
 } from "./issuePresentation";
@@ -122,7 +123,7 @@ function IssueStateControl(props: {
       disabled={!moves.length || props.busy}
       className="min-h-8 flex-row items-center gap-1.5 active:opacity-70"
     >
-      <SymbolView name={status.icon} size={14} tintColorClassName={status.tint} />
+      <IssueStatusIcon state={props.state} size={14} />
       <Text className={`text-xs font-t3-medium ${status.text}`}>{status.label}</Text>
       {moves.length ? (
         <SymbolView name="chevron.down" size={9} tintColorClassName="accent-icon-muted" />

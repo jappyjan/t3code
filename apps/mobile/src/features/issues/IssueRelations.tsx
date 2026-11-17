@@ -13,7 +13,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { PullRequestSectionHeading } from "../pull-requests/PullRequestSectionHeading";
 import type { IssueParams } from "./issueParams";
-import { issueStatus } from "./issuePresentation";
+import { IssueStatusIcon, issueStatus } from "./issuePresentation";
 
 function RelatedIssueRow(props: {
   readonly issue: IssueRelatedRef;
@@ -28,7 +28,7 @@ function RelatedIssueRow(props: {
       onPress={() => props.onOpen(issue)}
       className="min-h-10 flex-row items-center gap-2 active:opacity-70"
     >
-      <SymbolView name={status.icon} size={14} tintColorClassName={status.tint} />
+      <IssueStatusIcon state={issue.state} size={14} />
       <Text className="shrink-0 font-mono text-2xs text-foreground-muted">{issue.displayKey}</Text>
       <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
         {issue.title}

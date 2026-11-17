@@ -663,6 +663,10 @@
       "types": "./src/issuePresentation.ts",
       "default": "./src/issuePresentation.ts"
     },
+    "./issue-state-glyph": {
+      "types": "./src/issueStateGlyph.ts",
+      "default": "./src/issueStateGlyph.ts"
+    },
     "./issue-list": {
       "types": "./src/issueList.ts",
       "default": "./src/issueList.ts"

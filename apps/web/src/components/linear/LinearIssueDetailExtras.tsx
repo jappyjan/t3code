@@ -19,9 +19,7 @@ import type {
 import { sortBlockers } from "@t3tools/shared/linearLaunch";
 import {
   ChevronDownIcon,
-  CircleCheckIcon,
   CircleIcon,
-  CircleXIcon,
   FolderKanbanIcon,
   GitBranchIcon,
   MessageSquarePlusIcon,
@@ -36,6 +34,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { linearContextReference } from "../../lib/composerContextRecords";
 import { formatInlineContextReference } from "../../lib/composerContextReferences";
+import { IssueStateIcon } from "../issue/issuePresentation";
 import { PullRequestMetaRow } from "../pullRequest/PullRequestSummaryTab";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
@@ -175,13 +174,7 @@ export function LinearIssueLaunchBar({
 }
 
 function RelatedStateIcon({ issue }: { readonly issue: IssueRelatedRef }) {
-  const Icon =
-    issue.state.category === "open"
-      ? CircleIcon
-      : issue.state.closeReason === "completed"
-        ? CircleCheckIcon
-        : CircleXIcon;
-  return <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  return <IssueStateIcon state={issue.state} className="size-3.5" />;
 }
 
 function RelatedIssue({

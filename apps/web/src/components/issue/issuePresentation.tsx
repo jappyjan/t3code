@@ -1,9 +1,11 @@
 import type { IssueState, IssueTrackerKind } from "@t3tools/contracts";
+import { issueStateGlyph } from "@t3tools/client-runtime/issue-state-glyph";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { CircleCheckIcon, CircleDotIcon, CircleSlashIcon, TicketIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
 import { JiraIcon, LinearIcon, type Icon } from "~/components/Icons";
+import { useTheme } from "~/hooks/useTheme";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -53,17 +55,74 @@ export function issueStatePresentation(state: IssueState) {
   };
 }
 
+/**
+ * The state's mark: Linear's per-type glyph in the state's colour where the tracker has workflow
+ * types, otherwise the open or closed icon. Decorative unless `labelled`.
+ */
+export function IssueStateIcon({
+  state,
+  className,
+  labelled = false,
+}: {
+  state: IssueState;
+  className?: string | undefined;
+  labelled?: boolean;
+}) {
+  const { resolvedTheme } = useTheme();
+  const presentation = issueStatePresentation(state);
+  const glyph = issueStateGlyph(state, resolvedTheme === "dark" ? "dark" : "light");
+  const accessibility = labelled
+    ? ({ role: "img", "aria-label": presentation.label } as const)
+    : ({ "aria-hidden": true } as const);
+  if (glyph === null) {
+    return (
+      <presentation.Icon
+        {...accessibility}
+        className={cn("size-4 shrink-0", presentation.toneClassName, className)}
+      />
+    );
+  }
+  return (
+    <svg
+      {...accessibility}
+      viewBox={`0 0 ${glyph.viewBox} ${glyph.viewBox}`}
+      className={cn("size-4 shrink-0", className)}
+    >
+      {glyph.primitives.map((primitive) =>
+        primitive.tag === "circle" ? (
+          <circle
+            key={primitive.key}
+            cx={primitive.cx}
+            cy={primitive.cy}
+            r={primitive.r}
+            fill={primitive.fill ?? "none"}
+            stroke={primitive.stroke ?? "none"}
+            strokeWidth={primitive.strokeWidth}
+            strokeDasharray={primitive.dash ?? undefined}
+          />
+        ) : (
+          <path
+            key={primitive.key}
+            d={primitive.d}
+            fill={primitive.fill ?? "none"}
+            stroke={primitive.stroke ?? "none"}
+            strokeWidth={primitive.strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ),
+      )}
+    </svg>
+  );
+}
+
 export function IssueStateGlyph({ state, className }: { state: IssueState; className?: string }) {
   const presentation = issueStatePresentation(state);
   return (
     <Tooltip>
       {/* The list row is itself a button, so the trigger stays a span. */}
       <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-        <presentation.Icon
-          role="img"
-          aria-label={presentation.label}
-          className={cn("size-4 shrink-0", presentation.toneClassName, className)}
-        />
+        <IssueStateIcon labelled state={state} className={className} />
       </TooltipTrigger>
       <TooltipPopup>{presentation.label}</TooltipPopup>
     </Tooltip>

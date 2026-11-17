@@ -82,7 +82,11 @@ import { IssueThreadLinks } from "./IssueThreadLinks";
 import { WorkflowRunsAbout } from "../workflows/WorkflowRunsAbout";
 import { ReactionBar } from "../pullRequest/PullRequestReactions";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
-import { issueTrackerPresentation, issueStatePresentation } from "./issuePresentation";
+import {
+  IssueStateIcon,
+  issueTrackerPresentation,
+  issueStatePresentation,
+} from "./issuePresentation";
 import { LinearIssueLaunchBar, LinearIssueRelations } from "../linear/LinearIssueDetailExtras";
 
 function IssueReactionBar({
@@ -601,12 +605,7 @@ export function IssueDetailPanel({
     refreshIssueLists(environmentId);
   };
 
-  const currentStateIcon = (
-    <currentState.Icon
-      aria-hidden
-      className={cn("size-3.5 shrink-0", currentState.toneClassName)}
-    />
-  );
+  const currentStateIcon = <IssueStateIcon state={detail.state} className="size-3.5" />;
   const stateControl: ReactNode =
     otherStates.length > 0 ? (
       <Menu>
@@ -626,13 +625,9 @@ export function IssueDetailPanel({
         </MenuTrigger>
         <MenuPopup align="end">
           {otherStates.map((state) => {
-            const presentation = issueStatePresentation(state);
             return (
               <MenuItem key={state.name} onClick={() => void moveTo(state.name)}>
-                <presentation.Icon
-                  aria-hidden
-                  className={cn("size-3.5 shrink-0", presentation.toneClassName)}
-                />
+                <IssueStateIcon state={state} className="size-3.5" />
                 {state.name}
               </MenuItem>
             );
