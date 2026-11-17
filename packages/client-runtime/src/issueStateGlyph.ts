@@ -39,8 +39,6 @@ type IssueGlyphPrimitive =
     };
 
 interface IssueStateGlyph {
-  readonly type: IssueStateType;
-  readonly label: string;
   readonly color: string;
   /** Drawn in a 16 × 16 box, so web and mobile share one set of shapes. */
   readonly viewBox: 16;
@@ -65,10 +63,10 @@ function inkOf(hex: string): { readonly luminance: number; readonly chroma: numb
 
 /** The state's colour, or its type's default; a colour too pale or too dark for the theme goes neutral. */
 function issueStateColor(
-  state: Pick<IssueState, "type" | "color">,
+  type: IssueStateType,
+  state: Pick<IssueState, "color">,
   scheme: "light" | "dark",
 ): string {
-  const type = state.type ?? "unstarted";
   const color = state.color?.trim() || ISSUE_STATE_DEFAULT_COLORS[type];
   const ink = inkOf(color);
   if (ink === null) return ISSUE_STATE_DEFAULT_COLORS[type];
@@ -151,7 +149,7 @@ export function issueStateGlyph(
 ): IssueStateGlyph | null {
   const type = state.type;
   if (type === undefined) return null;
-  const color = issueStateColor(state, scheme);
+  const color = issueStateColor(type, state, scheme);
   const primitives: ReadonlyArray<IssueGlyphPrimitive> = (() => {
     switch (type) {
       case "backlog":
@@ -169,5 +167,5 @@ export function issueStateGlyph(
         return [disc(color), mark(TRIAGE)];
     }
   })();
-  return { type, label: state.name, color, viewBox: 16, primitives };
+  return { color, viewBox: 16, primitives };
 }
