@@ -78,6 +78,7 @@ describe("issueStateGlyph", () => {
     expect(colorOf(state("unstarted", { color: "#e2e2e2" }), "light")).toBe("#9ca3af");
     expect(colorOf(state("unstarted", { color: "#e2e2e2" }), "dark")).toBe("#e2e2e2");
     expect(colorOf(state("completed", { color: "#101010" }), "dark")).toBe("#9ca3af");
+    expect(colorOf(state("started", { color: "#f2c94c" }), "light")).toBe("#f2c94c");
     expect(colorOf(state("backlog", { color: "nonsense" }), "light")).toBe("#bec2c8");
     // Every type has a fallback colour of its own.
     expect(new Set(TYPES.map((type) => colorOf(state(type), "light"))).size).toBeGreaterThan(4);
