@@ -1,6 +1,7 @@
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { T, useGT } from "gt-react";
 import { ExternalLinkIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
@@ -12,19 +13,19 @@ export function PullRequestsUnavailableState({
   onRetry,
   refreshing = false,
   host,
+  icon,
 }: {
   title?: string;
   error: string;
   onRetry?: () => void;
   refreshing?: boolean;
   host?: { readonly url: string; readonly openLabel: string };
+  icon?: ReactNode;
 }) {
   const gt = useGT();
   return (
     <Empty className="scrollbar-gutter-both min-h-0 justify-center-safe overflow-y-auto [&>*]:shrink-0">
-      <EmptyMedia variant="icon">
-        <PullRequestGlyph.pullRequest />
-      </EmptyMedia>
+      <EmptyMedia variant="icon">{icon ?? <PullRequestGlyph.pullRequest />}</EmptyMedia>
       <EmptyHeader>
         <EmptyTitle>{title ?? gt("Could not load pull requests")}</EmptyTitle>
         <EmptyDescription>{error}</EmptyDescription>
