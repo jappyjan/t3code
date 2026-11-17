@@ -74,6 +74,7 @@ import { IssueDetailGhost } from "./IssueDetailGhost";
 import { ReactionBar } from "../pullRequest/PullRequestReactions";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
 import {
+  IssueGlyph,
   IssueStateIcon,
   issueTrackerPresentation,
   issueStatePresentation,
@@ -485,6 +486,7 @@ export function IssueDetailPanel({
       return (
         <PullRequestsUnavailableState
           title="Could not load this issue"
+          icon={<IssueGlyph.issue />}
           error={detailQuery.error}
           onRetry={detailQuery.refresh}
         />
@@ -619,7 +621,11 @@ export function IssueDetailPanel({
               {detail.scope}
             </span>
             <InlineButton
-              className={cn("shrink-0 font-medium", currentState.toneClassName)}
+              // A Linear state's colour is its glyph's; the key stays neutral beside it.
+              className={cn(
+                "shrink-0 font-medium",
+                detail.state.type === undefined && currentState.toneClassName,
+              )}
               aria-label={`Open ${detail.displayKey} on ${tracker.providerName}`}
               render={<a href={detail.url} target="_blank" rel="noopener noreferrer" />}
             >

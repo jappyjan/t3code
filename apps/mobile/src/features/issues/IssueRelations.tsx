@@ -128,7 +128,10 @@ export function IssueRelations(props: {
         >
           <SymbolView name="chart.bar.xaxis" size={14} tintColorClassName="accent-icon-muted" />
           <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
-            {detail.priorityLabel}
+            {/* Mobile rows have no label column, so the value names itself. */}
+            {/^no priority$/i.test(detail.priorityLabel)
+              ? detail.priorityLabel
+              : `${detail.priorityLabel} priority`}
           </Text>
         </View>
       ) : null}

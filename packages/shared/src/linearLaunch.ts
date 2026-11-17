@@ -27,8 +27,12 @@ const COMMENT_TRUNCATION_MARKER = " [comment truncated]";
 const INPUT_TRUNCATION_NOTE =
   "\n\n[The rest of this issue was left out: it exceeds the input size limit.]";
 
-/** `completed`, `canceled` (any other way of closing) or `open`: what the checkboxes key off. */
+/**
+ * Linear's workflow type where the tracker reports one (the chip draws its glyph), otherwise
+ * `completed`, `canceled` (any other way of closing) or `open`. The checkboxes key off it.
+ */
 export function issueStateType(state: IssueState): string {
+  if (state.type !== undefined) return state.type;
   if (state.category === "open") return "open";
   return state.closeReason === "completed" ? "completed" : "canceled";
 }
