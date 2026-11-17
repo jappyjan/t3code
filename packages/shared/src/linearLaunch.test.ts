@@ -118,5 +118,13 @@ describe("linear issue launch context", () => {
 
   it("names a closed state by how it closed", () => {
     expect([open, done, canceled].map(issueStateType)).toEqual(["open", "completed", "canceled"]);
+    expect(
+      issueStateType({
+        category: "closed",
+        name: "Dup",
+        closeReason: "duplicate",
+        type: "duplicate",
+      }),
+    ).toBe("duplicate");
   });
 });

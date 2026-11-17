@@ -83,6 +83,7 @@ import { WorkflowRunsAbout } from "../workflows/WorkflowRunsAbout";
 import { ReactionBar } from "../pullRequest/PullRequestReactions";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
 import {
+  IssueGlyph,
   IssueStateIcon,
   issueTrackerPresentation,
   issueStatePresentation,
@@ -507,6 +508,7 @@ export function IssueDetailPanel({
       return (
         <PullRequestsUnavailableState
           title={gt("Could not load this issue")}
+          icon={<IssueGlyph.issue />}
           error={detailQuery.error}
           onRetry={detailQuery.refresh}
         />
@@ -667,7 +669,11 @@ export function IssueDetailPanel({
               {detail.scope}
             </span>
             <InlineButton
-              className={cn("shrink-0 font-medium", currentState.toneClassName)}
+              // A Linear state's colour is its glyph's; the key stays neutral beside it.
+              className={cn(
+                "shrink-0 font-medium",
+                detail.state.type === undefined && currentState.toneClassName,
+              )}
               aria-label={gt("Open {issue} on {provider}", {
                 issue: detail.displayKey,
                 provider: tracker.providerName,

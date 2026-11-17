@@ -19,12 +19,12 @@ import type {
 import { sortBlockers } from "@t3tools/shared/linearLaunch";
 import {
   ChevronDownIcon,
-  BanIcon,
   ListTreeIcon,
   OctagonAlertIcon,
   CornerLeftUpIcon,
   FolderKanbanIcon,
   GitBranchIcon,
+  HandIcon,
   SignalIcon,
   MessageSquarePlusIcon,
   WorkflowIcon,
@@ -38,7 +38,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { linearContextReference } from "../../lib/composerContextRecords";
 import { formatInlineContextReference } from "../../lib/composerContextReferences";
-import { IssueStateIcon } from "../issue/issuePresentation";
+import { IssueStateGlyph } from "../issue/issuePresentation";
 import { PullRequestMetaRow } from "../pullRequest/PullRequestSummaryTab";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
@@ -177,10 +177,6 @@ export function LinearIssueLaunchBar({
   );
 }
 
-function RelatedStateIcon({ issue }: { readonly issue: IssueRelatedRef }) {
-  return <IssueStateIcon state={issue.state} className="size-3.5" />;
-}
-
 function RelatedIssue({
   issue,
   onOpen,
@@ -190,7 +186,7 @@ function RelatedIssue({
 }) {
   const body = (
     <>
-      <RelatedStateIcon issue={issue} />
+      <IssueStateGlyph state={issue.state} className="size-3.5" />
       <span className="shrink-0 font-mono text-xs text-muted-foreground">{issue.displayKey}</span>
       <span className="min-w-0 truncate">{issue.title}</span>
     </>
@@ -276,7 +272,7 @@ export function LinearIssueRelations({
       <OctagonAlertIcon key="by" className="size-3.5" />,
       sortBlockers(detail.blockedBy ?? []),
     ],
-    ["Blocking", <BanIcon key="blocking" className="size-3.5" />, detail.blocks ?? []],
+    ["Blocking", <HandIcon key="blocking" className="size-3.5" />, detail.blocks ?? []],
   ];
   for (const [label, icon, issues] of groups) {
     if (issues.length === 0) continue;

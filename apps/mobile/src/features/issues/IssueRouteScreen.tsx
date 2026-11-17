@@ -124,7 +124,12 @@ function IssueStateControl(props: {
       className="min-h-8 flex-row items-center gap-1.5 active:opacity-70"
     >
       <IssueStatusIcon state={props.state} size={14} />
-      <Text className={`text-xs font-t3-medium ${status.text}`}>{status.label}</Text>
+      {/* A Linear state's colour is its glyph's; the name stays neutral beside it. */}
+      <Text
+        className={`text-xs font-t3-medium ${props.state.type ? "text-foreground" : status.text}`}
+      >
+        {status.label}
+      </Text>
       {moves.length ? (
         <SymbolView name="chevron.down" size={9} tintColorClassName="accent-icon-muted" />
       ) : null}

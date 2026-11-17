@@ -1,24 +1,38 @@
-import type { LinearIssueContextRecord } from "@t3tools/contracts";
-import { CircleCheckIcon, CircleIcon, CircleXIcon } from "lucide-react";
+import { IssueStateType, type LinearIssueContextRecord } from "@t3tools/contracts";
+import { CircleIcon } from "lucide-react";
+import * as Schema from "effect/Schema";
 import { linearIssueExtrasSummary } from "@t3tools/shared/linearLaunch";
 
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import ChatMarkdown from "./ChatMarkdown";
 import { LinearIcon } from "./Icons";
 import { cn } from "~/lib/utils";
+import { IssueStateIcon as LinearStateIcon } from "./issue/issuePresentation";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 
-/** Records name Linear's own state types; newer ones carry `open`, `completed` or `canceled`. */
+const isStateType = Schema.is(IssueStateType);
+const CLOSED_TYPES: ReadonlyArray<string> = ["completed", "canceled", "duplicate"];
+
+/** Records carry Linear's state type; some older ones only `open`, which has no glyph. */
 function IssueStateIcon({
   type,
+  name,
   className,
 }: {
   readonly type: string;
+  readonly name: string;
   readonly className?: string;
 }) {
-  const Icon =
-    type === "completed" ? CircleCheckIcon : type === "canceled" ? CircleXIcon : CircleIcon;
-  return <Icon aria-hidden className={cn("size-3.5 shrink-0 text-muted-foreground", className)} />;
+  if (!isStateType(type)) {
+    return (
+      <CircleIcon
+        aria-hidden
+        className={cn("size-3.5 shrink-0 text-muted-foreground", className)}
+      />
+    );
+  }
+  const category = CLOSED_TYPES.includes(type) ? "closed" : "open";
+  return <LinearStateIcon state={{ category, name, type }} className={cn("size-3.5", className)} />;
 }
 
 function LinearIssuePreview({ record }: { readonly record: LinearIssueContextRecord }) {
@@ -33,7 +47,7 @@ function LinearIssuePreview({ record }: { readonly record: LinearIssueContextRec
     <div className="w-96 max-w-full space-y-2 p-3 text-xs">
       <div className="truncate text-2xs text-muted-foreground">{crumbs.join(" › ")}</div>
       <div className="flex items-start gap-1.5">
-        <IssueStateIcon type={record.stateType} className="mt-0.5" />
+        <IssueStateIcon type={record.stateType} name={record.stateName} className="mt-0.5" />
         <div className="min-w-0">
           <div className="font-medium text-foreground">
             <span className="font-mono text-muted-foreground">{record.identifier}</span>{" "}
@@ -66,7 +80,7 @@ function LinearIssuePreview({ record }: { readonly record: LinearIssueContextRec
           </div>
           {record.subIssues.slice(0, 5).map((sub) => (
             <div key={sub.identifier} className="flex items-center gap-1.5">
-              <IssueStateIcon type={sub.stateType} />
+              <IssueStateIcon type={sub.stateType} name={sub.stateType} />
               <span className="font-mono text-muted-foreground">{sub.identifier}</span>
               <span className="truncate">{sub.title}</span>
             </div>

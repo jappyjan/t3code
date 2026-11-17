@@ -8,6 +8,7 @@ export type LinearIssueSnapshot = Omit<
 const SUB_ISSUE_CHECKBOX: Readonly<Record<string, string>> = {
   completed: "[x]",
   canceled: "[-]",
+  duplicate: "[-]",
 };
 
 /** One text rendering of an issue, shared by the agent's context payload and pipeline input. */

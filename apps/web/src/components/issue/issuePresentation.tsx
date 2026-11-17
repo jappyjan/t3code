@@ -5,7 +5,7 @@ import { CircleCheckIcon, CircleDotIcon, CircleSlashIcon, TicketIcon } from "luc
 
 import { cn } from "~/lib/utils";
 import { JiraIcon, LinearIcon, type Icon } from "~/components/Icons";
-import { useTheme } from "~/hooks/useTheme";
+import { useRenderedAppearance } from "~/hooks/useTheme";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -68,9 +68,9 @@ export function IssueStateIcon({
   className?: string | undefined;
   labelled?: boolean;
 }) {
-  const { resolvedTheme } = useTheme();
+  const appearance = useRenderedAppearance();
   const presentation = issueStatePresentation(state);
-  const glyph = issueStateGlyph(state, resolvedTheme === "dark" ? "dark" : "light");
+  const glyph = issueStateGlyph(state, appearance === "dark" ? "dark" : "light");
   const accessibility = labelled
     ? ({ role: "img", "aria-label": presentation.label } as const)
     : ({ "aria-hidden": true } as const);

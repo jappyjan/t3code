@@ -10,6 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   appendIssueBrowseEntries,
   issueBrowseTeams,
+  issueContainerProgressLabel,
   nestIssueBrowseEntries,
   splitIssueContainers,
 } from "./issueBrowse.ts";
@@ -59,6 +60,16 @@ describe("splitIssueContainers", () => {
     ]);
     expect(active.map((c) => c.id)).toEqual(["a", "c"]);
     expect(completed.map((c) => c.id)).toEqual(["b"]);
+  });
+});
+
+describe("issueContainerProgressLabel", () => {
+  it("rounds a 0..1 progress to a whole percent, as Linear does", () => {
+    expect(
+      [0.75, 6 / 7, 2 / 3, 0.625, 0, 1, 1.2, -0.1, null, Number.NaN].map(
+        issueContainerProgressLabel,
+      ),
+    ).toEqual(["75%", "86%", "67%", "63%", "0%", "100%", "100%", "0%", null, null]);
   });
 });
 
