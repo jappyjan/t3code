@@ -90,6 +90,7 @@ import {
   resolveNewTaskLocalWorkspaceSelection,
 } from "./new-task-context-presentation";
 import { isSameRepository, resolveEnvironmentProjectMatch } from "./new-task-project-selection";
+import { linearThreadCreationFields } from "../issues/linearLaunchHelpers";
 import { useNewTaskProjectDefaults } from "./use-new-task-project-defaults";
 import { resolveNewThreadRuntimeMode } from "./thread-settings-options";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
@@ -787,6 +788,7 @@ export function NewTaskFlowProvider(
         ...((workspaceSelection?.startFromOrigin ?? startFromOrigin)
           ? { startFromOrigin: true }
           : {}),
+        ...linearThreadCreationFields(draft, mode),
       },
       createdAt: metadata.createdAt,
     };

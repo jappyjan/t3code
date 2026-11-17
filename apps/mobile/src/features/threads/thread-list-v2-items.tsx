@@ -1,4 +1,5 @@
 import * as Dialog from "../../components/ui/Dialog";
+import { attachedLinearDraftIssue } from "@t3tools/client-runtime/linear/launch";
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import {
   THREAD_LIST_V2_MONO_FONT as MONO_FONT,
@@ -524,6 +525,13 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   const selected = props.selected ?? false;
   const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected);
   const isDraft = pendingTask.kind === "draft";
+  const draftIssue =
+    pendingTask.kind === "draft"
+      ? attachedLinearDraftIssue(
+          pendingTask.draft.linearIssue,
+          pendingTask.draft.context?.records ?? [],
+        )
+      : null;
   const deleteLabel = isDraft ? "Discard" : "Delete";
   const handleDelete = useCallback(
     () => onDeletePendingTask(pendingTask),
@@ -627,7 +635,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
                   : "text-adaptive-amber-700-300",
               )}
             >
-              Draft
+              {draftIssue ? `Draft · from ${draftIssue.identifier}` : "Draft"}
             </Text>
           </View>
         ) : null}

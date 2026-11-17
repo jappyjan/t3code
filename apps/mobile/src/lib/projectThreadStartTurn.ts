@@ -35,6 +35,7 @@ export interface ProjectThreadStartTurnSpec {
   readonly worktreePath: string | null;
   readonly startFromOrigin: boolean;
   readonly worktreeBranchName: string;
+  readonly freeBranchName?: boolean;
 }
 
 export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpec) {
@@ -76,6 +77,7 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
               baseBranch: spec.branch!,
               branch: spec.worktreeBranchName,
               ...(spec.startFromOrigin ? { startFromOrigin: true } : {}),
+              ...(spec.freeBranchName ? { freeBranchName: true } : {}),
             },
             runSetupScript: true,
           }

@@ -32,6 +32,7 @@ import type {
 } from "@t3tools/client-runtime/state/shell";
 import { draftModelPickMatchesThread } from "@t3tools/shared/model";
 
+import { LinearDraftIssue } from "@t3tools/client-runtime/linear/launch";
 import { writeFileAtomically } from "../lib/atomic-file";
 import { createComposerContextHistory, referencedComposerContext } from "../lib/composerContext";
 import { isQueuedEditDraftKey } from "./queued-edit-draft-key";
@@ -441,6 +442,8 @@ const isComposerDraftPersistenceError = Schema.is(ComposerDraftPersistenceError)
 export interface ComposerDraft {
   readonly text: string;
   readonly context?: OrchestrationMessageContext;
+  /** Set on a draft started from a Linear issue until it is sent. */
+  readonly linearIssue?: LinearDraftIssue;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly importedShareIds?: ReadonlyArray<string>;
   readonly modelSelection?: ModelSelection;
@@ -487,6 +490,7 @@ export type ComposerDraftSettingsUpdate = Pick<
   | "freshContext"
   | "workspaceSelection"
   | "project"
+  | "linearIssue"
 >;
 
 const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
@@ -513,6 +517,7 @@ const PersistedComposerContextSchema = Schema.Struct({
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
   context: Schema.optional(PersistedComposerContextSchema),
+  linearIssue: Schema.optional(LinearDraftIssue),
   attachments: Schema.Array(DraftComposerAttachmentSchema),
   importedShareIds: Schema.optional(Schema.Array(Schema.String)),
   modelSelection: Schema.optional(ModelSelectionSchema),
@@ -1711,6 +1716,7 @@ export function clearComposerDraftContentState(
   const {
     importedShareIds: _importedShareIds,
     context: _context,
+    linearIssue: _linearIssue,
     modelSelection,
     workspaceSelection,
     project: _project,
@@ -2042,7 +2048,7 @@ export function retargetNewTaskDraft(
     ) {
       return current;
     }
-    const { workspaceSelection, ...retained } = normalizeDraft(existing);
+    const { workspaceSelection, linearIssue, ...retained } = normalizeDraft(existing);
     // The PR checkout is recreated on the target machine, so only the old local path is dropped.
     const keptWorkspaceSelection =
       options?.keepPullRequestWorkspace && workspaceSelection?.pullRequestReference !== undefined
@@ -2060,6 +2066,10 @@ export function retargetNewTaskDraft(
       [draftKey]: {
         ...retained,
         ...(keptWorkspaceSelection ? { workspaceSelection: keptWorkspaceSelection } : {}),
+        // The issue link names a project on the machine the draft started on.
+        ...(linearIssue !== undefined && stamp?.environmentId === project.environmentId
+          ? { linearIssue }
+          : {}),
         attachments,
         project: {
           environmentId: project.environmentId,

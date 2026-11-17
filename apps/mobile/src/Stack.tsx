@@ -42,6 +42,8 @@ import { IssueEditScreen } from "./features/issues/IssueEditScreen";
 import { IssueLabelsScreen } from "./features/issues/IssueLabelsScreen";
 import { IssueFilterSearchScreen } from "./features/issues/IssueFilterSearchScreen";
 import { IssueRouteScreen } from "./features/issues/IssueRouteScreen";
+import { IssueBrowseScreen } from "./features/issues/IssueBrowseScreen";
+import { IssuePipelineSheet } from "./features/issues/IssuePipelineSheet";
 import {
   RenderErrorBoundary,
   RenderFailureView,
@@ -614,6 +616,14 @@ const RootStackConfig = createWorkspaceStackNavigator({
     IssueFilterSearch: createNativeStackScreen({
       screen: IssueFilterSearchScreen,
       options: SEARCH_SHEET_ROUTE,
+    }),
+    IssueBrowse: createNativeStackScreen({
+      screen: IssueBrowseScreen,
+      options: pageRoute({ duoMinimize: "never" }),
+    }),
+    IssuePipeline: createNativeStackScreen({
+      screen: IssuePipelineSheet,
+      options: sheetRoute({ detent: 0.9 }),
     }),
     Thread: createNativeStackScreen({
       screen: ThreadRouteScreen,
