@@ -47,15 +47,20 @@ interface IssueStateGlyph {
   readonly primitives: ReadonlyArray<IssueGlyphPrimitive>;
 }
 
-function luminance(hex: string): number | null {
+/** Relative luminance and chroma (0..255 channel spread) of a `#rrggbb` colour. */
+function inkOf(hex: string): { readonly luminance: number; readonly chroma: number } | null {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (match === null) return null;
   const value = Number.parseInt(match[1]!, 16);
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
   const channel = (shift: number) => {
     const c = ((value >> shift) & 255) / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
-  return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0);
+  return {
+    luminance: 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0),
+    chroma: Math.max(...channels) - Math.min(...channels),
+  };
 }
 
 /** The state's colour, or its type's default; a colour too pale or too dark for the theme goes neutral. */
@@ -65,10 +70,12 @@ function issueStateColor(
 ): string {
   const type = state.type ?? "unstarted";
   const color = state.color?.trim() || ISSUE_STATE_DEFAULT_COLORS[type];
-  const value = luminance(color);
-  if (value === null) return ISSUE_STATE_DEFAULT_COLORS[type];
-  if (scheme === "light" && value > 0.6) return NEUTRAL_INK;
-  if (scheme === "dark" && value < 0.03) return NEUTRAL_INK;
+  const ink = inkOf(color);
+  if (ink === null) return ISSUE_STATE_DEFAULT_COLORS[type];
+  // Only a grey can vanish: Linear's yellow and green stay readable on both themes.
+  const grey = ink.chroma < 24;
+  if (grey && scheme === "light" && ink.luminance > 0.6) return NEUTRAL_INK;
+  if (grey && scheme === "dark" && ink.luminance < 0.03) return NEUTRAL_INK;
   return color.startsWith("#") ? color : `#${color}`;
 }
 
