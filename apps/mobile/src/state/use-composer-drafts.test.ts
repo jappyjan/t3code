@@ -442,6 +442,18 @@ function modelReconciliationHarness(
   };
 }
 
+const LINEAR_ISSUE = {
+  issueId: "ATT-612",
+  identifier: "ATT-612",
+  title: "Fix retries",
+  url: "https://linear.app/acme/issue/ATT-612",
+  tracker: "linear",
+  host: "linear.app",
+  scope: "ATT",
+  projectId: "project-1",
+  branchName: "jan/att-612-fix",
+};
+
 describe("mobile composer drafts", () => {
   it.each([false, true])(
     "restores visible file chips from legacy drafts (archived: %s)",
@@ -1946,6 +1958,7 @@ describe("mobile composer drafts", () => {
   });
 
   it("hydrates selector state even when the message content is empty", () => {
+    const linearIssue = LINEAR_ISSUE;
     const hydrated = Object.entries(
       decodePersistedComposerState({
         schemaVersion: 1,
@@ -1953,6 +1966,7 @@ describe("mobile composer drafts", () => {
           "new-task:environment-1:project-1": {
             text: "",
             attachments: [],
+            linearIssue,
             modelSelection: {
               instanceId: "codex",
               model: "gpt-5.4",
@@ -1976,6 +1990,7 @@ describe("mobile composer drafts", () => {
     expect(draft).toEqual({
       text: "",
       attachments: [],
+      linearIssue,
       modelSelection: {
         instanceId: "codex",
         model: "gpt-5.4",
@@ -2117,6 +2132,7 @@ describe("mobile composer drafts", () => {
         ...getComposerDraftSnapshot(key),
         runtimeMode: "approval-required",
         workspaceSelection: { mode: "worktree", branch: "feature/a", worktreePath: null },
+        linearIssue: LINEAR_ISSUE,
       },
     });
     const createdAt = getComposerDraftSnapshot(key).project?.createdAt;
@@ -2128,6 +2144,8 @@ describe("mobile composer drafts", () => {
     expect(moved.runtimeMode).toBe("approval-required");
 
     expect(moved.workspaceSelection).toBeUndefined();
+    // The issue link names a project on the machine the draft left.
+    expect(moved.linearIssue).toBeUndefined();
     expect(moved.project).toEqual({ ...to, createdAt });
     expect(findNewTaskDraftKeys(appAtomRegistry.get(composerDraftsAtom), from)).toEqual([]);
     expect(findNewTaskDraftKeys(appAtomRegistry.get(composerDraftsAtom), to)).toEqual([key]);
@@ -2335,6 +2353,7 @@ describe("mobile composer drafts", () => {
       text: "send this",
       attachments: [],
       importedShareIds: ["share-1"],
+      linearIssue: LINEAR_ISSUE,
       modelSelection: {
         instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5.4",

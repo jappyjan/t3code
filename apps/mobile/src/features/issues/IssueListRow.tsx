@@ -21,6 +21,10 @@ export const IssueListRow = memo(function IssueListRow(props: {
   readonly onSelect: (item: EnvironmentIssueEntry) => void;
   readonly selected: boolean;
   readonly sidebar: boolean;
+  /** Browse nests a sub-issue under its parent. */
+  readonly depth?: number;
+  readonly subIssueCount?: number;
+  readonly blocked?: boolean;
 }) {
   const gt = useGT();
   const { item } = props;
@@ -35,6 +39,7 @@ export const IssueListRow = memo(function IssueListRow(props: {
       ? "text-drawer-foreground-muted"
       : "text-foreground-muted";
   const status = issueStatus(item.state);
+  const subIssueCount = props.subIssueCount ?? 0;
   return (
     <View style={props.sidebar ? THREAD_LIST_V2_SIDEBAR_ROW_CONTAINER_STYLE : undefined}>
       <Pressable
@@ -51,6 +56,10 @@ export const IssueListRow = memo(function IssueListRow(props: {
                 count: item.commentCount,
               })
             : null,
+          props.blocked ? gt("blocked", { $context: "issue state" }) : null,
+          subIssueCount
+            ? gt("{count, plural, other {{count} sub-issues}}", { count: subIssueCount })
+            : null,
         ]
           .filter(Boolean)
           .join(", ")}
@@ -64,7 +73,10 @@ export const IssueListRow = memo(function IssueListRow(props: {
           props.selected && "bg-thread-selected",
         )}
       >
-        <View className={cn("self-start", props.sidebar ? "pt-0.5" : "pt-2.5")}>
+        <View
+          className={cn("self-start", props.sidebar ? "pt-0.5" : "pt-2.5")}
+          style={props.depth ? { marginLeft: props.depth * 20 } : undefined}
+        >
           <SymbolView name={status.icon} size={20} tintColorClassName={status.tint} />
         </View>
         <View
@@ -92,7 +104,7 @@ export const IssueListRow = memo(function IssueListRow(props: {
           >
             {item.title}
           </Text>
-          {item.labels.length > 0 || item.commentCount > 0 ? (
+          {item.labels.length > 0 || item.commentCount > 0 || props.blocked || subIssueCount > 0 ? (
             <View className="flex-row items-center gap-1.5">
               <View className="min-w-0 flex-1 flex-row items-center gap-1">
                 {item.labels.slice(0, 2).map((label) => (
@@ -102,6 +114,17 @@ export const IssueListRow = memo(function IssueListRow(props: {
                   <Text className={cn("shrink-0 text-2xs", muted)}>+{item.labels.length - 2}</Text>
                 ) : null}
               </View>
+              {props.blocked ? (
+                <Text className="shrink-0 rounded-full bg-danger/15 px-1.5 text-2xs font-t3-medium text-danger-foreground">
+                  Blocked
+                </Text>
+              ) : null}
+              {subIssueCount > 0 ? (
+                <View className="shrink-0 flex-row items-center gap-1">
+                  <SymbolView name="list.number" size={12} tintColorClassName="accent-icon-muted" />
+                  <Text className={cn("text-2xs tabular-nums", muted)}>{subIssueCount}</Text>
+                </View>
+              ) : null}
               {item.commentCount > 0 ? (
                 <View className="shrink-0 flex-row items-center gap-1">
                   <SymbolView name="bubble.left" size={12} tintColorClassName="accent-icon-muted" />

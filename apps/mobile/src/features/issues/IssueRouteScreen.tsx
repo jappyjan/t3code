@@ -61,6 +61,8 @@ import { PullRequestSectionHeading } from "../pull-requests/PullRequestSectionHe
 import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
 import { usePullRequestConnected } from "../pull-requests/usePullRequestConnected";
 import { IssueCommentComposer } from "./IssueCommentComposer";
+import { IssueRelations } from "./IssueRelations";
+import { LinearIssueLaunchBar } from "./LinearIssueLaunchBar";
 import { issueIdentity, issueParamsKey, issueTarget, type IssueParams } from "./issueParams";
 import {
   IssueLabelPill,
@@ -749,6 +751,12 @@ function IssueRoute({ params }: { readonly params: IssueParams }) {
                   )
                 ) : (
                   <>
+                    <LinearIssueLaunchBar
+                      environmentId={target.environmentId}
+                      identity={identity}
+                      detail={detail}
+                    />
+                    <IssueRelations params={identity} detail={detail} />
                     <PullRequestDescription
                       markdown={detail.body}
                       footer={

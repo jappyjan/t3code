@@ -1,5 +1,6 @@
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { imageMimeType } from "@t3tools/shared/image";
+import { linearIssueExtrasSummary } from "@t3tools/shared/linearLaunch";
 import { videoMimeType } from "@t3tools/shared/video";
 
 import { m, type MessageResolver } from "../i18n/messages";
@@ -50,6 +51,7 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   environment: { accent: "#3f9a4f", icon: "server" },
   // An earlier response the message replies to. Mobile shows it as a plain labelled chip.
   response: { accent: "#7f8793", icon: null },
+  "linear-issue": { accent: "#7079e4", icon: "linear" },
 } as const satisfies Record<string, ContextChipPresentation>;
 
 const CHIP_CONTRAST = 5;
@@ -93,9 +95,22 @@ export const UNAVAILABLE_CONTEXT_CHIP_PRESENTATION: ContextChipPresentation = {
 };
 
 export function composerChipSizeSuffix(
-  record?: { readonly kind?: string; readonly sizeBytes?: number },
+  record?: {
+    readonly kind?: string;
+    readonly sizeBytes?: number;
+    readonly subIssues?: ReadonlyArray<unknown>;
+    readonly comments?: ReadonlyArray<unknown>;
+  },
   resolve: MessageResolver = m,
 ): string {
+  if (record?.kind === "linear-issue") {
+    return (
+      linearIssueExtrasSummary({
+        subIssues: record.subIssues ?? [],
+        comments: record.comments ?? [],
+      }) ?? ""
+    );
+  }
   if (record?.kind !== "file" && record?.kind !== "image") return "";
   return typeof record.sizeBytes === "number"
     ? formatAttachmentSize(record.sizeBytes, resolve)

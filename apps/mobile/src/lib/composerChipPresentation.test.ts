@@ -47,6 +47,7 @@ const CHIP_ACCENTS = [
         "skill",
         "thread",
         "environment",
+        "linear-issue",
       ].map((kind) => contextChipPresentation(kind)),
       ...[
         { state: "open", isDraft: false },
@@ -136,5 +137,12 @@ describe("contextChipAccent", () => {
 describe("contextChipPresentation", () => {
   it("draws a mentioned machine as a machine, not the generic file chip", () => {
     expect(contextChipPresentation("environment")).toEqual({ accent: "#3f9a4f", icon: "server" });
+  });
+
+  it("draws a Linear issue with the Linear mark and its extras", () => {
+    expect(contextChipPresentation("linear-issue")).toEqual({ accent: "#7079e4", icon: "linear" });
+    expect(
+      composerChipSizeSuffix({ kind: "linear-issue", subIssues: [{}, {}], comments: [{}] }),
+    ).toBe("+ 2 sub-issues, 1 comment");
   });
 });

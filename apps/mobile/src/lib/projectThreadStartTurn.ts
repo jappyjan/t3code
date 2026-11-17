@@ -40,6 +40,7 @@ export interface ProjectThreadStartTurnSpec {
   /** Tracked repositories a new worktree takes, by path; absent leaves the choice to the server. */
   readonly worktreeRepositories?: ReadonlyArray<string>;
   readonly worktreeBranchName: string;
+  readonly freeBranchName?: boolean;
 }
 
 export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpec) {
@@ -82,6 +83,7 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
               baseBranch: spec.branch ?? "HEAD",
               branch: spec.worktreeBranchName,
               ...(spec.startFromOrigin ? { startFromOrigin: true } : {}),
+              ...(spec.freeBranchName ? { freeBranchName: true } : {}),
               ...(spec.worktreeRepositories === undefined
                 ? {}
                 : { repositories: spec.worktreeRepositories.map((path) => ({ path })) }),

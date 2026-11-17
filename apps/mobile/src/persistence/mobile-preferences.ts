@@ -196,6 +196,8 @@ export interface Preferences {
   readonly workspaceSelections?: WorkspaceSelections;
   readonly pullRequestSavedViews?: ReadonlyArray<PullRequestSavedView>;
   readonly issueSavedViews?: ReadonlyArray<IssueSavedView>;
+  /** The pipeline last started from an issue, by name: ids differ per machine. */
+  readonly linearLastPipelineName?: string;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -291,6 +293,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     workspaceSelections?: WorkspaceSelections;
     pullRequestSavedViews?: ReadonlyArray<PullRequestSavedView>;
     issueSavedViews?: ReadonlyArray<IssueSavedView>;
+    linearLastPipelineName?: string;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -487,6 +490,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (Array.isArray(parsed.issueSavedViews)) {
     preferences.issueSavedViews = parsed.issueSavedViews.filter(isIssueSavedView);
+  }
+  if (typeof parsed.linearLastPipelineName === "string") {
+    preferences.linearLastPipelineName = parsed.linearLastPipelineName;
   }
   return preferences;
 }

@@ -1,3 +1,4 @@
+import { issueLinkInput } from "@t3tools/client-runtime/linear/launch";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { changeRequestTermKind } from "../lib/changeRequestTerm";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
@@ -554,6 +555,9 @@ export const restoreRejectedQueuedMessage = Effect.fn("ThreadOutbox.restoreRejec
                   ? { repositories: queuedMessage.creation.repositories }
                   : {}),
               },
+              ...(queuedMessage.creation.linearIssue
+                ? { linearIssue: queuedMessage.creation.linearIssue }
+                : {}),
             }
           : {}),
       });
@@ -727,6 +731,30 @@ const deliveryCommand = <W, A, E>(
       return result;
     }),
   );
+
+/** The thread now exists, so a task started from an issue links to it. Never blocks delivery. */
+function linkCreatedThreadIssue(
+  queuedMessage: QueuedThreadMessage,
+  issue: NonNullable<QueuedThreadCreation["linearIssue"]>,
+) {
+  void runAtomCommand(
+    appAtomRegistry,
+    threadEnvironment.linkIssue,
+    {
+      environmentId: queuedMessage.environmentId,
+      input: issueLinkInput({ issue, threadId: queuedMessage.threadId }),
+    },
+    { reportFailure: false },
+  ).then((result) => {
+    if (AsyncResult.isFailure(result)) {
+      const error = Cause.squash(result.cause);
+      Dialog.alert(
+        `Could not link ${issue.identifier}`,
+        error instanceof Error ? error.message : "The thread was created without the issue link.",
+      );
+    }
+  });
+}
 
 function reportCommandFailure(
   queuedMessage: QueuedThreadMessage,
@@ -1210,7 +1238,10 @@ export function createThreadOutboxDelivery(): {
         ...(workspace.repositories === undefined
           ? {}
           : { worktreeRepositories: workspace.repositories }),
-        worktreeBranchName: buildTemporaryWorktreeBranchName(randomHex),
+        worktreeBranchName:
+          workspace.worktreeBranchName ?? buildTemporaryWorktreeBranchName(randomHex),
+        // A named branch comes from an issue; relaunching it takes the next free `-2` name.
+        freeBranchName: workspace.worktreeBranchName !== undefined,
       }),
     });
     if (AsyncResult.isFailure(deliveryResult) && !hasAccess()) return;
@@ -1222,6 +1253,7 @@ export function createThreadOutboxDelivery(): {
       return yield* restoreQueuedMessage(persistedMessage, failure.message);
     }
     recordPendingThreadCreationOutcome({ kind: "delivered", message: persistedMessage });
+    if (creation.linearIssue) linkCreatedThreadIssue(queuedMessage, creation.linearIssue);
     const outcome = yield* completeQueuedMessageDelivery(
       persistedMessage,
       deliveryRevision,

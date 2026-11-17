@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import * as Dialog from "../../components/ui/Dialog";
+import { attachedLinearDraftIssue } from "@t3tools/client-runtime/linear/launch";
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import {
   THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME,
@@ -622,6 +623,13 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   const gt = useGT();
   const m = useMessages();
   const isDraft = pendingTask.kind === "draft";
+  const draftIssue =
+    pendingTask.kind === "draft"
+      ? attachedLinearDraftIssue(
+          pendingTask.draft.linearIssue,
+          pendingTask.draft.context?.records ?? [],
+        )
+      : null;
   const deleteLabel = isDraft
     ? gt("Discard", { $context: "verb, thread action" })
     : gt("Delete", { $context: "verb, thread action" });
@@ -729,7 +737,13 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
                   : "text-adaptive-amber-700-300",
               )}
             >
+              {draftIssue ? (
+                <T>
+                  Draft · from <Var>{draftIssue.identifier}</Var>
+                </T>
+              ) : (
               <T>Draft</T>
+              )}
             </Text>
           </View>
         ) : null}

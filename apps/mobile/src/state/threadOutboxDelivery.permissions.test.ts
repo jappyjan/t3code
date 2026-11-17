@@ -22,6 +22,7 @@ const state = vi.hoisted(() => ({
     readonly dispose: () => void;
   } | null,
   start: vi.fn(),
+  link: vi.fn(),
   metadata: vi.fn(),
   runtime: vi.fn(),
   interaction: vi.fn(),
@@ -103,6 +104,7 @@ vi.mock("./threads", async () => {
   return {
     threadEnvironment: {
       startTurn: state.command(Effect, state.start),
+      linkIssue: state.command(Effect, state.link),
       updateMetadata: state.command(Effect, state.metadata),
       setRuntimeMode: state.command(Effect, state.runtime),
       setInteractionMode: state.command(Effect, state.interaction),
@@ -246,6 +248,7 @@ beforeEach(() => {
     state.runtime,
     state.interaction,
     state.checkout,
+    state.link,
   ]) {
     command.mockReset().mockResolvedValue(AsyncResult.success(undefined));
   }
@@ -348,6 +351,72 @@ describe("queued PR checkout", () => {
     expect(remaining()).toEqual([edited]);
   });
 });
+describe("queued launch from a Linear issue", () => {
+  const linearIssue = {
+    issueId: "ATT-612",
+    identifier: "ATT-612",
+    title: "Fix retries",
+    url: "https://linear.app/acme/issue/ATT-612",
+    tracker: "linear",
+    host: "linear.app",
+    scope: "ATT",
+    projectId: "project",
+    branchName: "jan/att-612-fix",
+  };
+  const queuedLaunch = () =>
+    message({
+      threadId: ThreadId.make("new-linear-thread"),
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      creation: {
+        projectId: ProjectId.make("project"),
+        projectCwd: "/repo",
+        workspaceMode: "worktree",
+        branch: "main",
+        worktreePath: null,
+        worktreeBranchName: linearIssue.branchName,
+        linearIssue,
+      },
+    });
+
+  it("names the worktree after the issue and links the thread once it is created", async () => {
+    setOperateGrant("secondary", true);
+    await state.manager.enqueue(queuedLaunch());
+    await runDrain();
+    const bootstrap = state.start.mock.calls[0]?.[0].input.bootstrap;
+    expect(bootstrap.prepareWorktree).toMatchObject({
+      baseBranch: "main",
+      branch: "jan/att-612-fix",
+    });
+    expect(state.link).toHaveBeenCalledExactlyOnceWith({
+      environmentId: "secondary",
+      input: expect.objectContaining({
+        threadId: "new-linear-thread",
+        tracker: "linear",
+        key: "ATT-612",
+        projectId: "project",
+        displayKey: "ATT-612",
+      }),
+    });
+  });
+
+  it("links nothing while the thread could not be created", async () => {
+    setOperateGrant("secondary", true);
+    const queued = queuedLaunch();
+    await state.manager.enqueue(queued);
+    state.start.mockResolvedValueOnce(
+      AsyncResult.failure(Cause.fail(new Error("Socket is not connected"))),
+    );
+    await runDrain();
+    expect(state.link).not.toHaveBeenCalled();
+    expect(remaining()).toEqual([queued]);
+    // Step past the retry backoff instead of waiting for its timer.
+    using _now = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+    await runDrain();
+    expect(remaining()).toEqual([]);
+    expect(state.link).toHaveBeenCalledOnce();
+  });
+});
+
 afterEach(() => {
   state.cleanups.splice(0).forEach((cleanup) => cleanup());
 });

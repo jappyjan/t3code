@@ -24,7 +24,7 @@ import { use, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useNavigation } from "@react-navigation/native";
+import { StackActions, useNavigation } from "@react-navigation/native";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
@@ -47,6 +47,7 @@ import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
 import { useSearchScrollRestoration } from "../layout/workspace/useSearchScrollRestoration";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
+import { issueBrowseTeams } from "@t3tools/client-runtime/issue-browse";
 import { issueParamsKey } from "./issueParams";
 import { IssueListRow } from "./IssueListRow";
 import type { PullRequestFilterMenu } from "../pull-requests/PullRequestListFilters";
@@ -198,6 +199,7 @@ export function IssuesScreen(
   const groups = groupIssues(held, query, projects, sort);
   const entries = groups.flatMap((group) => group.rows).sort(issueOrder(sort));
   const filterScopes = issueFilterScopes(held, projects);
+  const browseTeams = issueBrowseTeams(list.answers);
   const notices = [
     // An environment that failed while another answered: its issues are missing from the rows.
     ...(entries.length > 0 && list.error ? [list.error] : []),
@@ -387,6 +389,26 @@ export function IssuesScreen(
                   scrollToTop();
                 }}
               />
+              {browseTeams.length > 0 ? (
+                <Chip
+                  label="Projects"
+                  icon="folder.fill"
+                  trailingIcon="chevron.right"
+                  glass
+                  colorScheme={themeAppearance}
+                  accessibilityLabel="Browse projects"
+                  onPress={() =>
+                    navigation.dispatch(
+                      StackActions.push(
+                        "IssueBrowse",
+                        browseTeams.length === 1
+                          ? { team: browseTeams[0]! }
+                          : { teams: browseTeams },
+                      ),
+                    )
+                  }
+                />
+              ) : null}
               <ListFilterMenu
                 label={messages(STATES[state])}
                 active={state !== "open"}
