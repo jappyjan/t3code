@@ -62,8 +62,9 @@ fi
 
 git rev-parse HEAD >"$(dirname "$app")/commit"
 
-# Drop all but the newest builds.
-find "$BUILDS" -mindepth 1 -maxdepth 1 -type d -name '*-nightly.*' | sort -r | tail -n "+$((KEEP_BUILDS + 1))" | while read -r old; do
+# Drop all but the newest builds, by build time: version names don't sort as text
+# (0.1.9 > 0.1.10). Never drop the build just made.
+ls -1dt "$BUILDS"/*-nightly.*/ | sed 's:/*$::' | grep -vxF "$out" | tail -n "+$KEEP_BUILDS" | while read -r old; do
   rm -rf "$old" "$BUILDS/build-$(basename "$old").log"
 done
 
