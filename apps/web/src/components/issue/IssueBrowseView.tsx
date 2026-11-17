@@ -175,6 +175,7 @@ export function IssueBrowseView({
         <PullRequestListGhost />
       ) : teams.length === 0 && teamsError ? (
         <PullRequestsUnavailableState
+          title="Could not load teams"
           error={teamsError}
           onRetry={onRetryTeams}
           refreshing={teamsPending}
@@ -302,6 +303,7 @@ function BrowseLevel({
         {toolbar}
         {query.error !== null && !query.isPending ? (
           <PullRequestsUnavailableState
+            title="Could not load this view"
             error={query.error}
             onRetry={query.refresh}
             refreshing={query.isPending}
