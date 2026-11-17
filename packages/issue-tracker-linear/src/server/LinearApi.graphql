@@ -86,6 +86,16 @@ fragment LinearIssue on Issue {
   }
 }
 
+fragment LinearIssueRef on Issue {
+  id
+  identifier
+  title
+  url
+  state {
+    ...LinearWorkflowState
+  }
+}
+
 fragment LinearPageInfo on PageInfo {
   hasNextPage
   endCursor
@@ -122,6 +132,40 @@ query T3Issue($id: String!, $comments: Int!) {
   issue(id: $id) {
     ...LinearIssue
     description
+    branchName
+    priorityLabel
+    project {
+      id
+      name
+    }
+    projectMilestone {
+      id
+      name
+    }
+    parent {
+      ...LinearIssueRef
+    }
+    children(first: 50) {
+      nodes {
+        ...LinearIssueRef
+      }
+    }
+    relations(first: 50) {
+      nodes {
+        type
+        relatedIssue {
+          ...LinearIssueRef
+        }
+      }
+    }
+    inverseRelations(first: 50) {
+      nodes {
+        type
+        issue {
+          ...LinearIssueRef
+        }
+      }
+    }
     team {
       states(first: 100) {
         nodes {
@@ -298,6 +342,71 @@ query T3CommentReactions($id: String!) {
     }
     reactions {
       ...LinearReaction
+    }
+  }
+}
+
+query T3TeamProjects($key: String!) {
+  teams(first: 1, filter: { key: { eq: $key } }) {
+    nodes {
+      projects(first: 100) {
+        nodes {
+          id
+          name
+          url
+          progress
+          targetDate
+          completedAt
+          canceledAt
+          status {
+            name
+            type
+          }
+        }
+      }
+    }
+  }
+}
+
+query T3ProjectMilestones($id: String!) {
+  project(id: $id) {
+    projectMilestones(first: 100) {
+      nodes {
+        id
+        name
+        progress
+        targetDate
+        sortOrder
+      }
+    }
+  }
+}
+
+query T3BrowseIssues($first: Int!, $after: String, $filter: IssueFilter!) {
+  issues(first: $first, after: $after, filter: $filter, orderBy: updatedAt) {
+    nodes {
+      ...LinearIssue
+      parent {
+        identifier
+      }
+      children(first: 50) {
+        nodes {
+          id
+        }
+      }
+      inverseRelations(first: 20) {
+        nodes {
+          type
+          issue {
+            state {
+              type
+            }
+          }
+        }
+      }
+    }
+    pageInfo {
+      ...LinearPageInfo
     }
   }
 }
