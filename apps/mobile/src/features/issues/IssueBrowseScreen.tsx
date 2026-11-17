@@ -8,7 +8,7 @@ import type {
   IssueListState,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -97,22 +97,67 @@ function ChevronRow(props: {
   );
 }
 
-function IssueBrowseTeams(props: { readonly teams: ReadonlyArray<IssueBrowseTeam> }) {
+/**
+ * The Issues tab's own page while git hosts are hidden: the teams, or the only team's projects,
+ * under the tab's header instead of a pushed screen.
+ */
+export function IssueBrowseHome(props: {
+  readonly teams: ReadonlyArray<IssueBrowseTeam>;
+  readonly pending: boolean;
+  readonly error: string | null;
+  readonly header: ReactNode;
+}) {
+  const [only] = props.teams.length === 1 ? props.teams : [];
+  if (only)
+    return (
+      <IssueBrowseLevel
+        key={issueBrowseTeamKey(only)}
+        team={only}
+        project={undefined}
+        milestone={undefined}
+        header={props.header}
+      />
+    );
+  return (
+    <IssueBrowseTeams
+      teams={props.teams}
+      header={props.header}
+      pending={props.pending}
+      error={props.error}
+    />
+  );
+}
+
+function IssueBrowseTeams(props: {
+  readonly teams: ReadonlyArray<IssueBrowseTeam>;
+  /** Set when the Issues tab shows the teams itself, in place of the screen's bar. */
+  readonly header?: ReactNode;
+  readonly pending?: boolean;
+  readonly error?: string | null;
+}) {
   const navigation = useNavigation();
   const { environments } = useEnvironments();
   const several = new Set(props.teams.map((team) => team.environmentId)).size > 1;
   return (
     <View className="flex-1 bg-screen">
-      <AppBar title="Projects" subtitle="Choose a team" onBack={() => navigation.goBack()} />
+      {props.header === undefined ? (
+        <AppBar title="Projects" subtitle="Choose a team" onBack={() => navigation.goBack()} />
+      ) : null}
       <NativeScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 16, gap: 8 }}
       >
-        {props.teams.length === 0 ? (
+        {props.header}
+        {props.teams.length === 0 && props.pending ? (
+          <AppActivityIndicator className="my-12" colorClassName="accent-icon" />
+        ) : props.teams.length === 0 ? (
           <EmptyState
-            title="Nothing to browse"
-            detail="Bind a Linear team to a project in Settings to browse its projects."
+            title={props.error ? "Couldn't load teams" : "Nothing to browse"}
+            detail={
+              props.error ??
+              "Connect Linear in a computer's Settings → Source control & issues to browse its teams."
+            }
             variant="plain"
           />
         ) : null}
@@ -120,15 +165,20 @@ function IssueBrowseTeams(props: { readonly teams: ReadonlyArray<IssueBrowseTeam
           <ChevronRow
             key={issueBrowseTeamKey(team)}
             icon="person.2"
-            title={team.scope}
+            title={team.name ?? team.scope}
             detail={
-              several
-                ? environments.find(
-                    (environment) => environment.environmentId === team.environmentId,
-                  )?.label
-                : null
+              [
+                team.name ? team.scope : null,
+                several
+                  ? environments.find(
+                      (environment) => environment.environmentId === team.environmentId,
+                    )?.label
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || null
             }
-            accessibilityLabel={`Team ${team.scope}`}
+            accessibilityLabel={`Team ${team.name ?? team.scope}`}
             onPress={() => navigation.dispatch(StackActions.push("IssueBrowse", { team }))}
           />
         ))}
@@ -164,6 +214,7 @@ function IssueBrowseLevel(props: {
   readonly team: IssueBrowseTeam;
   readonly project: IssueBrowseCrumb | undefined;
   readonly milestone: IssueBrowseCrumb | undefined;
+  readonly header?: ReactNode;
 }) {
   const { team, project, milestone } = props;
   const navigation = useNavigation();
@@ -261,37 +312,40 @@ function IssueBrowseLevel(props: {
       />
     ));
   const containerNoun = project ? "Milestones" : "Projects";
-  const title = milestone?.name ?? project?.name ?? team.scope;
+  const teamName = team.name ?? team.scope;
+  const title = milestone?.name ?? project?.name ?? teamName;
   const subtitle =
-    milestone && project ? `${team.scope} › ${project.name}` : project ? team.scope : "Projects";
+    milestone && project ? `${teamName} › ${project.name}` : project ? teamName : "Projects";
   return (
     <View className="flex-1 bg-screen">
-      <AppBar
-        title={title}
-        subtitle={subtitle}
-        onBack={() => navigation.goBack()}
-        menus={
-          container
-            ? [
-                {
-                  title: "Issue state",
-                  icon:
-                    state === "open"
-                      ? "line.3.horizontal.decrease.circle"
-                      : "line.3.horizontal.decrease.circle.fill",
-                  items: (Object.entries(STATES) as Array<[IssueListState, string]>).map(
-                    ([id, label]) => ({
-                      id,
-                      title: label,
-                      selected: id === state,
-                      onPress: () => setState(id),
-                    }),
-                  ),
-                },
-              ]
-            : []
-        }
-      />
+      {props.header === undefined ? (
+        <AppBar
+          title={title}
+          subtitle={subtitle}
+          onBack={() => navigation.goBack()}
+          menus={
+            container
+              ? [
+                  {
+                    title: "Issue state",
+                    icon:
+                      state === "open"
+                        ? "line.3.horizontal.decrease.circle"
+                        : "line.3.horizontal.decrease.circle.fill",
+                    items: (Object.entries(STATES) as Array<[IssueListState, string]>).map(
+                      ([id, label]) => ({
+                        id,
+                        title: label,
+                        selected: id === state,
+                        onPress: () => setState(id),
+                      }),
+                    ),
+                  },
+                ]
+              : []
+          }
+        />
+      ) : null}
       <NativeScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"
@@ -300,6 +354,7 @@ function IssueBrowseLevel(props: {
         }
         contentContainerStyle={{ paddingVertical: 16, gap: 20 }}
       >
+        {props.header === undefined ? null : <View className="px-4">{props.header}</View>}
         {!first ? (
           query.error && !query.isPending ? (
             <EmptyState
@@ -383,7 +438,7 @@ function IssueBrowseLevel(props: {
             ) : active.length === 0 && completed.length === 0 ? (
               <EmptyState
                 title="No projects"
-                detail={`${team.scope} has no projects yet.`}
+                detail={`${teamName} has no projects yet.`}
                 variant="plain"
               />
             ) : null}

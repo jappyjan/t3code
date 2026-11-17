@@ -34,7 +34,7 @@ import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 import { GitIcon, JujutsuIcon, type Icon } from "../Icons";
-import { IssueTrackerSettings } from "./IssueTrackerSettings";
+import { IssueListSettingsSection, IssueTrackerSettings } from "./IssueTrackerSettings";
 import { SourceControlHostSettings } from "./SourceControlHostSettings";
 import { SourceControlAccountSettings } from "./SourceControlAccountSettings";
 import { SourceControlAppSignInSettings } from "./SourceControlAppSignInSettings";
@@ -581,6 +581,7 @@ export function SourceControlSettingsPanel() {
           onScan={handleScan}
         />
       )}
+      <IssueListSettingsSection />
       {environmentId === null ? null : (
         <IssueTrackerSettings key={environmentId} environmentId={environmentId} />
       )}

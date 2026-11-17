@@ -78,7 +78,7 @@ function PickerRow(props: {
  */
 export function IssuePipelineSheet({
   route,
-}: StaticScreenProps<Omit<IssueParams, "initialSummary">>) {
+}: StaticScreenProps<Omit<IssueParams, "initialSummary"> & { readonly launchProjectId?: string }>) {
   const params = route.params;
   const target = issueTarget(params);
   const { environmentId } = target;
@@ -90,7 +90,8 @@ export function IssuePipelineSheet({
   const issueProject =
     allProjects.find(
       (candidate) =>
-        candidate.environmentId === environmentId && candidate.id === target.input.projectId,
+        candidate.environmentId === environmentId &&
+        candidate.id === (params.launchProjectId ?? target.input.projectId),
     ) ?? null;
   const startPipelineRun = useAtomCommand(serverEnvironment.startPipelineRun, {
     label: "pipeline start",
