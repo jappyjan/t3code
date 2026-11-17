@@ -424,7 +424,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                   <SettingsSection title="Issues">
                     <SettingsSwitchRow
                       icon="line.3.horizontal"
-                      label="Git host issues"
+                      label="Issues from git hosts"
                       subtitle={managedSubtitle(
                         "gitHostIssuesEnabled",
                         "List issues from GitHub, GitLab, Azure DevOps, Forgejo and Bitbucket in Issues. Off, Issues shows only Linear and opens on its teams; those hosts are not queried for the list. Agents can still read them.",

@@ -425,7 +425,7 @@ The chat draft carries the issue with its sub-issues, comments and blockers; a p
 step gets the same as text, on a machine you pick or one Auto balance chooses. The new thread is
 linked to the issue. The mobile Issues tab offers the same.
 
-If you only use Linear, turn off **Git host issues** under Settings → Source control & issues.
+If you only use Linear, turn off **Issues from git hosts** under Settings → Source control & issues.
 The Issues page and the mobile Issues tab then open on your Linear teams (or straight on the
 team's projects when there is one), and GitHub, GitLab, Azure DevOps, Forgejo and Bitbucket are
 no longer queried for the list. The flat list of bound teams' issues stays one step away: switch
