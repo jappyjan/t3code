@@ -25,6 +25,7 @@ import {
   CornerLeftUpIcon,
   FolderKanbanIcon,
   GitBranchIcon,
+  SignalIcon,
   MessageSquarePlusIcon,
   WorkflowIcon,
 } from "lucide-react";
@@ -252,6 +253,14 @@ export function LinearIssueRelations({
       icon: <GitBranchIcon className="size-3.5" />,
       label: "Branch",
       value: <span className="min-w-0 truncate font-mono text-xs">{detail.branchName}</span>,
+    });
+  }
+  if (detail.priorityLabel) {
+    rows.push({
+      key: "priority",
+      icon: <SignalIcon className="size-3.5" />,
+      label: "Priority",
+      value: <span className="min-w-0 truncate">{detail.priorityLabel}</span>,
     });
   }
   // None of these may be a circle: the related issues' own status glyphs are circles.

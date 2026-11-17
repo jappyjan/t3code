@@ -126,7 +126,7 @@ export function IssueBrowseView({
   }
 
   const breadcrumb = (
-    <WorkspaceBreadcrumb ariaLabel="Browse breadcrumb">
+    <WorkspaceBreadcrumb ariaLabel="Browse breadcrumb" className="[&_ol]:flex-wrap [&_ol]:gap-y-0">
       {crumbs.map((crumb, index) => (
         <Fragment key={crumb.level}>
           {index > 0 ? (

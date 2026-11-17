@@ -55,7 +55,7 @@ export function IssueRelations(props: {
     ["Blocking", detail.blocks ?? []],
   ];
   const related = groups.filter(([, issues]) => issues.length > 0);
-  if (!project && !detail.branchName && related.length === 0) return null;
+  if (!project && !detail.branchName && !detail.priorityLabel && related.length === 0) return null;
 
   const openRelated = (issue: IssueRelatedRef) =>
     navigation.dispatch(
@@ -119,6 +119,18 @@ export function IssueRelations(props: {
           </Text>
           <SymbolView name="doc.on.doc" size={12} tintColorClassName="accent-icon-muted" />
         </Pressable>
+      ) : null}
+      {detail.priorityLabel ? (
+        <View
+          accessible
+          accessibilityLabel={`Priority ${detail.priorityLabel}`}
+          className="flex-row items-center gap-2"
+        >
+          <SymbolView name="flag.fill" size={14} tintColorClassName="accent-icon-muted" />
+          <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
+            {detail.priorityLabel}
+          </Text>
+        </View>
       ) : null}
       {related.map(([label, issues]) => (
         <View key={label} className="gap-0.5">
