@@ -175,6 +175,7 @@ export interface StartThreadBootstrap {
     readonly baseBranch: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
+    readonly freeBranchName?: boolean;
   };
   readonly runSetupScript?: boolean;
 }
@@ -757,6 +758,7 @@ export function draftWorkspaceStrategy(
       ...(prepareWorktree.startFromOrigin === undefined
         ? {}
         : { startFromOrigin: prepareWorktree.startFromOrigin }),
+      ...(prepareWorktree.freeBranchName === true ? { freeBranchName: true } : {}),
     };
   }
   if (bootstrap?.worktreePath) {

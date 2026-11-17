@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./linearLaunch": {
+      "types": "./src/linearLaunch.ts",
+      "import": "./src/linearLaunch.ts"
+    },
     "./png": {
       "types": "./src/png.ts",
       "import": "./src/png.ts"
