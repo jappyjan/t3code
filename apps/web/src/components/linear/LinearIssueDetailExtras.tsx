@@ -19,7 +19,10 @@ import type {
 import { sortBlockers } from "@t3tools/shared/linearLaunch";
 import {
   ChevronDownIcon,
-  CircleIcon,
+  BanIcon,
+  ListTreeIcon,
+  OctagonAlertIcon,
+  CornerLeftUpIcon,
   FolderKanbanIcon,
   GitBranchIcon,
   MessageSquarePlusIcon,
@@ -251,17 +254,26 @@ export function LinearIssueRelations({
       value: <span className="min-w-0 truncate font-mono text-xs">{detail.branchName}</span>,
     });
   }
-  const groups: Array<[string, ReadonlyArray<IssueRelatedRef>]> = [
-    ["Parent", detail.parent ? [detail.parent] : []],
-    ["Sub-issues", detail.subIssues ?? []],
-    ["Blocked by", sortBlockers(detail.blockedBy ?? [])],
-    ["Blocking", detail.blocks ?? []],
+  // None of these may be a circle: the related issues' own status glyphs are circles.
+  const groups: Array<[string, ReactNode, ReadonlyArray<IssueRelatedRef>]> = [
+    [
+      "Parent",
+      <CornerLeftUpIcon key="parent" className="size-3.5" />,
+      detail.parent ? [detail.parent] : [],
+    ],
+    ["Sub-issues", <ListTreeIcon key="sub" className="size-3.5" />, detail.subIssues ?? []],
+    [
+      "Blocked by",
+      <OctagonAlertIcon key="by" className="size-3.5" />,
+      sortBlockers(detail.blockedBy ?? []),
+    ],
+    ["Blocking", <BanIcon key="blocking" className="size-3.5" />, detail.blocks ?? []],
   ];
-  for (const [label, issues] of groups) {
+  for (const [label, icon, issues] of groups) {
     if (issues.length === 0) continue;
     rows.push({
       key: label,
-      icon: <CircleIcon className="size-3.5" />,
+      icon,
       label,
       value: <RelatedList issues={issues} onOpen={onOpenIssue} />,
     });
