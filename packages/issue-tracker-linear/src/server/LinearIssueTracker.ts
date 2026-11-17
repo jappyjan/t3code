@@ -9,6 +9,9 @@ import {
   type IssueActor,
   type IssueCapabilities,
   type IssueComment,
+  type IssueContainer,
+  type IssueContainerRef,
+  type IssueRelatedRef,
   type IssueEvent,
   type IssueExternalTemplate,
   type IssueLinkedPullRequest,
@@ -57,6 +60,7 @@ const CAPABILITIES: IssueCapabilities = {
   linkedPullRequests: true,
   events: true,
   search: true,
+  browse: true,
 };
 
 /** Everything granted: Linear's API reports no per-issue permissions and refuses with a message. */
@@ -177,6 +181,79 @@ function toSummary(issue: LinearApi.LinearIssue, commentCount = 0): TrackerIssue
     assignees: issue.assignee === null ? [] : [toActor(issue.assignee)],
     labels: issue.labels.nodes.map((label) => ({ name: label.name, color: label.color })),
     commentCount,
+  };
+}
+
+type LinearIssueRefNode = NonNullable<LinearApi.LinearIssueDetail["parent"]>;
+
+function toRelated(issue: LinearIssueRefNode): IssueRelatedRef {
+  return {
+    key: issue.identifier,
+    displayKey: issue.identifier,
+    title: issue.title,
+    url: issue.url,
+    state: toState(issue.state),
+  };
+}
+
+/** Linear stores "A blocks B" once, on A; B finds it among its inverse relations. */
+function detailExtras(issue: LinearApi.LinearIssueDetail) {
+  const containers: IssueContainerRef[] = [
+    ...(issue.project === null
+      ? []
+      : [{ kind: "project" as const, id: issue.project.id, name: issue.project.name }]),
+    ...(issue.projectMilestone === null
+      ? []
+      : [
+          {
+            kind: "milestone" as const,
+            id: issue.projectMilestone.id,
+            name: issue.projectMilestone.name,
+          },
+        ]),
+  ];
+  return {
+    ...(issue.branchName ? { branchName: issue.branchName } : {}),
+    ...(issue.priorityLabel ? { priorityLabel: issue.priorityLabel } : {}),
+    containers,
+    ...(issue.parent === null ? {} : { parent: toRelated(issue.parent) }),
+    subIssues: issue.children.nodes.map(toRelated),
+    blockedBy: issue.inverseRelations.nodes
+      .filter((relation) => relation.type === "blocks")
+      .map((relation) => toRelated(relation.issue)),
+    blocks: issue.relations.nodes
+      .filter((relation) => relation.type === "blocks")
+      .map((relation) => toRelated(relation.relatedIssue)),
+  };
+}
+
+function toProjectContainer(project: LinearApi.LinearProject): IssueContainer {
+  return {
+    kind: "project",
+    id: project.id,
+    name: project.name,
+    progress: project.progress,
+    targetDate: project.targetDate ?? null,
+    status: project.status.name,
+    completed:
+      project.completedAt != null ||
+      project.canceledAt != null ||
+      project.status.type === "completed" ||
+      project.status.type === "canceled",
+    url: project.url,
+  };
+}
+
+function toMilestoneContainer(milestone: LinearApi.LinearMilestone): IssueContainer {
+  return {
+    kind: "milestone",
+    id: milestone.id,
+    name: milestone.name,
+    progress: milestone.progress,
+    targetDate: milestone.targetDate ?? null,
+    status: null,
+    completed: milestone.progress >= 1,
+    url: null,
   };
 }
 
@@ -520,6 +597,63 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
             : null,
           events: toEvents(issue.history.nodes),
           linkedPullRequests: toLinkedPullRequests(issue.attachments.nodes),
+          ...detailExtras(issue),
+        };
+      }),
+
+      browse: Effect.fn("LinearIssueTracker.browse")(function* (input) {
+        const team = input.scope.trim().toUpperCase();
+        if (input.container === undefined) {
+          const projects = yield* linear.listProjects(team);
+          if (projects === null)
+            return yield* failed("browse", `No Linear team has the key "${team}".`);
+          return {
+            containers: projects.map(toProjectContainer),
+            items: [],
+            nextCursor: null,
+          };
+        }
+        const { kind, id } = input.container;
+        const milestones =
+          kind === "project" && input.cursor === undefined
+            ? (yield* linear.listMilestones(id))
+                .toSorted((a, b) => a.sortOrder - b.sortOrder)
+                .map(toMilestoneContainer)
+            : [];
+        const filter: LinearApi.IssueFilter = {
+          team: { key: { eq: team } },
+          ...(kind === "project"
+            ? { project: { id: { eq: id } }, projectMilestone: { null: true } }
+            : { projectMilestone: { id: { eq: id } } }),
+          ...(input.state === "all"
+            ? {}
+            : {
+                state: {
+                  type:
+                    input.state === "closed"
+                      ? { in: CLOSED_STATE_TYPES }
+                      : { nin: CLOSED_STATE_TYPES },
+                },
+              }),
+        };
+        const page = yield* linear.browseIssues({
+          filter,
+          first: input.limit,
+          after: input.cursor,
+        });
+        return {
+          containers: milestones,
+          items: page.nodes.map((node) => ({
+            ...toSummary(node),
+            parentKey: node.parent?.identifier ?? null,
+            subIssueCount: node.children.nodes.length,
+            blocked: node.inverseRelations.nodes.some(
+              (relation) =>
+                relation.type === "blocks" &&
+                !CLOSED_STATE_TYPES.includes(relation.issue.state.type),
+            ),
+          })),
+          nextCursor: page.nextCursor,
         };
       }),
 
