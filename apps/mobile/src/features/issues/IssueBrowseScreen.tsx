@@ -128,6 +128,17 @@ export function IssueBrowseHome(props: {
   );
 }
 
+function teamDetail(
+  team: IssueBrowseTeam,
+  environments: ReadonlyArray<{ readonly environmentId: string; readonly label: string }> | null,
+): string | null {
+  const environment = environments?.find(
+    (candidate) => candidate.environmentId === team.environmentId,
+  )?.label;
+  const parts = [team.name ? team.scope : null, environment].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function IssueBrowseTeams(props: {
   readonly teams: ReadonlyArray<IssueBrowseTeam>;
   /** Set when the Issues tab shows the teams itself, in place of the screen's bar. */
@@ -166,18 +177,7 @@ function IssueBrowseTeams(props: {
             key={issueBrowseTeamKey(team)}
             icon="person.2"
             title={team.name ?? team.scope}
-            detail={
-              [
-                team.name ? team.scope : null,
-                several
-                  ? environments.find(
-                      (environment) => environment.environmentId === team.environmentId,
-                    )?.label
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(" · ") || null
-            }
+            detail={teamDetail(team, several ? environments : null)}
             accessibilityLabel={`Team ${team.name ?? team.scope}`}
             onPress={() => navigation.dispatch(StackActions.push("IssueBrowse", { team }))}
           />

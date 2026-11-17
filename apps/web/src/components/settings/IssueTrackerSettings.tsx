@@ -70,7 +70,7 @@ export function IssueListSettingsSection() {
             onCheckedChange={(checked) =>
               updateSettings({ gitHostIssuesEnabled: Boolean(checked) })
             }
-            aria-label={gt("Git host issues")}
+            aria-label={gt("Issues from git hosts")}
           />
         }
       />
