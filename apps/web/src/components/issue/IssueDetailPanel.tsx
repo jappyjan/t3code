@@ -74,6 +74,7 @@ import { IssueDetailGhost } from "./IssueDetailGhost";
 import { ReactionBar } from "../pullRequest/PullRequestReactions";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
 import { issueTrackerPresentation, issueStatePresentation } from "./issuePresentation";
+import { LinearIssueLaunchBar, LinearIssueRelations } from "../linear/LinearIssueDetailExtras";
 
 /**
  * Links or unlinks the issue to the thread it is shown beside. Dispatches the orchestration
@@ -439,9 +440,12 @@ export function IssueDetailPanel({
   threadRef = null,
   listEntry = null,
   onSelectPullRequest,
+  onSelectIssue,
 }: {
   environmentId: EnvironmentId;
   reference: IssueRef;
+  /** Opens a related issue (parent, sub-issue, blocker) beside this one. */
+  onSelectIssue?: ((reference: IssueRef & { readonly host: string }) => void) | undefined;
   /** The list row this issue was opened from, shown until the detail arrives. */
   listEntry?: IssueListEntry | null;
   threadRef?: ScopedThreadRef | null;
@@ -762,6 +766,23 @@ export function IssueDetailPanel({
               </span>
             </PullRequestMetaRow>
           </div>
+          <LinearIssueRelations
+            detail={detail}
+            onOpenIssue={
+              onSelectIssue
+                ? (related) =>
+                    onSelectIssue({
+                      projectId: detail.projectId,
+                      tracker: detail.tracker,
+                      host: detail.host,
+                      // A sub-issue or blocker can sit in another team.
+                      scope: related.key.replace(/-\d+$/u, ""),
+                      key: related.key,
+                    })
+                : undefined
+            }
+          />
+          <LinearIssueLaunchBar environmentId={environmentId} detail={detail} />
         </div>
 
         <PullRequestSection

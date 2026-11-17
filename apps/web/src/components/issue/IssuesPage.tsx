@@ -25,6 +25,7 @@ import {
   AtSignIcon,
   CalendarArrowDownIcon,
   CircleCheckIcon,
+  FolderTreeIcon,
   ClockIcon,
   LayersIcon,
   PenLineIcon,
@@ -50,6 +51,9 @@ import {
   PullRequestSearchInput,
   type PullRequestFilterOption,
 } from "~/components/pullRequest/PullRequestListFilters";
+import { IssueBrowseView } from "./IssueBrowseView";
+import { issueBrowseTeams } from "@t3tools/client-runtime/issue-browse";
+import type { IssueBrowsePosition } from "./issueBrowse.logic";
 import { IssueFiltersMenu } from "./IssueListFilterPickers";
 import { ISSUE_SAVED_VIEWS } from "./issueSavedViews";
 import { SavedViewsMenu } from "~/components/SavedViewsMenu";
@@ -100,6 +104,7 @@ export interface IssuesSearch extends IssueListPreferences {
   readonly tracker?: string | undefined;
   readonly scope?: string | undefined;
   readonly key?: string | undefined;
+  readonly browse?: IssueBrowsePosition | undefined;
 }
 
 const STATE_TABS = [
@@ -271,6 +276,7 @@ export function IssuesPage() {
       ...(merged.tracker ? { tracker: merged.tracker } : {}),
       ...(merged.scope ? { scope: merged.scope } : {}),
       ...(merged.key ? { key: merged.key } : {}),
+      ...(merged.browse ? { browse: merged.browse } : {}),
     };
     writeIssueListPreferences(issueListPreferences(next));
     void navigate({ search: next });
@@ -408,6 +414,31 @@ export function IssuesPage() {
 
   const showTracker = groups.length > 1;
   const noneAnswered = list.answers.length === 0;
+
+  const browseTeams = issueBrowseTeams(list.answers);
+  const browseBody: ReactNode =
+    search.browse === undefined ? null : (
+      <IssueBrowseView
+        teams={browseTeams}
+        teamsPending={list.isPending}
+        teamsError={list.error}
+        onRetryTeams={list.refresh}
+        position={search.browse}
+        state={search.status}
+        environmentLabels={capableEnvironments.length > 1 ? environmentLabels : null}
+        isSelected={(row) =>
+          renderedSurface?.kind === "issue" &&
+          renderedSurface.environmentId === row.environmentId &&
+          issueEntryKey({
+            ...renderedSurface,
+            host: renderedSurface.host ?? "",
+            projectId: renderedSurface.projectId as ProjectId,
+          }) === issueEntryKey(row)
+        }
+        onSelect={selectEntry}
+        onNavigate={(browse) => updateSearch({ browse })}
+      />
+    );
 
   const listBody: ReactNode = !issuesSupported ? (
     <PullRequestsUnavailableState
@@ -571,30 +602,36 @@ export function IssuesPage() {
           <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
             <WorkspacePageContainer width="expanded" className="min-h-full gap-4">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="min-w-0 basis-full @lg/issue-list:min-w-48 @lg/issue-list:basis-0 @lg/issue-list:flex-1">
-                  <PullRequestSearchInput
-                    value={search.q ?? ""}
-                    label="Search issues"
-                    placeholder="Search issues"
-                    busy={
-                      (search.q ?? "") !== debouncedQuery ||
-                      (debouncedQuery.length > 0 && list.isPending)
-                    }
-                    onChange={(q) => updateSearch({ q: q || undefined })}
-                    onSubmit={(q) => updateSearch({ q: q || undefined })}
-                  />
-                </div>
-                <PullRequestCompactFilterMenu
-                  label="Sort issues"
-                  triggerIcon={<ArrowDownUpIcon aria-hidden className="size-4" />}
-                  triggerLabel="Sort"
-                  outlined
-                  value={search.order ?? "updated"}
-                  options={SORT_OPTIONS}
-                  onChange={(order) =>
-                    updateSearch({ order: order === "created" ? "created" : undefined })
-                  }
-                />
+                {search.browse === undefined ? (
+                  <>
+                    <div className="min-w-0 basis-full @lg/issue-list:min-w-48 @lg/issue-list:basis-0 @lg/issue-list:flex-1">
+                      <PullRequestSearchInput
+                        value={search.q ?? ""}
+                        label="Search issues"
+                        placeholder="Search issues"
+                        busy={
+                          (search.q ?? "") !== debouncedQuery ||
+                          (debouncedQuery.length > 0 && list.isPending)
+                        }
+                        onChange={(q) => updateSearch({ q: q || undefined })}
+                        onSubmit={(q) => updateSearch({ q: q || undefined })}
+                      />
+                    </div>
+                    <PullRequestCompactFilterMenu
+                      label="Sort issues"
+                      triggerIcon={<ArrowDownUpIcon aria-hidden className="size-4" />}
+                      triggerLabel="Sort"
+                      outlined
+                      value={search.order ?? "updated"}
+                      options={SORT_OPTIONS}
+                      onChange={(order) =>
+                        updateSearch({ order: order === "created" ? "created" : undefined })
+                      }
+                    />
+                  </>
+                ) : (
+                  <div className="min-w-0 flex-1" />
+                )}
                 <IssueFiltersMenu
                   state={search.status}
                   stateOptions={STATE_TABS}
@@ -608,29 +645,45 @@ export function IssuesPage() {
                   assignee={search.assignee}
                   onAssignee={(assignee) => updateSearch({ assignee })}
                 />
-                <SavedViewsMenu
-                  kind={ISSUE_SAVED_VIEWS}
-                  preferences={search}
-                  onApply={(view) =>
-                    // Explicit clears replace the old list scope; the selected issue stays open.
-                    updateSearch({
-                      who: view.who,
-                      status: view.status,
-                      host: view.host,
-                      q: view.q,
-                      label: view.label,
-                      assignee: view.assignee,
-                      order: view.order,
-                    })
-                  }
-                />
-                {hostOptions.length > 1 ? (
-                  <FilterMenu
-                    label="Filter by tracker"
-                    value={search.host ?? ""}
-                    options={hostOptions}
-                    onChange={(host) => updateSearch({ host: host || undefined })}
-                  />
+                {search.browse === undefined ? (
+                  <>
+                    <SavedViewsMenu
+                      kind={ISSUE_SAVED_VIEWS}
+                      preferences={search}
+                      onApply={(view) =>
+                        // Explicit clears replace the old list scope; the selected issue stays open.
+                        updateSearch({
+                          who: view.who,
+                          status: view.status,
+                          host: view.host,
+                          q: view.q,
+                          label: view.label,
+                          assignee: view.assignee,
+                          order: view.order,
+                        })
+                      }
+                    />
+                    {hostOptions.length > 1 ? (
+                      <FilterMenu
+                        label="Filter by tracker"
+                        value={search.host ?? ""}
+                        options={hostOptions}
+                        onChange={(host) => updateSearch({ host: host || undefined })}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+                {browseTeams.length > 0 || search.browse !== undefined ? (
+                  <Button
+                    variant={search.browse === undefined ? "outline" : "secondary"}
+                    aria-pressed={search.browse !== undefined}
+                    onClick={() =>
+                      updateSearch({ browse: search.browse === undefined ? {} : undefined })
+                    }
+                  >
+                    <FolderTreeIcon aria-hidden />
+                    Projects
+                  </Button>
                 ) : null}
                 <Button
                   size="icon"
@@ -642,7 +695,7 @@ export function IssuesPage() {
                   <RefreshIcon size="md" refreshing={list.isPending} />
                 </Button>
               </div>
-              {listBody}
+              {browseBody ?? listBody}
             </WorkspacePageContainer>
           </div>
         </div>
@@ -719,6 +772,9 @@ export function IssuesPage() {
                   scope: renderedSurface.scope,
                   key: renderedSurface.key,
                 }}
+                onSelectIssue={(reference) =>
+                  selectEntry({ ...reference, environmentId: panelEnvironmentId, url: "" })
+                }
                 onSelectPullRequest={(reference) => {
                   useRightPanelStore.getState().openPullRequest(rightPanelRef, {
                     projectId: reference.projectId,

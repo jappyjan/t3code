@@ -16,6 +16,7 @@ import type {
   FileContextRecord,
   ImageContextRecord,
   KnownComposerContextRecord,
+  LinearIssueContextRecord,
   MessageId,
   OrchestrationMessageContext,
   PreviewAnnotationContextRecord,
@@ -222,6 +223,11 @@ export function environmentContextReference(
   return { kind: "environment", contextId: record.contextId, label: record.label };
 }
 
+/** One chip per issue: launching from the same issue twice reuses it. */
+export function linearContextReference(record: LinearIssueContextRecord): ComposerContextReference {
+  return { kind: "linear-issue", contextId: record.contextId, label: record.label };
+}
+
 export function environmentContextRecord(
   environmentId: EnvironmentId,
   label: string,
@@ -383,6 +389,7 @@ export function buildMessageContext(input: {
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   replyTo?: ResponseContextRecord | null;
+  linearContexts?: ReadonlyArray<LinearIssueContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   const screenshotAttachmentIds = new Set(
@@ -396,6 +403,7 @@ export function buildMessageContext(input: {
     ...(input.threadContexts ?? []),
     ...(input.environmentContexts ?? []),
     ...(input.replyTo ? [input.replyTo] : []),
+    ...(input.linearContexts ?? []),
     ...input.previewAnnotations.map((annotation) =>
       previewAnnotationContextRecord(annotation, {
         screenshotContextId: screenshotAttachmentIds.has(annotation.id) ? annotation.id : undefined,
