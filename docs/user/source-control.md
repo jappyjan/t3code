@@ -414,6 +414,15 @@ another team at any time to add it; uncheck every team to unbind the project. Ea
 issues appear in the Linear group of the issue list, sorted with the rest by last update, and
 each can be loaded further on its own. Agents file new issues in the first team picked unless you name another bound team.
 
+For a Linear team, **Projects** beside the filters browses the team's projects and milestones down
+to their issues, with sub-issues under their parent and blocked issues marked. A Linear issue's
+panel also shows its project, branch, parent, sub-issues and blockers, and offers **Start chat**
+and **Run pipeline**. Both start in the project bound to the team, in a new worktree on Linear's
+branch name (`-2` is added when that branch exists) unless you pick the local checkout. The chat
+draft carries the issue with its sub-issues, comments and blockers; a pipeline's first step gets
+the same as text, on a machine you pick or one Auto balance chooses. The new thread is linked to
+the issue. The mobile Issues tab offers the same.
+
 Select an issue to open it beside the list: description, comments, state changes, linked pull
 requests, labels, assignees, and reactions. Linked pull requests open in the same panel. You can
 comment, edit the title and description, change labels and assignees, react, and close or
