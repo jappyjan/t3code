@@ -14,7 +14,7 @@ import {
   THREAD_LIST_V2_SIDEBAR_ROW_CONTAINER_STYLE,
   THREAD_LIST_V2_SIDEBAR_ROW_STYLE,
 } from "../threads/thread-list-v2-row-appearance";
-import { issueStatus } from "./issuePresentation";
+import { IssueStatusIcon, issueStatus } from "./issuePresentation";
 
 export const IssueListRow = memo(function IssueListRow(props: {
   readonly item: EnvironmentIssueEntry;
@@ -77,7 +77,7 @@ export const IssueListRow = memo(function IssueListRow(props: {
           className={cn("self-start", props.sidebar ? "pt-0.5" : "pt-2.5")}
           style={props.depth ? { marginLeft: props.depth * 20 } : undefined}
         >
-          <SymbolView name={status.icon} size={20} tintColorClassName={status.tint} />
+          <IssueStatusIcon state={item.state} size={20} />
         </View>
         <View
           className={cn(
