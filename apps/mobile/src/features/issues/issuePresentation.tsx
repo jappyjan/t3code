@@ -1,14 +1,16 @@
 import { useAtomValue } from "@effect/atom-react";
 import { issueWriteAccess } from "@t3tools/client-runtime/issue-presentation";
+import { issueStateGlyph } from "@t3tools/client-runtime/issue-state-glyph";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { IssueDetail, IssueLabel, IssueState } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
-import { View } from "react-native";
+import { useColorScheme, View } from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
 
-import type { AppSymbolName } from "../../components/ui/AppSymbol";
+import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { issueEnvironment } from "../../state/issues";
 import { ENVIRONMENT_REQUEST_INTERRUPTED } from "../../state/query";
@@ -45,6 +47,47 @@ export function issueStatus(state: IssueState): {
     tint: "accent-adaptive-violet-600-400",
     text: "text-adaptive-violet-600-400",
   };
+}
+
+/**
+ * The state's mark: Linear's per-type glyph in the state's colour where the tracker has workflow
+ * types, otherwise the open or closed symbol. The same shapes the web draws.
+ */
+export function IssueStatusIcon(props: { readonly state: IssueState; readonly size: number }) {
+  const scheme = useColorScheme() === "dark" ? "dark" : "light";
+  const glyph = issueStateGlyph(props.state, scheme);
+  if (glyph === null) {
+    const status = issueStatus(props.state);
+    return <SymbolView name={status.icon} size={props.size} tintColorClassName={status.tint} />;
+  }
+  return (
+    <Svg width={props.size} height={props.size} viewBox={`0 0 ${glyph.viewBox} ${glyph.viewBox}`}>
+      {glyph.primitives.map((primitive) =>
+        primitive.tag === "circle" ? (
+          <Circle
+            key={primitive.key}
+            cx={primitive.cx}
+            cy={primitive.cy}
+            r={primitive.r}
+            fill={primitive.fill ?? "none"}
+            stroke={primitive.stroke ?? "none"}
+            strokeWidth={primitive.strokeWidth}
+            strokeDasharray={primitive.dash ?? undefined}
+          />
+        ) : (
+          <Path
+            key={primitive.key}
+            d={primitive.d}
+            fill={primitive.fill ?? "none"}
+            stroke={primitive.stroke ?? "none"}
+            strokeWidth={primitive.strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ),
+      )}
+    </Svg>
+  );
 }
 
 /** What this device may do to the issue, and the first thing in the way when it may not. */
