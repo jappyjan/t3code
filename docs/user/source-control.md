@@ -414,14 +414,23 @@ another team at any time to add it; uncheck every team to unbind the project. Ea
 issues appear in the Linear group of the issue list, sorted with the rest by last update, and
 each can be loaded further on its own. Agents file new issues in the first team picked unless you name another bound team.
 
-For a Linear team, **Projects** beside the filters browses the team's projects and milestones down
-to their issues, with sub-issues under their parent and blocked issues marked. A Linear issue's
-panel also shows its project, branch, parent, sub-issues and blockers, and offers **Start chat**
-and **Run pipeline**. Both start in the project bound to the team, in a new worktree on Linear's
-branch name (`-2` is added when that branch exists) unless you pick the local checkout. The chat
-draft carries the issue with its sub-issues, comments and blockers; a pipeline's first step gets
-the same as text, on a machine you pick or one Auto balance chooses. The new thread is linked to
-the issue. The mobile Issues tab offers the same.
+Once Linear is connected, **Projects** beside the filters browses every team of the workspace,
+bound to a project or not, down through its projects and milestones to their issues, with
+sub-issues under their parent and blocked issues marked. A Linear issue's panel also shows its
+project, branch, parent, sub-issues and blockers, and offers **Start chat** and **Run pipeline**.
+Both start in the project bound to the team; for a team with no project, pick one beside the
+buttons and T3 Code remembers it for that team on this device. They open a new worktree on
+Linear's branch name (`-2` is added when that branch exists) unless you pick the local checkout.
+The chat draft carries the issue with its sub-issues, comments and blockers; a pipeline's first
+step gets the same as text, on a machine you pick or one Auto balance chooses. The new thread is
+linked to the issue. The mobile Issues tab offers the same.
+
+If you only use Linear, turn off **Git host issues** under Settings → Source control & issues.
+The Issues page and the mobile Issues tab then open on your Linear teams (or straight on the
+team's projects when there is one), and GitHub, GitLab, Azure DevOps, Forgejo and Bitbucket are
+no longer queried for the list. The flat list of bound teams' issues stays one step away: switch
+**Projects** off on the web, or tap **Issue list** on mobile. Agents can still list a
+repository's own issues. Turn the setting back on to list them again.
 
 Select an issue to open it beside the list: description, comments, state changes, linked pull
 requests, labels, assignees, and reactions. Linked pull requests open in the same panel. You can
