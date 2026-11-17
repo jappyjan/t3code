@@ -567,6 +567,7 @@ export function IssuesPage() {
     <PullRequestListGhost />
   ) : noneAnswered && list.error ? (
     <PullRequestsUnavailableState
+      title="Could not load issues"
       error={list.error}
       onRetry={list.retry}
       refreshing={list.isPending}
