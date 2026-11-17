@@ -911,6 +911,17 @@ describe("thread outbox recovery rollback", () => {
           workspaceMode: "local",
           branch: null,
           worktreePath: null,
+          linearIssue: {
+            issueId: "ATT-612",
+            identifier: "ATT-612",
+            title: "Fix retries",
+            url: "https://linear.app/acme/issue/ATT-612",
+            tracker: "linear",
+            host: "linear.app",
+            scope: "ATT",
+            projectId: "project-1",
+            branchName: "jan/att-612-fix",
+          },
         },
       };
       yield* Effect.promise(() => harness.manager.enqueue(message));
@@ -923,6 +934,7 @@ describe("thread outbox recovery rollback", () => {
         text: message.text,
         attachments: message.attachments,
         modelSelection: message.modelSelection,
+        linearIssue: message.creation!.linearIssue,
         project: {
           environmentId: message.environmentId,
           projectId: message.creation!.projectId,

@@ -28,6 +28,7 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
+import { LinearDraftIssue } from "@t3tools/client-runtime/linear/launch";
 import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
 import { withImplicitFastModeSelection } from "../lib/providerOptions";
 import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
@@ -49,6 +50,8 @@ const QueuedThreadCreationSchema = Schema.Struct({
   pullRequestReference: Schema.optional(Schema.String),
   repositories: Schema.optional(Schema.Array(Schema.String)),
   startsFromRepositoryDefaults: Schema.optional(Schema.Boolean),
+  worktreeBranchName: Schema.optional(Schema.String),
+  linearIssue: Schema.optional(LinearDraftIssue),
 });
 
 export const QueuedThreadMessageSchema = Schema.Struct({
@@ -87,6 +90,10 @@ export interface QueuedThreadCreation {
   readonly repositories?: ReadonlyArray<string>;
   /** The project folder is no Git repository, so a new worktree needs no base branch. */
   readonly startsFromRepositoryDefaults?: boolean;
+  /** Names the new worktree's branch instead of a temporary one. */
+  readonly worktreeBranchName?: string;
+  /** Linked to the thread once it is created. */
+  readonly linearIssue?: LinearDraftIssue;
 }
 
 export interface QueuedThreadMessage {
