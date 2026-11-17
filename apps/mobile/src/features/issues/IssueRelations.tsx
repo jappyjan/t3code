@@ -126,7 +126,7 @@ export function IssueRelations(props: {
           accessibilityLabel={`Priority ${detail.priorityLabel}`}
           className="flex-row items-center gap-2"
         >
-          <SymbolView name="flag.fill" size={14} tintColorClassName="accent-icon-muted" />
+          <SymbolView name="chart.bar.xaxis" size={14} tintColorClassName="accent-icon-muted" />
           <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
             {detail.priorityLabel}
           </Text>
