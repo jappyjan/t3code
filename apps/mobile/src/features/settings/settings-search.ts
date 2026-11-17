@@ -97,7 +97,7 @@ const SETTINGS_SEARCH_TERMS = {
     "pull requests",
     "co-authors",
     "agent credits",
-    "git host issues",
+    "issues from git hosts",
     "linear only",
     "default branch",
     "automatically pull",
