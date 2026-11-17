@@ -458,6 +458,7 @@ export function IssuesPage() {
   const listBody: ReactNode = !issuesSupported ? (
     <PullRequestsUnavailableState
       title="Issues unavailable"
+      icon={<IssueGlyph.issue />}
       error="Update this environment's T3 Code server to browse issues."
     />
   ) : noneAnswered && list.isPending ? (
@@ -465,6 +466,7 @@ export function IssuesPage() {
   ) : noneAnswered && list.error ? (
     <PullRequestsUnavailableState
       title="Could not load issues"
+      icon={<IssueGlyph.issue />}
       error={list.error}
       onRetry={list.refresh}
       refreshing={list.isPending}
