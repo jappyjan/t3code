@@ -5,6 +5,7 @@ import type {
   HostMemoryPressureAgent,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT } from "gt-react";
 import { TriangleAlertIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -43,7 +44,11 @@ function MemoryPressurePill(props: {
   readonly label: string | null;
   readonly pressure: HostMemoryPressure;
 }) {
-  const title = props.label === null ? "Low on memory" : `${props.label} is low on memory`;
+  const gt = useGT();
+  const title =
+    props.label === null
+      ? gt("Low on memory")
+      : gt("{environment} is low on memory", { environment: props.label });
   return (
     <Popover>
       <PopoverTrigger
@@ -62,8 +67,10 @@ function MemoryPressurePill(props: {
       <PopoverPopup side="top" align="start" padding="compact">
         <PopoverTitle>{title}</PopoverTitle>
         <p className="mt-1 max-w-64 text-2xs text-muted-foreground">
-          The system is slowing agents down to free memory, so they may stop responding. Stopping
-          the largest agent helps the rest.
+          <T>
+            The system is slowing agents down to free memory, so they may stop responding. Stopping
+            the largest agent helps the rest.
+          </T>
         </p>
         {props.pressure.heaviestAgents.length > 0 ? (
           <ul className="mt-2 flex flex-col gap-1">
@@ -85,13 +92,15 @@ function MemoryPressureAgentRow(props: {
   readonly environmentId: EnvironmentId;
   readonly agent: HostMemoryPressureAgent;
 }) {
+  const gt = useGT();
   const navigate = useNavigate();
   const threadId = props.agent.threadId;
   const threadRef = threadId === null ? null : scopeThreadRef(props.environmentId, threadId);
   const thread = useThreadShell(threadRef);
   const forceStop = useForceStopThread(props.environmentId);
   const name =
-    thread?.title ?? (threadId === null ? `${props.agent.agent} (shared)` : props.agent.agent);
+    thread?.title ??
+    (threadId === null ? gt("{agent} (shared)", { agent: props.agent.agent }) : props.agent.agent);
   return (
     <li className="flex min-w-0 items-center gap-2 text-xs">
       {threadRef === null ? (
@@ -119,7 +128,7 @@ function MemoryPressureAgentRow(props: {
           disabled={forceStop.stoppingThreadId === threadId}
           onClick={() => void forceStop.forceStopThread(threadId)}
         >
-          {forceStop.stoppingThreadId === threadId ? "Force stopping..." : "Force stop"}
+          {forceStop.stoppingThreadId === threadId ? <T>Force stopping...</T> : <T>Force stop</T>}
         </InlineButton>
       ) : null}
     </li>

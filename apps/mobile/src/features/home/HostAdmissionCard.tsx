@@ -1,6 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { hostAdmissionSummary } from "@t3tools/client-runtime/host-admission-presentation";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react-native";
 import { Pressable, View } from "react-native";
 
 import { AppText } from "../../components/ui/AppText";
@@ -12,6 +13,8 @@ const MAX_LISTED_THREADS = 5;
 
 /** New turns wait here while the host is full or busy, so name them instead of leaving threads silent. */
 export function HostAdmissionCard() {
+  const gt = useGT();
+  const messages = useMessages();
   const configs = useServerConfigs();
   const waiting = [...configs].flatMap(([environmentId, config]) =>
     config.hostAdmission !== undefined && config.hostAdmission.waitingTurns > 0
@@ -22,7 +25,7 @@ export function HostAdmissionCard() {
   return (
     <View className="gap-2 px-4 pb-2">
       {waiting.map(({ environmentId, config, admission }) => {
-        const summary = hostAdmissionSummary(admission);
+        const summary = hostAdmissionSummary(admission, messages);
         const listed = admission.waitingThreadIds.slice(0, MAX_LISTED_THREADS);
         const hidden = admission.waitingThreadIds.length - listed.length;
         return (
@@ -37,7 +40,12 @@ export function HostAdmissionCard() {
                 textRole="footnote"
                 className="min-w-0 flex-1 font-t3-medium text-foreground"
               >
-                {configs.size > 1 ? `${config.environment.label}: ${summary}` : summary}
+                {configs.size > 1
+                  ? gt("{environment}: {status}", {
+                      environment: config.environment.label,
+                      status: summary,
+                    })
+                  : summary}
               </AppText>
             </View>
             {listed.map((threadId) => (
@@ -49,7 +57,9 @@ export function HostAdmissionCard() {
             ))}
             {hidden > 0 ? (
               <AppText textRole="caption" className="text-muted-foreground">
-                {`and ${hidden} more`}
+                {gt("{count, plural, one {and {count} more} other {and {count} more}}", {
+                  count: hidden,
+                })}
               </AppText>
             ) : null}
           </View>
@@ -63,6 +73,7 @@ function HostAdmissionThreadRow(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const gt = useGT();
   const thread = useQuietThreadShell(scopeThreadRef(props.environmentId, props.threadId));
   const openThread = useOpenLinkedThread();
   return (
@@ -72,7 +83,7 @@ function HostAdmissionThreadRow(props: {
       className="active:opacity-70"
     >
       <AppText textRole="footnote" numberOfLines={1} className="text-foreground">
-        {thread?.title ?? "Thread"}
+        {thread?.title ?? gt("Thread")}
       </AppText>
     </Pressable>
   );

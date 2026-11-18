@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, HostMemoryPressureAgent } from "@t3tools/contracts";
+import { T, useGT } from "gt-react-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
@@ -17,6 +18,7 @@ const GiB = 1024 ** 3;
 
 /** Agents throttled for memory stop answering, so name the heaviest ones while it lasts. */
 export function MemoryPressureBanner() {
+  const gt = useGT();
   const configs = useServerConfigs();
   const severe = [...configs].flatMap(([environmentId, config]) =>
     config.memoryPressure?.level === "severe"
@@ -39,12 +41,16 @@ export function MemoryPressureBanner() {
               tintColorClassName="accent-warning-foreground"
             />
             <AppText textRole="footnote" className="min-w-0 flex-1 font-t3-medium text-foreground">
-              {configs.size > 1 ? `${config.environment.label} is low on memory` : "Low on memory"}
+              {configs.size > 1
+                ? gt("{environment} is low on memory", { environment: config.environment.label })
+                : gt("Low on memory")}
             </AppText>
           </View>
           <AppText textRole="caption" className="text-muted-foreground">
-            Agents are being slowed down and may stop responding. Stopping the largest one helps the
-            rest.
+            <T>
+              Agents are being slowed down and may stop responding. Stopping the largest one helps
+              the rest.
+            </T>
           </AppText>
           {pressure.heaviestAgents.map((agent, index) => (
             <MemoryPressureAgentRow
@@ -65,6 +71,7 @@ function MemoryPressureAgentRow(props: {
   readonly agent: HostMemoryPressureAgent;
   readonly canForceStop: boolean;
 }) {
+  const gt = useGT();
   const threadId = props.agent.threadId;
   const thread = useQuietThreadShell(
     threadId === null ? null : scopeThreadRef(props.environmentId, threadId),
@@ -78,7 +85,8 @@ function MemoryPressureAgentRow(props: {
   });
   const [stopping, setStopping] = useState(false);
   const name =
-    thread?.title ?? (threadId === null ? `${props.agent.agent} (shared)` : props.agent.agent);
+    thread?.title ??
+    (threadId === null ? gt("{agent} (shared)", { agent: props.agent.agent }) : props.agent.agent);
   const forceStop = async (target: NonNullable<typeof threadId>) => {
     setStopping(true);
     const result = await forceStopThread({
@@ -87,7 +95,7 @@ function MemoryPressureAgentRow(props: {
     });
     setStopping(false);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      Dialog.alert("Could not force stop the agent");
+      Dialog.alert(gt("Could not force stop the agent"));
     }
   };
   return (
@@ -112,14 +120,14 @@ function MemoryPressureAgentRow(props: {
       {threadId !== null && props.canForceStop && permitted ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Force stop ${name}`}
+          accessibilityLabel={gt("Force stop {name}", { name })}
           disabled={stopping}
           hitSlop={8}
           onPress={() =>
             Dialog.confirm({
-              title: "Force stop the agent?",
-              message: `Force stop kills ${name}'s processes and ends its turn.`,
-              confirmText: "Force stop",
+              title: gt("Force stop the agent?"),
+              message: gt("Force stop kills {name}'s processes and ends its turn.", { name }),
+              confirmText: gt("Force stop"),
               destructive: true,
               onConfirm: () => void forceStop(threadId),
             })
@@ -127,7 +135,7 @@ function MemoryPressureAgentRow(props: {
           className={`active:opacity-70 ${stopping ? "opacity-50" : ""}`}
         >
           <AppText textRole="footnote" className="font-t3-medium text-danger-foreground">
-            {stopping ? "Stopping..." : "Force stop"}
+            {stopping ? gt("Stopping...") : gt("Force stop")}
           </AppText>
         </Pressable>
       ) : null}
