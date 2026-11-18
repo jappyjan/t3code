@@ -4,7 +4,9 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, PipelineRun, PipelineRunReviseInput } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
+import { m } from "../../i18n/messages";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -26,7 +28,7 @@ export function usePipelineRevise(environmentId: EnvironmentId) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not send feedback",
+          title: m(msg("Could not send feedback")),
           description: error instanceof Error ? error.message : String(error),
         }),
       );

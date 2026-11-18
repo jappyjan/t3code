@@ -1,6 +1,7 @@
 import type { PipelineDefinition, PipelineId } from "@t3tools/contracts";
 import { describePipelineSteps } from "@t3tools/client-runtime/pipeline-editor";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT, useMessages } from "gt-react";
 import { WorkflowIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -31,21 +32,26 @@ export const ComposerPipelinePicker = memo(function ComposerPipelinePicker(props
   size: ComposerControlSize;
   onSelect: (pipelineId: PipelineId | null) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const navigate = useNavigate();
   const composerFloatingLayerProps = useComposerMenuProps();
   const selected = props.pipelines.find((pipeline) => pipeline.id === props.selectedPipelineId);
   const pending = props.selectedPipelineId !== null && !selected && !props.pipelinesLoaded;
   const label =
     props.selectedPipelineId === null
-      ? "Pipeline"
-      : (selected?.name ?? (pending ? "Loading pipeline" : "Pipeline unavailable"));
+      ? gt("Pipeline")
+      : (selected?.name ?? (pending ? gt("Loading pipeline") : gt("Pipeline unavailable")));
   const tooltip = selected
-    ? `${selected.name}: ${describePipelineSteps(selected.steps)}. The run takes text only.`
+    ? gt("{name}: {steps}. The run takes text only.", {
+        name: selected.name,
+        steps: describePipelineSteps(selected.steps, m),
+      })
     : props.selectedPipelineId === null
-      ? "Run a pipeline of agent steps instead of one model"
+      ? gt("Run a pipeline of agent steps instead of one model")
       : pending
-        ? "Loading pipelines"
-        : "This pipeline no longer exists. Choose another or none.";
+        ? gt("Loading pipelines")
+        : gt("This pipeline no longer exists. Choose another or none.");
 
   return (
     <div data-resting-controls-fixed className="flex shrink-0 items-center">
@@ -59,7 +65,7 @@ export const ComposerPipelinePicker = memo(function ComposerPipelinePicker(props
                 render={
                   <ComposerControl
                     size={props.size}
-                    aria-label={`Pipeline: ${label}`}
+                    aria-label={gt("Pipeline: {label}", { label })}
                     aria-pressed={props.selectedPipelineId !== null}
                     data-composer-pipeline-chip
                   />
@@ -85,19 +91,21 @@ export const ComposerPipelinePicker = memo(function ComposerPipelinePicker(props
               )
             }
           >
-            <MenuRadioItem value={NO_PIPELINE_VALUE}>None</MenuRadioItem>
+            <MenuRadioItem value={NO_PIPELINE_VALUE}>
+              {gt("None", { $context: "no pipeline selected" })}
+            </MenuRadioItem>
             {props.pipelines.map((pipeline) => (
               <MenuRadioItem key={pipeline.id} value={pipeline.id}>
                 <span className="block truncate">{pipeline.name}</span>
                 <span className="block truncate text-muted-foreground text-xs">
-                  {describePipelineSteps(pipeline.steps)}
+                  {describePipelineSteps(pipeline.steps, m)}
                 </span>
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>
           <MenuSeparator />
           <MenuItem onClick={() => void navigate({ to: "/settings/pipelines" })}>
-            Manage pipelines…
+            <T>Manage pipelines…</T>
           </MenuItem>
         </MenuPopup>
       </Menu>

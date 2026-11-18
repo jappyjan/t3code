@@ -40,6 +40,7 @@ import {
   XCircleIcon,
   type LucideIcon,
 } from "lucide-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { useState } from "react";
 
 import { requestConfirmDialog } from "../../confirmDialog";
@@ -126,17 +127,18 @@ export function PipelineRunView(props: {
   );
   const run = query.data?.run ?? null;
   const statusLabel = useRunStatusLabel(props.environmentId, run);
+  const gt = useGT();
   return (
     <div className="shrink-0 border-b border-border/60" data-testid="pipeline-run-view">
       <div className="chat-content-lane pt-2">
         <CollapsibleSectionHeader expanded={expanded} onClick={() => setExpanded((open) => !open)}>
-          {run === null ? "Pipeline run" : `${run.definition.name} · ${statusLabel}`}
+          {run === null ? gt("Pipeline run") : `${run.definition.name} · ${statusLabel}`}
         </CollapsibleSectionHeader>
       </div>
       {run === null ? (
         expanded ? (
           <p className="chat-content-lane py-3 text-sm text-muted-foreground">
-            {query.error ?? "Loading pipeline run..."}
+            {query.error ?? gt("Loading pipeline run...")}
           </p>
         ) : null
       ) : (
@@ -163,6 +165,8 @@ function PipelineRunBody(props: {
   readonly onFileOpen: (attachment: ChatFileAttachment) => void;
 }) {
   const { environmentId } = props;
+  const gt = useGT();
+  const m = useMessages();
   const openThread = useOpenThread(environmentId);
   // The command's own result is the freshest run until the subscription catches up, so the
   // buttons never render from the pre-command state once the lock releases.
@@ -235,10 +239,10 @@ function PipelineRunBody(props: {
   };
 
   const stepAction = { runId: run.id, stepIndex: run.currentStepIndex };
-  const currentName = stepName(run, run.currentStepIndex);
+  const currentName = stepName(run, run.currentStepIndex, m);
   const canRestoreFiles = run.steps[run.currentStepIndex]?.canRestoreWorkspace === true;
   const retryCurrent = (restoreWorkspace: boolean) =>
-    void perform("retry", "Could not retry step", () =>
+    void perform("retry", gt("Could not retry step"), () =>
       retryStep({
         environmentId,
         input: restoreWorkspace ? { ...stepAction, restoreWorkspace } : stepAction,
@@ -247,21 +251,27 @@ function PipelineRunBody(props: {
 
   const confirmRerun = async (stepIndex: number) => {
     if (busy) return;
-    const message = `Rerun from "${stepName(run, stepIndex)}"?\nThis step and every step after it run again. Earlier steps keep their results.`;
+    const message = gt(
+      'Rerun from "{name}"?\nThis step and every step after it run again. Earlier steps keep their results.',
+      { name: stepName(run, stepIndex, m) },
+    );
     const confirmed = (await requestConfirmDialog(message)) ?? window.confirm(message);
     if (!confirmed) return;
-    await perform(`rerun:${stepIndex}`, "Could not rerun step", () =>
+    await perform(`rerun:${stepIndex}`, gt("Could not rerun step"), () =>
       rerunFromStep({ environmentId, input: { runId: run.id, stepIndex } }),
     );
   };
 
   const confirmCancel = async () => {
     if (busy) return;
-    const message = `Cancel "${run.definition.name}"?\nThe running step is stopped. You can retry or skip it afterwards.`;
+    const message = gt(
+      'Cancel "{name}"?\nThe running step is stopped. You can retry or skip it afterwards.',
+      { name: run.definition.name },
+    );
     const confirmed =
       (await requestConfirmDialog(message, { variant: "destructive" })) ?? window.confirm(message);
     if (!confirmed) return;
-    await perform("cancel", "Could not cancel pipeline", () =>
+    await perform("cancel", gt("Could not cancel pipeline"), () =>
       cancelRun({ environmentId, input: { runId: run.id } }),
     );
   };
@@ -275,6 +285,7 @@ function PipelineRunBody(props: {
     resolveSidebarThreadStatus,
     waitOf,
     stuckAfterHours,
+    m,
   );
   const needsYouThreadId = needsYou?.threadId ?? null;
   return (
@@ -289,7 +300,9 @@ function PipelineRunBody(props: {
           </span>
           {needsYouThreadId !== null ? (
             <Button size="sm" variant="outline" onClick={() => openThread(needsYouThreadId)}>
-              Open {needsYou.stepName}
+              <T>
+                Open <Var>{needsYou.stepName}</Var>
+              </T>
             </Button>
           ) : null}
         </div>
@@ -308,14 +321,14 @@ function PipelineRunBody(props: {
                   size="sm"
                   disabled={busy || !canContinue}
                   onClick={() =>
-                    void perform("continue", "Could not continue pipeline", () =>
+                    void perform("continue", gt("Could not continue pipeline"), () =>
                       continueRun({ environmentId, input: stepAction }),
                     )
                   }
                 >
                   {run.pauseReason === "awaiting_handoff"
-                    ? "Continue with last message"
-                    : "Continue"}
+                    ? gt("Continue with last message")
+                    : gt("Continue", { $context: "verb, resumes a paused pipeline" })}
                 </Button>
               ) : null}
               {actions.retry && canRestoreFiles ? (
@@ -323,21 +336,29 @@ function PipelineRunBody(props: {
                   <MenuTrigger
                     render={<Button size="sm" variant="outline" disabled={busy || !canRetry} />}
                   >
-                    Retry {currentName}
+                    <T>
+                      Retry <Var>{currentName}</Var>
+                    </T>
                     <ChevronDownIcon className="size-3.5" />
                   </MenuTrigger>
                   <MenuPopup align="start" className="max-w-72">
                     <MenuItem className="items-start" onClick={() => retryCurrent(true)}>
                       <span className="flex min-w-0 flex-col gap-0.5">
-                        <MenuItemLabel>Retry from step start</MenuItemLabel>
+                        <MenuItemLabel>
+                          <T>Retry from step start</T>
+                        </MenuItemLabel>
                         <span className="text-xs text-muted-foreground">
-                          Undo this step's file changes, then run it again. Commits stay on the
-                          branch.
+                          <T>
+                            Undo this step's file changes, then run it again. Commits stay on the
+                            branch.
+                          </T>
                         </span>
                       </span>
                     </MenuItem>
                     <MenuItem onClick={() => retryCurrent(false)}>
-                      <MenuItemLabel>Retry with current files</MenuItemLabel>
+                      <MenuItemLabel>
+                        <T>Retry with current files</T>
+                      </MenuItemLabel>
                     </MenuItem>
                   </MenuPopup>
                 </Menu>
@@ -348,7 +369,9 @@ function PipelineRunBody(props: {
                   disabled={busy || !canRetry}
                   onClick={() => retryCurrent(false)}
                 >
-                  Retry {currentName}
+                  <T>
+                    Retry <Var>{currentName}</Var>
+                  </T>
                 </Button>
               ) : null}
               {actions.skip ? (
@@ -357,12 +380,14 @@ function PipelineRunBody(props: {
                   variant="outline"
                   disabled={busy || !canSkip}
                   onClick={() =>
-                    void perform("skip", "Could not skip step", () =>
+                    void perform("skip", gt("Could not skip step"), () =>
                       skipStep({ environmentId, input: stepAction }),
                     )
                   }
                 >
-                  Skip {currentName}
+                  <T>
+                    Skip <Var>{currentName}</Var>
+                  </T>
                 </Button>
               ) : null}
               {actions.cancel ? (
@@ -372,7 +397,7 @@ function PipelineRunBody(props: {
                   disabled={busy || !canCancel}
                   onClick={() => void confirmCancel()}
                 >
-                  Cancel run
+                  <T>Cancel run</T>
                 </Button>
               ) : null}
             </div>
@@ -382,7 +407,7 @@ function PipelineRunBody(props: {
       {props.expanded ? (
         <div className="scrollbar-gutter-both max-h-[45vh] overflow-y-auto">
           <div className="chat-content-lane flex flex-col gap-6 py-3">
-            <section aria-label="Starting prompt" className="flex flex-col items-end gap-1.5">
+            <section aria-label={gt("Starting prompt")} className="flex flex-col items-end gap-1.5">
               <PipelineStartAttachments
                 environmentId={environmentId}
                 attachments={run.attachments}
@@ -403,7 +428,7 @@ function PipelineRunBody(props: {
               ) : null}
             </section>
 
-            <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Pipeline steps">
+            <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={gt("Pipeline steps")}>
               {run.steps.map((step) => (
                 <PipelineStepRow
                   key={step.index}
@@ -424,7 +449,7 @@ function PipelineRunBody(props: {
                   canSendFeedback={canRevise && !busy && actions.revise(step.index)}
                   onSendFeedback={() => setFeedbackStepIndex(step.index)}
                   onPauseBeforeChange={(pauseBefore) =>
-                    void perform(`pause:${step.index}`, "Could not update pause", () =>
+                    void perform(`pause:${step.index}`, gt("Could not update pause"), () =>
                       setPauseBefore({
                         environmentId,
                         input: { runId: run.id, stepId: step.stepId, pauseBefore },
@@ -452,7 +477,8 @@ function PipelineRunBody(props: {
 
 /** Between steps the run reads `running` with the next step still `pending`. */
 function useRunStatusLabel(environmentId: EnvironmentId, run: PipelineRun | null): string | null {
-  const feeding = run === null ? null : pipelineFeedingStep(run);
+  const m = useMessages();
+  const feeding = run === null ? null : pipelineFeedingStep(run, m);
   const shell = useQuietThreadShell(
     feeding === null ? null : scopeThreadRef(environmentId, feeding.childThreadId),
   );
@@ -467,6 +493,7 @@ function useRunStatusLabel(environmentId: EnvironmentId, run: PipelineRun | null
     feeding !== null && pipelineChildLiveState(shell) === "working",
     waitOf(awaitingShell),
     stuckAfterHours,
+    m,
   );
 }
 
@@ -485,6 +512,9 @@ function PipelineStepRow(props: {
   readonly onSendFeedback: () => void;
 }) {
   const { environmentId, run, step } = props;
+  const gt = useGT();
+  const m = useMessages();
+  const name = stepName(run, step.index, m);
   const [outputOpen, setOutputOpen] = useState(false);
   const openThread = useOpenThread(environmentId);
   const definitionStep = run.definition.steps[step.index];
@@ -504,6 +534,7 @@ function PipelineStepRow(props: {
     pipelineStepAwaitsHandoff(run, step.index),
     props.waitOf(shell),
     isCurrent && run.status === "paused",
+    m,
   );
   const childThreadId = step.childThreadId;
 
@@ -517,12 +548,12 @@ function PipelineStepRow(props: {
     >
       <div className="flex min-w-0 items-center gap-2">
         <Icon aria-hidden className={cn("size-4 shrink-0", iconClassName)} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {stepName(run, step.index)}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{name}</span>
         {step.attempt > 1 ? (
           <Badge variant="outline" size="sm">
-            Attempt {step.attempt}
+            <T>
+              Attempt <Var>{step.attempt}</Var>
+            </T>
           </Badge>
         ) : null}
         <span
@@ -575,10 +606,14 @@ function PipelineStepRow(props: {
         <div className="ps-4">
           <CollapsibleSectionHeader
             expanded={outputOpen}
-            aria-label={`${outputOpen ? "Collapse" : "Expand"} output of ${stepName(run, step.index)}`}
+            aria-label={
+              outputOpen
+                ? gt("Collapse output of {name}", { name })
+                : gt("Expand output of {name}", { name })
+            }
             onClick={() => setOutputOpen((open) => !open)}
           >
-            Output
+            <T>Output</T>
           </CollapsibleSectionHeader>
           {outputOpen ? (
             <div className="px-2 pb-1 text-sm">
@@ -607,44 +642,44 @@ function PipelineStepRow(props: {
             <Button
               size="xs"
               variant="ghost-muted"
-              aria-label={`Open thread for ${stepName(run, step.index)}`}
+              aria-label={gt("Open thread for {name}", { name })}
               onClick={() => openThread(childThreadId)}
             >
               <ExternalLinkIcon className="size-3" />
-              Open thread
+              <T>Open thread</T>
             </Button>
           )}
           {props.canSendFeedback ? (
             <Button
               size="xs"
               variant="ghost-muted"
-              aria-label={`Send feedback to ${stepName(run, step.index)}`}
+              aria-label={gt("Send feedback to {name}", { name })}
               onClick={props.onSendFeedback}
             >
               <MessageSquareIcon className="size-3" />
-              Send feedback…
+              <T>Send feedback…</T>
             </Button>
           ) : null}
           {props.canRerun ? (
             <Button
               size="xs"
               variant="ghost-muted"
-              aria-label={`Rerun from ${stepName(run, step.index)}`}
+              aria-label={gt("Rerun from {name}", { name })}
               onClick={props.onRerun}
             >
               <RotateCcwIcon className="size-3" />
-              Rerun from here
+              <T>Rerun from here</T>
             </Button>
           ) : null}
           {step.status === "pending" ? (
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-              Pause before
+              <T>Pause before</T>
               <Switch
                 size="sm"
                 checked={step.pauseBefore}
                 disabled={!props.canTogglePauseBefore}
                 onCheckedChange={(checked) => props.onPauseBeforeChange(checked)}
-                aria-label={`Pause before ${stepName(run, step.index)}`}
+                aria-label={gt("Pause before {name}", { name })}
               />
             </label>
           ) : null}
@@ -657,6 +692,8 @@ function PipelineStepRow(props: {
 /** Why this step reran: the feedback sent to it, newest last. */
 function PipelineStepFeedback(props: { readonly run: PipelineRun; readonly stepIndex: number }) {
   const [open, setOpen] = useState(false);
+  const gt = useGT();
+  const m = useMessages();
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const revisions = props.run.revisions.filter(
     (revision) => revision.stepIndex === props.stepIndex,
@@ -666,17 +703,21 @@ function PipelineStepFeedback(props: { readonly run: PipelineRun; readonly stepI
     <div className="ps-4">
       <CollapsibleSectionHeader
         expanded={open}
-        aria-label={`${open ? "Collapse" : "Expand"} feedback on ${stepName(props.run, props.stepIndex)}`}
+        aria-label={
+          open
+            ? gt("Collapse feedback on {name}", { name: stepName(props.run, props.stepIndex, m) })
+            : gt("Expand feedback on {name}", { name: stepName(props.run, props.stepIndex, m) })
+        }
         onClick={() => setOpen((value) => !value)}
       >
-        Feedback ({revisions.length})
+        {gt("Feedback ({count})", { count: revisions.length })}
       </CollapsibleSectionHeader>
       {open ? (
         <ul className="m-0 flex list-none flex-col gap-2 px-2 pb-1 text-sm">
           {revisions.map((revision) => (
             <li key={revision.createdAt} className="flex flex-col gap-1">
               <span className="text-xs text-muted-foreground">
-                {pipelineRevisionAuthorLabel(revision.author)} ·{" "}
+                {pipelineRevisionAuthorLabel(revision.author, m)} ·{" "}
                 <time dateTime={revision.createdAt}>
                   {formatDayAwareTimestamp(revision.createdAt, timestampFormat)}
                 </time>

@@ -49,6 +49,7 @@ import {
   WorkflowIcon,
   XIcon,
 } from "lucide-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { type ReactNode, useRef, useState } from "react";
 
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -99,9 +100,6 @@ import {
 } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 
-const TEMPLATE_VARIABLES_HINT =
-  "Variables: {{input}} is the text the run starts with, {{previous.output}} the last message of the step before, {{steps.<id>.output}} an earlier step by id or name.";
-
 function supportsPipelines(environment: EnvironmentPresentation): boolean {
   return (
     environment.connection.phase === "connected" &&
@@ -144,6 +142,7 @@ function Field({
 }
 
 export function PipelinesSettings() {
+  const gt = useGT();
   const { scope, environments, connectedEnvironments, environment } = useSettingsScope();
   const [editor, setEditor] = useState<{
     environmentId: EnvironmentId;
@@ -167,7 +166,7 @@ export function PipelinesSettings() {
   return (
     <SettingsPageContainer>
       <SettingsSection
-        title="Pipelines"
+        title={gt("Pipelines")}
         variant="plain"
         headerAction={
           <Menu>
@@ -181,7 +180,7 @@ export function PipelinesSettings() {
               }
             >
               <PlusIcon className="size-3" />
-              New pipeline
+              <T>New pipeline</T>
               <ChevronDownIcon className="size-3" />
             </MenuTrigger>
             <MenuPopup align="end">
@@ -195,7 +194,7 @@ export function PipelinesSettings() {
                   })
                 }
               >
-                Blank pipeline
+                <T>Blank pipeline</T>
               </MenuItem>
               {PIPELINE_STARTERS.map((starter) => (
                 <MenuItem
@@ -220,7 +219,7 @@ export function PipelinesSettings() {
         }
       >
         {scope.kind === "unavailable" ? (
-          <SettingsSection title="Unavailable selection">
+          <SettingsSection title={gt("Unavailable selection")}>
             <SettingsRow title={scope.message} />
           </SettingsSection>
         ) : scopedEnvironments.length === 0 ? (
@@ -229,8 +228,12 @@ export function PipelinesSettings() {
               <EmptyMedia variant="icon">
                 <WorkflowIcon />
               </EmptyMedia>
-              <EmptyTitle>No environments available</EmptyTitle>
-              <EmptyDescription>Connect an environment to manage pipelines.</EmptyDescription>
+              <EmptyTitle>
+                <T>No environments available</T>
+              </EmptyTitle>
+              <EmptyDescription>
+                <T>Connect an environment to manage pipelines.</T>
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -270,6 +273,7 @@ function PipelinesEnvironmentList({
   readonly environments: ReadonlyArray<EnvironmentPresentation>;
   readonly onEdit: (environmentId: EnvironmentId, pipeline: PipelineDefinition) => void;
 }) {
+  const gt = useGT();
   // Only environments that answer pipelines.* are subscribed; the rest get a note instead.
   const subscribedIds = environments.flatMap((entry) =>
     supportsPipelines(entry) ? [entry.environmentId] : [],
@@ -297,26 +301,34 @@ function PipelinesEnvironmentList({
           >
             {entry.connection.phase !== "connected" || entry.serverConfig === null ? (
               <SettingsRow
-                title="Environment disconnected"
-                description={`Reconnect ${entry.label} to view its pipelines (${connectionStatusTitle(entry.connection)}).`}
+                title={gt("Environment disconnected")}
+                description={gt("Reconnect {environment} to view its pipelines ({status}).", {
+                  environment: entry.label,
+                  status: connectionStatusTitle(entry.connection),
+                })}
               />
             ) : !supportsPipelines(entry) ? (
               <SettingsRow
-                title="Update this server to use pipelines"
-                description={`The T3 Code server on ${entry.label} is too old to run pipelines. Update it, then reload.`}
+                title={gt("Update this server to use pipelines")}
+                description={gt(
+                  "The T3 Code server on {environment} is too old to run pipelines. Update it, then reload.",
+                  { environment: entry.label },
+                )}
                 role="status"
               />
             ) : query?._tag === "Failure" ? (
               <SettingsRow
-                title="Could not load pipelines"
+                title={gt("Could not load pipelines")}
                 description={formatEnvironmentQueryError(query.cause)}
               />
             ) : !data ? (
-              <SettingsRow title="Loading pipelines…" role="status" />
+              <SettingsRow title={gt("Loading pipelines…")} role="status" />
             ) : data.pipelines.length === 0 ? (
               <SettingsRow
-                title="No pipelines"
-                description="Chain agent steps, each with its own model and prompt, and start the whole run from a new thread."
+                title={gt("No pipelines")}
+                description={gt(
+                  "Chain agent steps, each with its own model and prompt, and start the whole run from a new thread.",
+                )}
               />
             ) : (
               data.pipelines.map((pipeline) => (
@@ -344,6 +356,7 @@ function PipelineRow({
   readonly pipeline: PipelineDefinition;
   readonly onEdit: () => void;
 }) {
+  const gt = useGT();
   const canEdit = useAtomValue(serverEnvironment.upsertPipeline.permissionAtom(environmentId));
   const canDelete = useAtomValue(serverEnvironment.deletePipeline.permissionAtom(environmentId));
   const providers =
@@ -363,7 +376,7 @@ function PipelineRow({
 
   const confirmDelete = async () => {
     if (busy || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
-    const message = `Delete "${pipeline.name}"?\nRuns already started keep their own copy of the steps.`;
+    const message = `${gt('Delete "{name}"?', { name: pipeline.name })}\n${gt("Runs already started keep their own copy of the steps.")}`;
     const confirmed =
       (await requestConfirmDialog(message, { variant: "destructive" })) ?? window.confirm(message);
     if (!confirmed) return;
@@ -371,7 +384,7 @@ function PipelineRow({
     const result = await remove({ environmentId, input: { id: pipeline.id } });
     setBusy(false);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      reportFailure("Could not delete pipeline", squashAtomCommandFailure(result));
+      reportFailure(gt("Could not delete pipeline"), squashAtomCommandFailure(result));
     }
   };
 
@@ -381,7 +394,9 @@ function PipelineRow({
       description={<span className="line-clamp-2">{summary}</span>}
       status={
         <Badge variant="outline">
-          {pipeline.steps.length} {pipeline.steps.length === 1 ? "step" : "steps"}
+          {gt("{count, plural, one {{count} step} other {{count} steps}}", {
+            count: pipeline.steps.length,
+          })}
         </Badge>
       }
       control={
@@ -390,7 +405,7 @@ function PipelineRow({
             size="icon-sm"
             variant="ghost"
             disabled={busy || !canEdit}
-            aria-label={`Edit ${pipeline.name}`}
+            aria-label={gt("Edit {name}", { name: pipeline.name })}
             onClick={onEdit}
           >
             <PencilIcon className="size-4" />
@@ -399,7 +414,7 @@ function PipelineRow({
             size="icon-sm"
             variant="ghost"
             disabled={busy || !canDelete}
-            aria-label={`Delete ${pipeline.name}`}
+            aria-label={gt("Delete {name}", { name: pipeline.name })}
             onClick={() => void confirmDelete()}
           >
             <Trash2Icon className="size-4" />
@@ -425,6 +440,8 @@ function PipelineEditorDialog({
   readonly onEnvironmentChange: (environmentId: EnvironmentId) => void;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const [saving, setSaving] = useState(false);
   const environment = useEnvironment(environmentId);
   const connected = environment !== null && supportsPipelines(environment);
@@ -461,7 +478,7 @@ function PipelineEditorDialog({
     setDraft(withDefaultModel(draft, defaults.modelSelection));
   }
   const submissionPending = useRef(false);
-  const issues = pipelineDraftIssues(draft, availableInstanceIds);
+  const issues = pipelineDraftIssues(draft, availableInstanceIds, m);
   const canSubmit = issues.valid && connected && canOperate && !saving;
 
   const updateStep = (key: string, patch: Partial<PipelineStepDraft>) =>
@@ -473,7 +490,7 @@ function PipelineEditorDialog({
   const requestClose = async () => {
     if (saving) return;
     if (hasPipelineDraftChanges(baseline, draft)) {
-      const message = "Discard your changes to this pipeline?";
+      const message = gt("Discard your changes to this pipeline?");
       const confirmed =
         (await requestConfirmDialog(message, { variant: "destructive" })) ??
         window.confirm(message);
@@ -499,7 +516,7 @@ function PipelineEditorDialog({
     if (result._tag === "Failure") {
       submissionPending.current = false;
       if (!isAtomCommandInterrupted(result)) {
-        reportFailure("Could not save pipeline", squashAtomCommandFailure(result));
+        reportFailure(gt("Could not save pipeline"), squashAtomCommandFailure(result));
       }
       return;
     }
@@ -515,9 +532,11 @@ function PipelineEditorDialog({
     >
       <DialogPopup className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{pipeline ? "Edit pipeline" : "New pipeline"}</DialogTitle>
+          <DialogTitle>{pipeline ? gt("Edit pipeline") : gt("New pipeline")}</DialogTitle>
           <DialogDescription>
-            Run steps one after another, each in its own thread with its own model and prompt.
+            <T>
+              Run steps one after another, each in its own thread with its own model and prompt.
+            </T>
           </DialogDescription>
         </DialogHeader>
 
@@ -526,11 +545,13 @@ function PipelineEditorDialog({
           <fieldset disabled={saving} className="min-w-0 space-y-5">
             {!connected ? (
               <p className="text-sm text-destructive">
-                Reconnect this environment, on a server that supports pipelines, before saving.
+                <T>
+                  Reconnect this environment, on a server that supports pipelines, before saving.
+                </T>
               </p>
             ) : null}
             {capableEnvironments.length > 1 ? (
-              <Field label="Runs on" htmlFor="pipeline-environment">
+              <Field label={gt("Runs on")} htmlFor="pipeline-environment">
                 <Select
                   value={environmentId}
                   disabled={pipeline !== null || saving}
@@ -540,7 +561,7 @@ function PipelineEditorDialog({
                   }}
                 >
                   <SelectTrigger id="pipeline-environment" size="sm">
-                    <SelectValue>{environment?.label ?? "Unavailable environment"}</SelectValue>
+                    <SelectValue>{environment?.label ?? gt("Unavailable environment")}</SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
                     {capableEnvironments.map((entry) => (
@@ -556,10 +577,10 @@ function PipelineEditorDialog({
                 </Select>
               </Field>
             ) : null}
-            <Field label="Name" htmlFor="pipeline-name">
+            <Field label={gt("Name", { $context: "pipeline name" })} htmlFor="pipeline-name">
               <Input
                 id="pipeline-name"
-                placeholder="e.g. Plan, implement, review"
+                placeholder={gt("e.g. Plan, implement, review")}
                 maxLength={PIPELINE_NAME_MAX_LENGTH}
                 aria-invalid={issues.name !== null && draft.name.length > 0 ? true : undefined}
                 value={draft.name}
@@ -573,10 +594,12 @@ function PipelineEditorDialog({
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <Label>
-                  Steps{" "}
-                  <span className="font-normal text-muted-foreground">
-                    ({draft.steps.length}/{PIPELINE_MAX_STEPS})
-                  </span>
+                  <T>
+                    Steps{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (<Var>{draft.steps.length}</Var>/<Var>{PIPELINE_MAX_STEPS}</Var>)
+                    </span>
+                  </T>
                 </Label>
                 <Button
                   size="sm"
@@ -590,7 +613,7 @@ function PipelineEditorDialog({
                   }
                 >
                   <PlusIcon />
-                  Add step
+                  <T>Add step</T>
                 </Button>
               </div>
               {issues.stepCount ? (
@@ -632,10 +655,10 @@ function PipelineEditorDialog({
 
         <DialogFooter>
           <Button variant="outline" size="sm" disabled={saving} onClick={() => void requestClose()}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button size="sm" disabled={!canSubmit} onClick={() => void submit()}>
-            {pipeline ? "Save pipeline" : "Create pipeline"}
+            {pipeline ? gt("Save pipeline") : gt("Create pipeline")}
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -679,6 +702,7 @@ function PipelineStepEditor({
   readonly onMove: (delta: -1 | 1) => void;
   readonly onRemove: () => void;
 }) {
+  const gt = useGT();
   const selection = step.modelSelection;
   const activeEntry = selection
     ? (instanceEntries.find((entry) => entry.instanceId === selection.instanceId) ?? null)
@@ -698,13 +722,17 @@ function PipelineStepEditor({
   return (
     <div className="space-y-4 rounded-lg border border-border p-3" data-step-index={index}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Step {index + 1}</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          <T>
+            Step <Var>{index + 1}</Var>
+          </T>
+        </span>
         <div className="flex items-center gap-0.5">
           <Button
             size="icon-sm"
             variant="ghost"
             disabled={disabled || index === 0}
-            aria-label={`Move step ${index + 1} up`}
+            aria-label={gt("Move step {number} up", { number: index + 1 })}
             onClick={() => onMove(-1)}
           >
             <ArrowUpIcon />
@@ -713,7 +741,7 @@ function PipelineStepEditor({
             size="icon-sm"
             variant="ghost"
             disabled={disabled || index === count - 1}
-            aria-label={`Move step ${index + 1} down`}
+            aria-label={gt("Move step {number} down", { number: index + 1 })}
             onClick={() => onMove(1)}
           >
             <ArrowDownIcon />
@@ -722,7 +750,7 @@ function PipelineStepEditor({
             size="icon-sm"
             variant="ghost"
             disabled={disabled || count <= 1}
-            aria-label={`Remove step ${index + 1}`}
+            aria-label={gt("Remove step {number}", { number: index + 1 })}
             onClick={onRemove}
           >
             <Trash2Icon />
@@ -730,17 +758,17 @@ function PipelineStepEditor({
         </div>
       </div>
 
-      <Field label="Name" htmlFor={`${idPrefix}-name`}>
+      <Field label={gt("Name", { $context: "pipeline step name" })} htmlFor={`${idPrefix}-name`}>
         <Input
           id={`${idPrefix}-name`}
-          placeholder="e.g. Plan"
+          placeholder={gt("e.g. Plan")}
           maxLength={PIPELINE_NAME_MAX_LENGTH}
           value={step.name}
           onChange={(event) => onChange({ name: event.target.value })}
         />
       </Field>
 
-      <Field label="Model">
+      <Field label={gt("Model")}>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <ProviderModelPicker
             environmentId={environmentId}
@@ -772,13 +800,13 @@ function PipelineStepEditor({
             />
           ) : selection ? (
             <span className="text-xs text-muted-foreground">
-              This provider is unavailable here. Pick another model.
+              <T>This provider is unavailable here. Pick another model.</T>
             </span>
           ) : null}
         </div>
       </Field>
 
-      <Field label="Permissions" htmlFor={`${idPrefix}-runtime`}>
+      <Field label={gt("Permissions")} htmlFor={`${idPrefix}-runtime`}>
         <Select
           value={step.runtimeMode}
           onValueChange={(value) => {
@@ -818,22 +846,33 @@ function PipelineStepEditor({
         onChange={(skills) => onChange({ skills })}
       />
 
-      <Field label="Prompt" htmlFor={`${idPrefix}-template`}>
+      <Field label={gt("Prompt")} htmlFor={`${idPrefix}-template`}>
         <Textarea
           id={`${idPrefix}-template`}
           className="max-h-64 overflow-y-auto"
-          placeholder="What should this step do?"
+          placeholder={gt("What should this step do?")}
           value={step.promptTemplate}
           onChange={(event) => onChange({ promptTemplate: event.target.value })}
         />
-        <p className="text-xs text-muted-foreground">{TEMPLATE_VARIABLES_HINT}</p>
+        <p className="text-xs text-muted-foreground">
+          {gt(
+            "Variables: {input} is the text the run starts with, {previous} the last message of the step before, {steps} an earlier step by id or name.",
+            {
+              input: "{{input}}",
+              previous: "{{previous.output}}",
+              steps: "{{steps.<id>.output}}",
+            },
+          )}
+        </p>
       </Field>
 
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 space-y-1">
-          <Label htmlFor={`${idPrefix}-pause`}>Pause before this step</Label>
+          <Label htmlFor={`${idPrefix}-pause`}>
+            <T>Pause before this step</T>
+          </Label>
           <p className="text-sm text-muted-foreground">
-            The run waits for you to continue before this step starts.
+            <T>The run waits for you to continue before this step starts.</T>
           </p>
         </div>
         <Switch
@@ -846,11 +885,15 @@ function PipelineStepEditor({
 
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 space-y-1">
-          <Label htmlFor={`${idPrefix}-compact`}>Compact after handoff</Label>
+          <Label htmlFor={`${idPrefix}-compact`}>
+            <T>Compact after handoff</T>
+          </Label>
           <p className="text-sm text-muted-foreground">
             {index === count - 1
-              ? "Compacts this step's thread when the run completes."
-              : "Compacts this step's thread once the next step starts, so returning to it costs less."}
+              ? gt("Compacts this step's thread when the run completes.")
+              : gt(
+                  "Compacts this step's thread once the next step starts, so returning to it costs less.",
+                )}
           </p>
         </div>
         <Switch
@@ -886,6 +929,7 @@ function StepSkillsField({
   readonly disabled: boolean;
   readonly onChange: (skills: ReadonlyArray<string>) => void;
 }) {
+  const gt = useGT();
   const [text, setText] = useState("");
   const suggestions = dedupeProviderSkillsByName(available.filter((skill) => skill.enabled))
     .map((skill) => skill.name)
@@ -899,7 +943,10 @@ function StepSkillsField({
   };
 
   return (
-    <Field label="Skills" hint={`optional, up to ${PIPELINE_STEP_SKILLS_MAX}`}>
+    <Field
+      label={gt("Skills")}
+      hint={gt("optional, up to {max}", { max: PIPELINE_STEP_SKILLS_MAX })}
+    >
       {skills.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           {skills.map((skill) => (
@@ -909,7 +956,7 @@ function StepSkillsField({
                 type="button"
                 className="rounded-sm text-muted-foreground hover:text-foreground"
                 disabled={disabled}
-                aria-label={`Remove skill ${skill}`}
+                aria-label={gt("Remove skill {skill}", { skill })}
                 onClick={() => onChange(skills.filter((entry) => entry !== skill))}
               >
                 <XIcon className="size-3" />
@@ -923,8 +970,10 @@ function StepSkillsField({
           nativeInput
           size="sm"
           list={`${idPrefix}-skills`}
-          aria-label="Add skill"
-          placeholder={suggestions.length > 0 ? "Pick or type a skill name" : "Type a skill name"}
+          aria-label={gt("Add skill")}
+          placeholder={
+            suggestions.length > 0 ? gt("Pick or type a skill name") : gt("Type a skill name")
+          }
           disabled={disabled || full}
           aria-invalid={text.trim() && normalized === null ? true : undefined}
           value={text}
@@ -947,7 +996,7 @@ function StepSkillsField({
           disabled={disabled || full || normalized === null}
           onClick={add}
         >
-          Add
+          {gt("Add", { $context: "verb, adds a skill" })}
         </Button>
       </div>
     </Field>

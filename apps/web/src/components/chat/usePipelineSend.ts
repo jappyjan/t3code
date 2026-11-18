@@ -11,6 +11,8 @@ import { nextPipelineStartAttempt } from "@t3tools/client-runtime/pipeline-start
 import type { OrchestrationV2ThreadLaunchWorkspaceStrategy } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useNavigate } from "@tanstack/react-router";
+import { msg } from "gt-react";
+import { m } from "~/i18n/messages";
 import { randomUUID } from "~/lib/utils";
 import {
   type ComposerThreadDraftState,
@@ -120,12 +122,13 @@ export function usePipelineSend(input: PipelineSendInput) {
     resetLocalDispatch();
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      const message = error instanceof Error ? error.message : "Failed to start the pipeline.";
+      const message =
+        error instanceof Error ? error.message : m(msg("Failed to start the pipeline."));
       setThreadError(threadId, message);
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not start pipeline",
+          title: m(msg("Could not start pipeline")),
           description: message,
         }),
       );
@@ -149,9 +152,9 @@ export function usePipelineSend(input: PipelineSendInput) {
       toastManager.add(
         stackedThreadToast({
           type: "success",
-          title: "Pipeline started",
+          title: m(msg("Pipeline started")),
           actionProps: {
-            children: "Open",
+            children: m(msg("Open", { $context: "verb, opens the pipeline run" })),
             onClick: () => {
               void navigate({
                 to: "/$environmentId/$threadId",

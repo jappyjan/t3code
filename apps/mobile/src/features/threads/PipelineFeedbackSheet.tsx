@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   buildCoordinatorFeedbackMessage,
@@ -27,6 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
 import * as Dialog from "../../components/ui/Dialog";
 import { ScreenContent } from "../../components/ui/ScreenContent";
+import type { MessageResolver } from "../../i18n/messages";
 import { SheetHeader } from "../../components/ui/SheetHeader";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { cn } from "../../lib/cn";
@@ -52,13 +54,24 @@ export type PipelineFeedbackRouteParams = {
 
 type Route = "coordinator" | number;
 
-function lengthValidationMessage(text: string): string | null {
+function lengthValidationMessage(text: string, resolve: MessageResolver): string | null {
   const excess = text.length - PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
   if (excess <= 0) return null;
-  return `Feedback is ${excess.toLocaleString("en-US")} ${excess === 1 ? "character" : "characters"} over the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS.toLocaleString("en-US")}-character limit. Shorten it before sending.`;
+  return resolve(
+    msg(
+      "{count, plural, one {Feedback is {excess} character over the {limit}-character limit. Shorten it before sending.} other {Feedback is {excess} characters over the {limit}-character limit. Shorten it before sending.}}",
+    ),
+    {
+      count: excess,
+      excess: excess.toLocaleString("en-US"),
+      limit: PROVIDER_SEND_TURN_MAX_INPUT_CHARS.toLocaleString("en-US"),
+    },
+  );
 }
 
 export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedbackRouteParams>) {
+  const gt = useGT();
+  const m = useMessages();
   const params = route.params;
   const environmentId = EnvironmentId.make(params.environmentId);
   const navigation = useNavigation();
@@ -86,7 +99,7 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
   const openThread = useOpenLinkedThread();
 
   const target: Route = fixedStep ?? selected;
-  const options = run === null ? [] : pipelineFeedbackRoutes(run);
+  const options = run === null ? [] : pipelineFeedbackRoutes(run, m);
   const trimmed = note.trim();
   const coordinatorText = (() => {
     if (run === null || target !== "coordinator") return null;
@@ -103,7 +116,7 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
       note: trimmed,
     });
   })();
-  const lengthMessage = lengthValidationMessage(coordinatorText ?? trimmed);
+  const lengthMessage = lengthValidationMessage(coordinatorText ?? trimmed, m);
   const canSend =
     run !== null &&
     trimmed.length > 0 &&
@@ -115,7 +128,7 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
     if (run === null) return;
     if (coordinatorText !== null) {
       if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
-        Dialog.alert("Could not send feedback", "You cannot message this pipeline.");
+        Dialog.alert(gt("Could not send feedback"), gt("You cannot message this pipeline."));
         return;
       }
       const metadata = makeQueuedMessageMetadata();
@@ -151,14 +164,16 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
       navigation.goBack();
       const revisedThreadId = run.steps[target]?.childThreadId ?? null;
       Dialog.alert(
-        "Feedback sent",
-        `${stepName(run, target)} is revising. Later steps redo their work after it.`,
+        gt("Feedback sent"),
+        gt("{step} is revising. Later steps redo their work after it.", {
+          step: stepName(run, target, m),
+        }),
         revisedThreadId === null
           ? undefined
           : [
-              { text: "Done", style: "cancel" },
+              { text: gt("Done"), style: "cancel" },
               {
-                text: "Open step",
+                text: gt("Open step"),
                 onPress: () =>
                   openThread({
                     environmentId: params.environmentId,
@@ -168,7 +183,7 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
             ],
       );
     } else if (!isAtomCommandInterrupted(result)) {
-      Dialog.alert("Could not send feedback", String(squashAtomCommandFailure(result)));
+      Dialog.alert(gt("Could not send feedback"), String(squashAtomCommandFailure(result)));
     }
   };
 
@@ -179,7 +194,7 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
       await deliver();
     } catch (error) {
       Dialog.alert(
-        "Could not send feedback",
+        gt("Could not send feedback"),
         error instanceof Error ? error.message : String(error),
       );
     }
@@ -187,7 +202,9 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
   };
 
   const targetName =
-    typeof target === "number" && run !== null ? `${target + 1}. ${stepName(run, target)}` : null;
+    typeof target === "number" && run !== null
+      ? `${target + 1}. ${stepName(run, target, m)}`
+      : null;
 
   return (
     <View
@@ -202,11 +219,11 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
       ) : null}
       <SheetHeader
         presentation={Platform.OS === "android" ? "inline" : "native"}
-        title="Send feedback"
+        title={gt("Send feedback")}
         onCancel={() => navigation.goBack()}
-        accessibilityLabel="Cancel feedback"
+        accessibilityLabel={gt("Cancel feedback")}
         confirm={{
-          label: "Send",
+          label: gt("Send", { $context: "button, sends feedback" }),
           onPress: () => void send(),
           disabled: !canSend,
           loading: sending,
@@ -225,7 +242,9 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
         >
           {params.quote ? (
             <View className="gap-1 border-l-2 border-border pl-3">
-              <Text className="text-xs font-t3-medium text-foreground-muted">Quoted</Text>
+              <Text className="text-xs font-t3-medium text-foreground-muted">
+                <T>Quoted</T>
+              </Text>
               <Text className="text-sm text-foreground-secondary" numberOfLines={8}>
                 {params.quote}
               </Text>
@@ -233,21 +252,27 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
           ) : null}
           {run === null ? (
             <Text className="text-sm text-foreground-muted">
-              {runQuery.error ?? "Loading pipeline…"}
+              {runQuery.error ?? gt("Loading pipeline…")}
             </Text>
           ) : null}
           {targetName !== null && !chooserVisible ? (
-            <Text className="text-sm text-foreground-secondary">To step {targetName}</Text>
+            <Text className="text-sm text-foreground-secondary">
+              <T>
+                To step <Var>{targetName}</Var>
+              </T>
+            </Text>
           ) : null}
           <View className="gap-2">
-            <Text className="text-sm font-t3-medium text-foreground">Your feedback</Text>
+            <Text className="text-sm font-t3-medium text-foreground">
+              <T>Your feedback</T>
+            </Text>
             <TextInput
               multiline
               autoFocus
-              accessibilityLabel="Feedback"
+              accessibilityLabel={gt("Feedback", { $context: "noun, feedback text field" })}
               value={note}
               onChangeText={setNote}
-              placeholder="What should change?"
+              placeholder={gt("What should change?")}
               textAlignVertical="top"
               className="min-h-24 rounded-xl bg-subtle px-4 py-3 text-base"
             />
@@ -257,10 +282,12 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
           </View>
           {chooserVisible ? (
             <View className="gap-1">
-              <Text className="pb-1 text-sm font-t3-medium text-foreground">Send to</Text>
+              <Text className="pb-1 text-sm font-t3-medium text-foreground">
+                <T>Send to</T>
+              </Text>
               <RouteRow
-                label="Coordinator decides"
-                hint="The coordinator picks which step to revise."
+                label={gt("Coordinator decides")}
+                hint={gt("The coordinator picks which step to revise.")}
                 selected={target === "coordinator"}
                 onPress={() => setSelected("coordinator")}
               />
@@ -278,8 +305,10 @@ export function PipelineFeedbackSheet({ route }: StaticScreenProps<PipelineFeedb
           ) : null}
           {target !== "coordinator" ? (
             <Text className="text-xs text-foreground-muted">
-              Later steps redo their work after this feedback. A later step that is running is
-              stopped.
+              <T>
+                Later steps redo their work after this feedback. A later step that is running is
+                stopped.
+              </T>
             </Text>
           ) : null}
         </ScrollView>

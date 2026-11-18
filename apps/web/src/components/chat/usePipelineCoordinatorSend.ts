@@ -4,8 +4,10 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
 import { newMessageId } from "~/lib/utils";
+import { m } from "../../i18n/messages";
 import { useQuietThreadShell } from "../../state/entities";
 import { threadEnvironment } from "../../state/threads";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
@@ -13,7 +15,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 
 function reportFailure(description: string) {
   toastManager.add(
-    stackedThreadToast({ type: "error", title: "Could not send feedback", description }),
+    stackedThreadToast({ type: "error", title: m(msg("Could not send feedback")), description }),
   );
 }
 
@@ -23,7 +25,7 @@ export function usePipelineCoordinatorSend(environmentId: EnvironmentId, parentT
   const startTurn = useOrchestrationCommand(threadEnvironment.startTurn, { reportFailure: false });
   return async (text: string): Promise<boolean> => {
     if (coordinator === null) {
-      reportFailure("The coordinator chat is not available.");
+      reportFailure(m(msg("The coordinator chat is not available.")));
       return false;
     }
     const result = await startTurn({

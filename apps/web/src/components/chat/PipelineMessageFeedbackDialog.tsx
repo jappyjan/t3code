@@ -8,6 +8,7 @@ import {
 import type { EnvironmentId, PipelineRun, ScopedThreadRef } from "@t3tools/contracts";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { useState } from "react";
 
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -45,6 +46,8 @@ export function PipelineMessageFeedbackDialog(props: {
   readonly quote: string;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { environmentId, run, stepThreadRef } = props;
   const navigate = useNavigate();
   const { canRevise, revise } = usePipelineRevise(environmentId);
@@ -53,7 +56,7 @@ export function PipelineMessageFeedbackDialog(props: {
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const sourceStep = run.steps.find((step) => step.stepId === props.sourceStepId);
-  const routes = pipelineFeedbackRoutes(run);
+  const routes = pipelineFeedbackRoutes(run, m);
   const targetStepIndex = route === COORDINATOR_ROUTE ? null : Number(route);
   const coordinatorMessage = buildCoordinatorFeedbackMessage({
     quote: props.quote,
@@ -88,13 +91,13 @@ export function PipelineMessageFeedbackDialog(props: {
         toastManager.add(
           stackedThreadToast({
             type: "success",
-            title: `Feedback sent to ${stepName(run, targetStepIndex)}`,
-            description: "It fixes its work, then the later steps redo theirs.",
+            title: gt("Feedback sent to {step}", { step: stepName(run, targetStepIndex, m) }),
+            description: gt("It fixes its work, then the later steps redo theirs."),
             ...(revisedThreadId === null
               ? {}
               : {
                   actionProps: {
-                    children: "Open",
+                    children: gt("Open", { $context: "verb, opens the step's thread" }),
                     onClick: () => {
                       void navigate({
                         to: "/$environmentId/$threadId",
@@ -129,9 +132,11 @@ export function PipelineMessageFeedbackDialog(props: {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Send feedback</DialogTitle>
+            <DialogTitle>
+              <T>Send feedback</T>
+            </DialogTitle>
             <DialogDescription>
-              Let the coordinator route it, or send it to one step.
+              <T>Let the coordinator route it, or send it to one step.</T>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
@@ -141,8 +146,8 @@ export function PipelineMessageFeedbackDialog(props: {
               </blockquote>
               <Textarea
                 autoFocus
-                aria-label="Note"
-                placeholder="What should change?"
+                aria-label={gt("Note", { $context: "noun, feedback note" })}
+                placeholder={gt("What should change?")}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 rows={4}
@@ -153,13 +158,13 @@ export function PipelineMessageFeedbackDialog(props: {
                 </p>
               )}
               <RadioGroup
-                aria-label="Send to"
+                aria-label={gt("Send to")}
                 value={route}
                 onValueChange={(value) => setRoute(String(value))}
               >
                 <label className="flex items-center gap-2 text-sm">
                   <Radio value={COORDINATOR_ROUTE} />
-                  Coordinator decides
+                  <T>Coordinator decides</T>
                 </label>
                 {routes.map((option) => {
                   const disabled = option.disabled || !canRevise;
@@ -180,22 +185,26 @@ export function PipelineMessageFeedbackDialog(props: {
               </RadioGroup>
               {targetStepIndex === null ? null : (
                 <p className="text-xs text-muted-foreground">
-                  {stepName(run, targetStepIndex)} fixes its work in its own thread, then every
-                  later step redoes its work.
-                  {laterStepRunning ? " The step that is running now is stopped first." : ""}
+                  <T>
+                    <Var>{stepName(run, targetStepIndex, m)}</Var> fixes its work in its own thread,
+                    then every later step redoes its work.
+                  </T>
+                  {laterStepRunning
+                    ? ` ${gt("The step that is running now is stopped first.")}`
+                    : ""}
                 </p>
               )}
             </div>
           </DialogPanel>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={props.onClose}>
-              Cancel
+              <T>Cancel</T>
             </Button>
             <Button
               type="submit"
               disabled={sending || note.trim() === "" || lengthMessage !== null}
             >
-              Send
+              {gt("Send", { $context: "verb, submits feedback" })}
             </Button>
           </DialogFooter>
         </form>

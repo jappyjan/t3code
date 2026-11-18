@@ -264,10 +264,9 @@ export function summarizeT3ToolCalls(
       const count = countEntities(entityIds("pipelineId"));
       label = done
         ? resolve(
-            msg(
-              "{count, plural, one {Read {count} pipeline} other {Read {count} pipelines}}",
-              { count },
-            ),
+            msg("{count, plural, one {Read {count} pipeline} other {Read {count} pipelines}}", {
+              count,
+            }),
           )
         : resolve(
             msg(
@@ -281,10 +280,9 @@ export function summarizeT3ToolCalls(
       const count = countEntities(entityIds("pipelineId"));
       label = done
         ? resolve(
-            msg(
-              "{count, plural, one {Saved {count} pipeline} other {Saved {count} pipelines}}",
-              { count },
-            ),
+            msg("{count, plural, one {Saved {count} pipeline} other {Saved {count} pipelines}}", {
+              count,
+            }),
           )
         : resolve(
             msg(

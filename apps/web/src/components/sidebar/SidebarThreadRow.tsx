@@ -620,6 +620,7 @@ function SidebarPipelineProgress(props: {
   onOpenStep: (threadId: ThreadId) => void;
   className?: string;
 }) {
+  const gt = useGT();
   const handleToggleClick = (event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -633,7 +634,7 @@ function SidebarPipelineProgress(props: {
           data-sidebar-action-for={props.threadKey}
           data-sidebar-toggle-for={props.threadKey}
           aria-expanded={props.expanded}
-          aria-label={props.expanded ? "Hide pipeline steps" : "Show pipeline steps"}
+          aria-label={props.expanded ? gt("Hide pipeline steps") : gt("Show pipeline steps")}
           onClick={handleToggleClick}
           className="-ms-0.5 inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
@@ -1089,7 +1090,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         }
       : status === "stuck"
         ? {
-            label: "Possibly stuck",
+            label: gt("Possibly stuck", { $context: "thread status" }),
             icon: "waiting" as const,
             className: "text-warning-foreground",
           }
@@ -1162,7 +1163,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         }
       />
       <TooltipPopup side="top">
-        {props.attentionLabel === undefined ? "Open thread" : `Open ${props.attentionLabel}`}
+        {props.attentionLabel === undefined
+          ? gt("Open thread")
+          : gt("Open {step}", { step: props.attentionLabel })}
       </TooltipPopup>
     </Tooltip>
   );
@@ -1445,7 +1448,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         ) : (
           <>
             <span className="min-w-0 truncate">{earlierAttemptLabel}</span>
-            <span className="shrink-0 whitespace-pre"> · attempt {props.earlierAttempt}</span>
+            <span className="shrink-0 whitespace-pre">
+              {` · ${gt("attempt {number}", { $context: "pipeline step retry", number: props.earlierAttempt })}`}
+            </span>
           </>
         )
       ) : (
