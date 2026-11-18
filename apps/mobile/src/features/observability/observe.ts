@@ -44,10 +44,12 @@ if (!crashReportingAvailable) {
   void setCrashReportsEnabled(false);
 } else {
   // Observe keeps its last configuration across launches; configuring it off while the setting
-  // loads would drop the last session's native crash. Imported lazily so the persistence graph
-  // never runs ahead of the imports `index.ts` orders first.
+  // loads would drop the last session's native crash. Imported after a microtask so the
+  // persistence graph never runs ahead of the imports `index.ts` orders first: in an embedded
+  // bundle, import() requires the module synchronously.
   const changedSinceLoad = () => latestConfiguration !== 0;
-  void import("../../persistence/imperative")
+  void Promise.resolve()
+    .then(() => import("../../persistence/imperative"))
     .then(({ loadPreferences }) => loadPreferences())
     .then(
       (preferences) =>
