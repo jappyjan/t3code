@@ -7,6 +7,8 @@ import {
 } from "./state/pipelineNesting.ts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput } from "@t3tools/shared/toolOutput";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 export interface PipelineRunActions {
   readonly continue: boolean;
@@ -64,8 +66,12 @@ export function availablePipelineActions(run: PipelineRun): PipelineRunActions {
   };
 }
 
-export function stepName(run: Pick<PipelineRun, "definition">, index: number): string {
-  return run.definition.steps[index]?.name ?? `Step ${index + 1}`;
+export function stepName(
+  run: Pick<PipelineRun, "definition">,
+  index: number,
+  resolve: MFunctionType = mFallback,
+): string {
+  return run.definition.steps[index]?.name ?? resolve(msg("Step {number}", { number: index + 1 }));
 }
 
 /** Whether the run is paused because the step at `stepIndex` ended its turn without a handoff. */
@@ -87,20 +93,27 @@ export function pipelineAwaitingHandoffThreadId(run: PipelineRun | null) {
 }
 
 /** A step row's status while its thread waits after ending its turn without a handoff. */
-export function pipelineStepWaitLabel(wait: PipelineStepWait): string {
+export function pipelineStepWaitLabel(
+  wait: PipelineStepWait,
+  resolve: MFunctionType = mFallback,
+): string {
   switch (wait) {
     case "pull_request":
-      return "Waiting on pull request";
+      return resolve(msg("Waiting on pull request"));
     case "background_work":
-      return "Waiting on background work";
+      return resolve(msg("Waiting on background work"));
     case "possibly_stuck":
-      return "Possibly stuck";
+      return resolve(msg("Possibly stuck"));
   }
 }
 
-/** How long a step may wait on background work before the label calls it stuck. */
-function stuckAfterText(hours: number | undefined): string {
-  return hours === undefined ? "a long time" : `over ${hours} h`;
+/** `hours`: how long a step may wait on background work before the label calls it stuck. */
+function maybeStuckText(name: string, hours: number | undefined, resolve: MFunctionType): string {
+  return hours === undefined
+    ? resolve(msg("{name} may be stuck: background work has run for a long time", { name }))
+    : resolve(
+        msg("{name} may be stuck: background work has run for over {hours} h", { name, hours }),
+      );
 }
 
 /**
@@ -113,42 +126,53 @@ export function pipelineRunStatusLabel(
   feedingActive = false,
   wait: PipelineStepWait | null = null,
   stuckAfterHours?: number,
+  resolve: MFunctionType = mFallback,
 ): string {
-  const name = stepName(run, run.currentStepIndex);
+  const name = stepName(run, run.currentStepIndex, resolve);
   switch (run.status) {
     case "running": {
-      const feeding = pipelineFeedingStep(run);
-      if (feeding !== null) return feedingActive ? `Finishing ${feeding.name}` : `Starting ${name}`;
-      return `Running step ${run.currentStepIndex + 1} of ${run.definition.steps.length} · ${name}`;
+      const feeding = pipelineFeedingStep(run, resolve);
+      if (feeding !== null) {
+        return feedingActive
+          ? resolve(msg("Finishing {name}", { name: feeding.name }))
+          : resolve(msg("Starting {name}", { name }));
+      }
+      return resolve(
+        msg("Running step {number} of {total} · {name}", {
+          number: run.currentStepIndex + 1,
+          total: run.definition.steps.length,
+          name,
+        }),
+      );
     }
     case "paused":
       switch (run.pauseReason) {
         case "awaiting_continue":
-          return `Paused before ${name}`;
+          return resolve(msg("Paused before {name}", { name }));
         case "awaiting_handoff":
           switch (wait) {
             case "pull_request":
-              return `${name} is waiting on a pull request`;
+              return resolve(msg("{name} is waiting on a pull request", { name }));
             case "background_work":
-              return `${name} is waiting on background work`;
+              return resolve(msg("{name} is waiting on background work", { name }));
             case "possibly_stuck":
-              return `${name} may be stuck: background work has run for ${stuckAfterText(stuckAfterHours)}`;
+              return maybeStuckText(name, stuckAfterHours, resolve);
             default:
-              return `${name} ended without handing off`;
+              return resolve(msg("{name} ended without handing off", { name }));
           }
         case "step_failed":
-          return `Step ${name} failed`;
+          return resolve(msg("Step {name} failed", { name }));
         case "step_stopped":
-          return `Step ${name} stopped`;
+          return resolve(msg("Step {name} stopped", { name }));
         default:
-          return "Paused";
+          return resolve(msg("Paused", { $context: "pipeline run status" }));
       }
     case "completed":
-      return "Completed";
+      return resolve(msg("Completed", { $context: "pipeline run status" }));
     case "cancelled":
-      return "Cancelled";
+      return resolve(msg("Cancelled", { $context: "pipeline run status" }));
     default:
-      return "Unknown";
+      return resolve(msg("Unknown", { $context: "pipeline run status" }));
   }
 }
 
@@ -156,54 +180,58 @@ export function pipelineRunStatusLabel(
 export function pipelineRunStateLabel(
   run: Pick<PipelineRun, "status" | "pauseReason">,
   wait: PipelineStepWait | null = null,
+  resolve: MFunctionType = mFallback,
 ): string {
   switch (run.status) {
     case "running":
-      return "Running";
+      return resolve(msg("Running", { $context: "pipeline run status" }));
     case "paused":
       switch (run.pauseReason) {
         case "awaiting_handoff":
           return wait === "pull_request"
-            ? "Waiting on pull request"
+            ? resolve(msg("Waiting on pull request"))
             : wait === "background_work"
-              ? "Background work"
+              ? resolve(msg("Background work", { $context: "pipeline run status" }))
               : wait === "possibly_stuck"
-                ? "Possibly stuck"
-                : "No handoff";
+                ? resolve(msg("Possibly stuck"))
+                : resolve(msg("No handoff", { $context: "pipeline run status" }));
         case "step_failed":
-          return "Failed";
+          return resolve(msg("Failed", { $context: "pipeline run status" }));
         case "step_stopped":
-          return "Stopped";
+          return resolve(msg("Stopped", { $context: "pipeline run status" }));
         default:
-          return "Paused";
+          return resolve(msg("Paused", { $context: "pipeline run status" }));
       }
     case "completed":
-      return "Completed";
+      return resolve(msg("Completed", { $context: "pipeline run status" }));
     case "cancelled":
-      return "Cancelled";
+      return resolve(msg("Cancelled", { $context: "pipeline run status" }));
     default:
-      return "Unknown";
+      return resolve(msg("Unknown", { $context: "pipeline run status" }));
   }
 }
 
-export function pipelineStepStatusLabel(step: Pick<PipelineRunStep, "status">): string {
+export function pipelineStepStatusLabel(
+  step: Pick<PipelineRunStep, "status">,
+  resolve: MFunctionType = mFallback,
+): string {
   switch (step.status) {
     case "pending":
-      return "Pending";
+      return resolve(msg("Pending", { $context: "pipeline step status" }));
     case "running":
-      return "Running";
+      return resolve(msg("Running", { $context: "pipeline step status" }));
     case "completed":
-      return "Completed";
+      return resolve(msg("Completed", { $context: "pipeline step status" }));
     case "failed":
-      return "Failed";
+      return resolve(msg("Failed", { $context: "pipeline step status" }));
     case "stopped":
-      return "Stopped";
+      return resolve(msg("Stopped", { $context: "pipeline step status" }));
     case "skipped":
-      return "Skipped";
+      return resolve(msg("Skipped", { $context: "pipeline step status" }));
     case "cancelled":
-      return "Cancelled";
+      return resolve(msg("Cancelled", { $context: "pipeline step status" }));
     default:
-      return "Unknown";
+      return resolve(msg("Unknown", { $context: "pipeline step status" }));
   }
 }
 
@@ -211,19 +239,34 @@ export function pipelineStepStatusLabel(step: Pick<PipelineRunStep, "status">): 
 export function pipelineStepPosition(
   run: Pick<PipelineRun, "definition" | "steps">,
   stepId: string,
+  resolve: MFunctionType = mFallback,
 ): { readonly number: number; readonly total: number; readonly name: string } | null {
   const index = run.steps.findIndex((step) => step.stepId === stepId);
   if (index < 0) return null;
-  return { number: index + 1, total: run.definition.steps.length, name: stepName(run, index) };
+  return {
+    number: index + 1,
+    total: run.definition.steps.length,
+    name: stepName(run, index, resolve),
+  };
 }
 
 /** Breadcrumb for a step's thread: "Pipeline: <name> · step n/N". */
 export function pipelineStepBreadcrumbTitle(
   run: Pick<PipelineRun, "definition" | "steps">,
   stepId: string,
+  resolve: MFunctionType = mFallback,
 ): string {
-  const position = pipelineStepPosition(run, stepId);
-  return `Pipeline: ${run.definition.name}${position ? ` · step ${position.number}/${position.total}` : ""}`;
+  const position = pipelineStepPosition(run, stepId, resolve);
+  const name = run.definition.name;
+  return position
+    ? resolve(
+        msg("Pipeline: {name} · step {number}/{total}", {
+          name,
+          number: position.number,
+          total: position.total,
+        }),
+      )
+    : resolve(msg("Pipeline: {name}", { name }));
 }
 
 export interface PipelineFeedingStep {
@@ -237,7 +280,10 @@ export interface PipelineFeedingStep {
  * current step is still `pending`. The step before it is the one the run is waiting on; the
  * caller decides from that child's live shell whether it is still active.
  */
-export function pipelineFeedingStep(run: PipelineRun): PipelineFeedingStep | null {
+export function pipelineFeedingStep(
+  run: PipelineRun,
+  resolve: MFunctionType = mFallback,
+): PipelineFeedingStep | null {
   if (run.status !== "running") return null;
   const current = run.steps[run.currentStepIndex];
   if (current === undefined || current.status !== "pending" || run.currentStepIndex === 0) {
@@ -247,7 +293,7 @@ export function pipelineFeedingStep(run: PipelineRun): PipelineFeedingStep | nul
   if (feeding === undefined || feeding.childThreadId === null) return null;
   return {
     index: feeding.index,
-    name: stepName(run, feeding.index),
+    name: stepName(run, feeding.index, resolve),
     childThreadId: feeding.childThreadId,
   };
 }
@@ -272,11 +318,14 @@ export interface PipelineFeedbackRoute {
  * The steps feedback can be sent to directly: every step `revise` allows, plus the working step
  * as a disabled entry that points the user at its own thread.
  */
-export function pipelineFeedbackRoutes(run: PipelineRun): ReadonlyArray<PipelineFeedbackRoute> {
+export function pipelineFeedbackRoutes(
+  run: PipelineRun,
+  resolve: MFunctionType = mFallback,
+): ReadonlyArray<PipelineFeedbackRoute> {
   const actions = availablePipelineActions(run);
   const routes: PipelineFeedbackRoute[] = [];
   for (const step of run.steps) {
-    const name = stepName(run, step.index);
+    const name = stepName(run, step.index, resolve);
     if (actions.revise(step.index)) {
       routes.push({ stepIndex: step.index, name, disabled: false, hint: null });
     } else if (pipelineStepIsWorking(run, step.index)) {
@@ -284,7 +333,7 @@ export function pipelineFeedbackRoutes(run: PipelineRun): ReadonlyArray<Pipeline
         stepIndex: step.index,
         name,
         disabled: true,
-        hint: "Message this step directly",
+        hint: resolve(msg("Message this step directly")),
       });
     }
   }
@@ -292,15 +341,16 @@ export function pipelineFeedbackRoutes(run: PipelineRun): ReadonlyArray<Pipeline
 }
 
 const REVISION_AUTHOR_LABELS: Record<PipelineRun["revisions"][number]["author"], string> = {
-  user: "You",
-  coordinator: "Coordinator",
-  agent: "Agent",
+  user: msg("You", { $context: "author of a pipeline revision" }),
+  coordinator: msg("Coordinator", { $context: "author of a pipeline revision" }),
+  agent: msg("Agent", { $context: "author of a pipeline revision" }),
 };
 
 export function pipelineRevisionAuthorLabel(
   author: PipelineRun["revisions"][number]["author"],
+  resolve: MFunctionType = mFallback,
 ): string {
-  return REVISION_AUTHOR_LABELS[author];
+  return resolve(REVISION_AUTHOR_LABELS[author]);
 }
 
 export interface CoordinatorFeedbackInput {
@@ -322,6 +372,7 @@ export function buildCoordinatorFeedbackMessage(input: CoordinatorFeedbackInput)
     .split(/\r?\n/)
     .map((line) => `> ${line}`)
     .join("\n");
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- sent to the coordinator agent, which parses this shape
   return `${quoted}\n\nFrom step ${input.sourceStepName} (${input.sourceStepLink})\n\n${input.note.trim()}`;
 }
 
@@ -416,6 +467,7 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
   threadStatus: (step: T) => string,
   waitOf?: PipelineStepWaitOf<T>,
   stuckAfterHours?: number,
+  resolve: MFunctionType = mFallback,
 ): PipelineNeedsYou | null {
   const { target } = pipelineAttentionTargets(
     {
@@ -424,7 +476,7 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
       currentStepIndex: run.currentStepIndex,
       steps: run.steps.map((step) => ({
         stepId: step.stepId,
-        name: stepName(run, step.index),
+        name: stepName(run, step.index, resolve),
         status: step.status,
         childThreadId: step.childThreadId,
       })),
@@ -435,9 +487,9 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
   );
   if (target === null) {
     if (run.status === "paused" && run.pauseReason === "awaiting_continue") {
-      const name = stepName(run, run.currentStepIndex);
+      const name = stepName(run, run.currentStepIndex, resolve);
       return {
-        text: `Paused before ${name}`,
+        text: resolve(msg("Paused before {name}", { name })),
         threadId: null,
         stepName: name,
         stepIndex: run.currentStepIndex,
@@ -450,24 +502,24 @@ export function pipelineRunNeedsYou<T extends PipelineNestable & { readonly titl
       run.steps.find((step) => step.childThreadId === target.id) ??
       run.steps.find((step) => step.stepId === target.pipeline?.stepId)
     )?.index ?? run.currentStepIndex;
-  const name = stepName(run, stepIndex);
+  const name = stepName(run, stepIndex, resolve);
   const own = threadStatus(target);
   const pausedHere = run.status === "paused" && stepIndex === run.currentStepIndex;
-  const reason =
+  const text =
     own === "approval"
-      ? "is asking for approval"
+      ? resolve(msg("{name} is asking for approval", { name }))
       : own === "input"
-        ? "is asking for input"
+        ? resolve(msg("{name} is asking for input", { name }))
         : own === "request"
-          ? "is waiting for your response"
+          ? resolve(msg("{name} is waiting for your response", { name }))
           : pausedHere && run.pauseReason === "awaiting_handoff"
             ? waitOf?.(target) === "possibly_stuck"
-              ? `may be stuck: background work has run for ${stuckAfterText(stuckAfterHours)}`
-              : "ended without handing off"
+              ? maybeStuckText(name, stuckAfterHours, resolve)
+              : resolve(msg("{name} ended without handing off", { name }))
             : pausedHere && run.pauseReason === "step_failed"
-              ? "failed"
+              ? resolve(msg("{name} failed", { name }))
               : pausedHere && run.pauseReason === "step_stopped"
-                ? "stopped"
-                : "needs you";
-  return { text: `${name} ${reason}`, threadId: target.id, stepName: name, stepIndex };
+                ? resolve(msg("{name} stopped", { name }))
+                : resolve(msg("{name} needs you", { name }));
+  return { text, threadId: target.id, stepName: name, stepIndex };
 }

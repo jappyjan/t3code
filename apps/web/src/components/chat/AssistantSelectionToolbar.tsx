@@ -226,7 +226,9 @@ export function AssistantSelectionToolbar({
         size="xs"
         variant="glass"
         disabled={tooLong}
-        aria-label={tooLong ? gt("Selection is too long to cite") : gt("Cite selection in composer")}
+        aria-label={
+          tooLong ? gt("Selection is too long to cite") : gt("Cite selection in composer")
+        }
         onPointerDown={(event) => event.preventDefault()}
         onClick={cite}
         onKeyDown={handleKeyDown}
@@ -241,13 +243,13 @@ export function AssistantSelectionToolbar({
           type="button"
           size="xs"
           variant="glass"
-          aria-label="Send selection as feedback to the pipeline"
+          aria-label={gt("Send selection as feedback to the pipeline")}
           onPointerDown={(event) => event.preventDefault()}
           onClick={sendFeedback}
           onKeyDown={handleKeyDown}
         >
           <MessageSquareIcon aria-hidden="true" className="size-3.5" />
-          Send feedback
+          {gt("Send feedback")}
         </Button>
       ) : null}
     </div>,

@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import { T, useGT } from "gt-react-native";
 import { withoutPlanAgentOption } from "@t3tools/shared/model";
 import { useMemo } from "react";
 
@@ -12,9 +13,12 @@ import { usePipelineEditor } from "./pipeline-editor";
 import type { PipelineStepDraft } from "@t3tools/client-runtime/pipeline-editor";
 
 function MissingPipelineDraft() {
+  const gt = useGT();
   return (
-    <SettingsScreen title="Pipeline">
-      <Text className="p-5 text-base text-foreground-muted">Open a pipeline form first.</Text>
+    <SettingsScreen title={gt("Pipeline")}>
+      <Text className="p-5 text-base text-foreground-muted">
+        <T>Open a pipeline form first.</T>
+      </Text>
     </SettingsScreen>
   );
 }
