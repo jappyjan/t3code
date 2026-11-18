@@ -807,6 +807,7 @@ function PossiblyStuckHoursInput({
   value: number;
   onCommit: (hours: number) => void;
 }) {
+  const gt = useGT();
   const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
     if (draft === null) return;
@@ -841,7 +842,7 @@ function PossiblyStuckHoursInput({
           setDraft(null);
         }
       }}
-      aria-label="Hours before a thread is marked possibly stuck"
+      aria-label={gt("Hours before a thread is marked possibly stuck")}
     />
   );
 }
@@ -2154,17 +2155,19 @@ export function ThreadsSettingsPanel() {
         />
       </SettingsSection>
 
-      <SettingsSection id="possibly-stuck" title="Possibly stuck">
+      <SettingsSection id="possibly-stuck" title={gt("Possibly stuck")}>
         <SettingsRow
           serverScoped
           settingKeys={["possiblyStuckAfterHours"]}
-          {...searchableSetting("possibly-stuck-after-hours")}
-          description="A thread whose last turn ended while background work kept running for this many hours is listed under Possibly stuck. Pull request watches never count. 0 turns it off."
+          {...setting("possibly-stuck-after-hours")}
+          description={gt(
+            "A thread whose last turn ended while background work kept running for this many hours is listed under Possibly stuck. Pull request watches never count. 0 turns it off.",
+          )}
           resetAction={
             settings.possiblyStuckAfterHours !==
             DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours ? (
               <SettingResetButton
-                label="possibly stuck"
+                ariaLabel={gt("Reset possibly stuck to default")}
                 onClick={() =>
                   updateSettings({
                     possiblyStuckAfterHours: DEFAULT_UNIFIED_SETTINGS.possiblyStuckAfterHours,

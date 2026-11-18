@@ -14,6 +14,8 @@ import {
   resolvePipelineStepCompaction,
 } from "@t3tools/contracts";
 import { resolveStepIds } from "@t3tools/shared/pipelineStepIds";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 /**
  * Pure pipeline-editor logic shared by the web and mobile settings forms: draft shape, step ids,
@@ -60,6 +62,7 @@ function defaultStepTemplate(index: number): string {
 function nextDefaultStepName(steps: ReadonlyArray<PipelineStepDraft>): string {
   const taken = new Set(steps.map((step) => step.name.trim().toLowerCase()));
   for (let n = steps.length + 1; ; n += 1) {
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- saved into the pipeline definition and read by agents
     if (!taken.has(`step ${n}`)) return `Step ${n}`;
   }
 }
@@ -192,17 +195,18 @@ export interface PipelineDraftIssues {
 export function pipelineDraftIssues(
   draft: PipelineDraft,
   availableInstanceIds?: ReadonlySet<string>,
+  resolve: MFunctionType = mFallback,
 ): PipelineDraftIssues {
   const name = draft.name.trim()
     ? draft.name.trim().length > PIPELINE_NAME_MAX_LENGTH
-      ? `Use at most ${PIPELINE_NAME_MAX_LENGTH} characters.`
+      ? resolve(msg("Use at most {max} characters.", { max: PIPELINE_NAME_MAX_LENGTH }))
       : null
-    : "Give the pipeline a name.";
+    : resolve(msg("Give the pipeline a name."));
   const stepCount =
     draft.steps.length === 0
-      ? "Add at least one step."
+      ? resolve(msg("Add at least one step."))
       : draft.steps.length > PIPELINE_MAX_STEPS
-        ? `A pipeline has at most ${PIPELINE_MAX_STEPS} steps.`
+        ? resolve(msg("A pipeline has at most {max} steps.", { max: PIPELINE_MAX_STEPS }))
         : null;
 
   const ids = resolveStepIds(draft.steps);
@@ -217,25 +221,36 @@ export function pipelineDraftIssues(
 
   draft.steps.forEach((step, index) => {
     const stepName = step.name.trim();
+    const label = stepName || resolve(msg("Step {number}", { number: index + 1 }));
     const own = (message: string) =>
-      add(step.key, message, `${stepName || `Step ${index + 1}`}: ${message}`);
-    if (!stepName) own("Give the step a name.");
+      add(step.key, message, resolve(msg("{step}: {message}", { step: label, message })));
+    if (!stepName) own(resolve(msg("Give the step a name.")));
     else if (stepName.length > PIPELINE_NAME_MAX_LENGTH) {
-      own(`Use at most ${PIPELINE_NAME_MAX_LENGTH} characters for the name.`);
+      own(
+        resolve(
+          msg("Use at most {max} characters for the name.", { max: PIPELINE_NAME_MAX_LENGTH }),
+        ),
+      );
     }
-    if (step.modelSelection === null) own("Choose a model.");
+    if (step.modelSelection === null) own(resolve(msg("Choose a model.")));
     else if (
       availableInstanceIds !== undefined &&
       !availableInstanceIds.has(step.modelSelection.instanceId)
     ) {
-      own(`Provider ${step.modelSelection.instanceId} isn't available here.`);
+      own(
+        resolve(
+          msg("Provider {instance} isn't available here.", {
+            instance: step.modelSelection.instanceId,
+          }),
+        ),
+      );
     }
-    if (!step.promptTemplate.trim()) own("Write a prompt template.");
+    if (!step.promptTemplate.trim()) own(resolve(msg("Write a prompt template.")));
     if (step.skills.length > PIPELINE_STEP_SKILLS_MAX) {
-      own(`A step has at most ${PIPELINE_STEP_SKILLS_MAX} skills.`);
+      own(resolve(msg("A step has at most {max} skills.", { max: PIPELINE_STEP_SKILLS_MAX })));
     }
     if (step.skills.some((skill) => normalizeSkillName(skill) !== skill)) {
-      own("A skill name has an invalid character.");
+      own(resolve(msg("A skill name has an invalid character.")));
     }
   });
 
@@ -330,7 +345,18 @@ export function pipelineStepSummary(
 }
 
 /** "3 steps: Plan, Build, Review" for a list row. */
-export function describePipelineSteps(steps: ReadonlyArray<{ readonly name: string }>): string {
-  const count = `${steps.length} ${steps.length === 1 ? "step" : "steps"}`;
-  return steps.length === 0 ? count : `${count}: ${steps.map((step) => step.name).join(", ")}`;
+export function describePipelineSteps(
+  steps: ReadonlyArray<{ readonly name: string }>,
+  resolve: MFunctionType = mFallback,
+): string {
+  const count = steps.length;
+  if (count === 0) {
+    return resolve(msg("{count, plural, one {{count} step} other {{count} steps}}", { count }));
+  }
+  return resolve(
+    msg("{count, plural, one {{count} step: {names}} other {{count} steps: {names}}}", {
+      count,
+      names: steps.map((step) => step.name).join(", "),
+    }),
+  );
 }

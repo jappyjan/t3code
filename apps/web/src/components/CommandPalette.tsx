@@ -1473,7 +1473,7 @@ function OpenCommandPaletteDialog(props: {
       pipelinesByEnvironment,
       pipelineIcon: <WorkflowIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <WorkflowIcon className={ADDON_ICON_CLASS} />,
-      describeSteps: describePipelineSteps,
+      describeSteps: (steps) => describePipelineSteps(steps, messages),
       // The pipeline lives on the project's own environment, so that project is the target.
       start: async (project, pipeline) => {
         const opened = await handleNewThread(scopeProjectRef(project.environmentId, project.id));
@@ -1489,12 +1489,16 @@ function OpenCommandPaletteDialog(props: {
         kind: "submenu",
         value: "action:start-pipeline",
         searchTerms: ["pipeline", "workflow", "chain", "steps", "run", "start"],
-        title: "Start pipeline...",
-        description: "Run a chain of agent steps from a new thread",
+        title: gt("Start pipeline..."),
+        description: gt("Run a chain of agent steps from a new thread"),
         icon: <WorkflowIcon className={ITEM_ICON_CLASS} />,
         addonIcon: <WorkflowIcon className={ADDON_ICON_CLASS} />,
         groups: [
-          { value: START_PIPELINE_IN_GROUP, label: "Projects", items: startPipelineProjectItems },
+          {
+            value: START_PIPELINE_IN_GROUP,
+            label: gt("Projects"),
+            items: startPipelineProjectItems,
+          },
         ],
       });
     }
@@ -1502,7 +1506,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:pipelines-settings",
       searchTerms: ["pipeline", "pipelines", "workflow", "settings", "manage", "edit"],
-      title: "Pipelines settings",
+      title: gt("Pipelines settings"),
       icon: <WorkflowIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         await navigate({ to: "/settings/pipelines" });
@@ -1669,7 +1673,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:open-pipeline-coordinator",
       searchTerms: ["pipeline", "coordinator", "feedback", "run", "chat"],
-      title: "Open pipeline coordinator",
+      title: gt("Open pipeline coordinator"),
       icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         openPipelineCoordinator(threadRef);

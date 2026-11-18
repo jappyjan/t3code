@@ -1577,7 +1577,7 @@ function ThreadDetailBody(
               renderFallback={(fallback) => (
                 <RenderFailureView
                   {...fallback}
-                  title="The pipeline couldn't be displayed"
+                  title={gt("The pipeline couldn't be displayed")}
                   bottomInset={0}
                 />
               )}

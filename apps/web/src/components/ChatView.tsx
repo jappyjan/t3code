@@ -1012,8 +1012,8 @@ export default function ChatView(props: ChatViewProps) {
     ) {
       const parentRef = pipelineParentThreadRef;
       return {
-        title: pipelineStepBreadcrumbTitle(pipelineStepRun, pipelineStepId),
-        label: "Parent",
+        title: pipelineStepBreadcrumbTitle(pipelineStepRun, pipelineStepId, messages),
+        label: gt("Parent", { $context: "link to a pipeline step's parent thread" }),
         open: (): void => {
           void navigate({
             to: "/$environmentId/$threadId",
@@ -1095,7 +1095,7 @@ export default function ChatView(props: ChatViewProps) {
     pipelineStepRun !== undefined && pipelineParentThreadRef !== null && pipelineStepId !== null
       ? {
           threadId: pipelineParentThreadRef.threadId,
-          title: pipelineStepBreadcrumbTitle(pipelineStepRun, pipelineStepId),
+          title: pipelineStepBreadcrumbTitle(pipelineStepRun, pipelineStepId, messages),
         }
       : parentSubagentThreadRef === null
         ? null

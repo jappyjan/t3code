@@ -317,6 +317,7 @@ function AssistantFeedbackButton({
   text: string;
   onSendFeedback: (quote: string) => void;
 }) {
+  const gt = useGT();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -325,14 +326,16 @@ function AssistantFeedbackButton({
             type="button"
             size="xs"
             variant="ghost-muted"
-            aria-label="Send feedback"
+            aria-label={gt("Send feedback")}
             onClick={() => onSendFeedback(feedbackQuoteExcerpt(text))}
           />
         }
       >
         <MessageSquareIcon className="size-3" />
       </TooltipTrigger>
-      <TooltipPopup side="top">Send feedback</TooltipPopup>
+      <TooltipPopup side="top">
+        <T>Send feedback</T>
+      </TooltipPopup>
     </Tooltip>
   );
 }

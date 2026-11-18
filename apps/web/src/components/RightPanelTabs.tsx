@@ -635,7 +635,7 @@ function surfaceTitle(
       // A git host numbers its issues; a tracker with keys of its own, such as Linear, names them.
       return /^\d+$/.test(surface.key) ? `#${surface.key}` : surface.key;
     case "pipeline-coordinator":
-      return "Coordinator";
+      return resolve(msg("Coordinator", { $context: "pipeline coordinator chat tab" }));
     case "device":
       return surface.title ?? surface.target?.name ?? resolve(msg("Device"));
     case "thread":

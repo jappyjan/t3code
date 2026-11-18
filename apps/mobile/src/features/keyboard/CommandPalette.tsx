@@ -344,7 +344,7 @@ export function CommandPalette(props: {
       {
         key: "pipelines",
         kind: "action",
-        title: "Pipelines",
+        title: gt("Pipelines"),
         searchTerms: ["workflow", "steps", "chain"],
         run: () => openSettings(navigation, "SettingsPipelines"),
       },

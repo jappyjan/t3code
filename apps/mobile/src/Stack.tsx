@@ -207,6 +207,9 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   SettingsScheduledTaskEdit: msg("Edit scheduled task"),
   SettingsScheduledTaskBranch: msg("Base branch"),
   SettingsScheduledTaskThread: msg("Destination"),
+  SettingsPipelines: msg("Pipelines"),
+  SettingsPipelineNew: msg("New pipeline"),
+  SettingsPipelineEdit: msg("Edit pipeline"),
   SettingsClientStorage: msg("Client Storage"),
   SettingsDiagnostics: msg("Diagnostics"),
   SettingsUsageAccount: msg("Account"),
@@ -409,15 +412,15 @@ const SETTINGS_SCREENS = {
   SettingsPipelines: createNativeStackScreen({
     screen: SettingsPipelinesRouteScreen,
     linking: "settings/pipelines",
-    options: settingsPage("Pipelines"),
+    options: settingsPage(),
   }),
   SettingsPipelineNew: createNativeStackScreen({
     screen: SettingsPipelineNewRouteScreen,
-    options: settingsPage("New pipeline"),
+    options: settingsPage(),
   }),
   SettingsPipelineEdit: createNativeStackScreen({
     screen: SettingsPipelineEditRouteScreen,
-    options: settingsPage("Edit pipeline"),
+    options: settingsPage(),
   }),
   SettingsPipelineStepModel: createNativeStackScreen({
     screen: PipelineStepModelPickerRouteScreen,

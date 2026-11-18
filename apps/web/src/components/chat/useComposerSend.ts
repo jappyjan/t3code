@@ -1236,7 +1236,7 @@ export function useComposerSend(input: ComposerSendInput) {
       if (pipelineAttachments._tag === "Failure") {
         sendInFlightRef.current = false;
         resetLocalDispatch();
-        setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
+        setThreadError(threadIdForSend, m(msg("Retry or remove failed uploads before sending.")));
         return;
       }
       if (expiredTerminalContextCount > 0) {

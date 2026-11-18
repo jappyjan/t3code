@@ -774,10 +774,12 @@ export function NewTaskDraftScreen(props: {
       // degrades to a normal thread: block when it cannot be started right now.
       if (!selectedPipeline) {
         Dialog.alert(
-          "Pipeline unavailable",
+          gt("Pipeline unavailable"),
           environmentConnected
-            ? "This pipeline is not available on the connected machine. Choose another pipeline or No pipeline."
-            : "Reconnect to the machine to start a pipeline, or choose No pipeline.",
+            ? gt(
+                "This pipeline is not available on the connected machine. Choose another pipeline or No pipeline.",
+              )
+            : gt("Reconnect to the machine to start a pipeline, or choose No pipeline."),
         );
         return null;
       }
@@ -786,8 +788,10 @@ export function NewTaskDraftScreen(props: {
       const hasExtras = draft.attachments.length > 0 || (draft.context?.records?.length ?? 0) > 0;
       if (hasExtras && !attachmentsSupported) {
         Dialog.alert(
-          "Pipelines take text only",
-          "This server takes text only for pipelines. Update T3 Code there to attach files, or remove attachments and context.",
+          gt("Pipelines take text only"),
+          gt(
+            "This server takes text only for pipelines. Update T3 Code there to attach files, or remove attachments and context.",
+          ),
         );
         return null;
       }
@@ -796,8 +800,8 @@ export function NewTaskDraftScreen(props: {
       if (draftContentBlocked(draft, selectedProject.environmentId)) return null;
       if (workspaceSelection.pullRequestReference) {
         Dialog.alert(
-          "Pipelines cannot start from a pull request",
-          "Choose a branch instead of a pull request to start a pipeline.",
+          gt("Pipelines cannot start from a pull request"),
+          gt("Choose a branch instead of a pull request to start a pipeline."),
         );
         return null;
       }
@@ -847,8 +851,8 @@ export function NewTaskDraftScreen(props: {
         if (AsyncResult.isFailure(prepared)) {
           const error = squashAtomCommandFailure(prepared);
           Dialog.alert(
-            "Could not upload attachments",
-            error instanceof Error ? error.message : "An attachment could not upload.",
+            gt("Could not upload attachments"),
+            error instanceof Error ? error.message : gt("An attachment could not upload."),
           );
         }
         return null;
@@ -858,7 +862,10 @@ export function NewTaskDraftScreen(props: {
       );
       if (uploaded === null) {
         flow.setSubmitting(false);
-        Dialog.alert("Could not upload attachments", "An image was not uploaded to the server.");
+        Dialog.alert(
+          gt("Could not upload attachments"),
+          gt("An image was not uploaded to the server."),
+        );
         return null;
       }
       const pipelineContext = uploadedComposerContext(draft.context, draft.attachments, uploaded);
@@ -894,8 +901,8 @@ export function NewTaskDraftScreen(props: {
         if (!isAtomCommandInterrupted(started)) {
           const error = squashAtomCommandFailure(started);
           Dialog.alert(
-            "Could not start pipeline",
-            error instanceof Error ? error.message : "The pipeline run could not be started.",
+            gt("Could not start pipeline"),
+            error instanceof Error ? error.message : gt("The pipeline run could not be started."),
           );
         }
         return null;
@@ -938,7 +945,10 @@ export function NewTaskDraftScreen(props: {
         // Opening the thread now would land on an unavailable route and lose the draft, so
         // the run is announced and found in the thread list once its shell arrives.
         if (stillOnDraft) navigation.dispatch(StackActions.replace("Home"));
-        Dialog.alert("Pipeline started", "The run will appear in your thread list shortly.");
+        Dialog.alert(
+          gt("Pipeline started"),
+          gt("The run will appear in your thread list shortly."),
+        );
       }
       return null;
     }
@@ -1207,14 +1217,14 @@ export function NewTaskDraftScreen(props: {
     startsNewWorktree && (flow.worktreeRepositoryChoices?.length ?? 0) > 0;
 
   const pipelineLabel =
-    selectedPipeline?.name ?? (pipelineId === null ? null : "Selected pipeline");
+    selectedPipeline?.name ?? (pipelineId === null ? null : gt("Selected pipeline"));
   const pipelineControl =
     pipelines.length === 0 && pipelineId === null ? null : (
       <View className="min-w-0 shrink">
         <Menu
-          title="Pipeline"
+          title={gt("Pipeline")}
           actions={[
-            { id: "none", title: "No pipeline", state: pipelineId === null ? "on" : "off" },
+            { id: "none", title: gt("No pipeline"), state: pipelineId === null ? "on" : "off" },
             ...pipelines.map((pipeline) => ({
               id: pipeline.id,
               title: pipeline.name,
@@ -1226,10 +1236,14 @@ export function NewTaskDraftScreen(props: {
           }
         >
           <ComposerInlineControl
-            accessibilityLabel={`Pipeline: ${pipelineLabel ?? "none"}`}
+            accessibilityLabel={
+              pipelineLabel === null
+                ? gt("Pipeline: none")
+                : gt("Pipeline: {name}", { name: pipelineLabel })
+            }
             disabled={isComposerInteractionLocked}
             icon="list.number"
-            label={pipelineLabel ?? "Pipeline"}
+            label={pipelineLabel ?? gt("Pipeline")}
             maxWidth="100%"
             selected={pipelineId !== null}
           />

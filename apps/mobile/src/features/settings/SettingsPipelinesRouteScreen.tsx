@@ -1,5 +1,6 @@
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import {
   AuthOrchestrationOperateScope,
   PIPELINE_MAX_STEPS,
@@ -31,6 +32,7 @@ import {
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
+import type { MessageResolver } from "../../i18n/messages";
 import { buildModelOptions } from "../../lib/modelOptions";
 import { uuidv4 } from "../../lib/uuid";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
@@ -83,6 +85,7 @@ function reportFailure(title: string, result: AtomCommandResult<unknown, unknown
 }
 
 export function SettingsPipelinesRouteScreen() {
+  const gt = useGT();
   const { availableTargets, selectedTargets } = useSettingsEnvironmentFilter();
   const { startEditor, resetEditor, startFromStarter, pipelineTargets } = usePipelineEditor();
   const navigation = useNavigation<NativeStackNavigationProp<PipelineRoutes>>();
@@ -97,16 +100,16 @@ export function SettingsPipelinesRouteScreen() {
 
   return (
     <SettingsScreen
-      title="Pipelines"
+      title={gt("Pipelines")}
       menus={[
         environmentMenu,
         {
-          title: "New pipeline",
+          title: gt("New pipeline"),
           icon: "plus",
           items: [
             {
               id: BLANK_PIPELINE_ACTION,
-              title: "Blank pipeline",
+              title: gt("Blank pipeline"),
               disabled: pipelineTargets.length === 0,
               onPress: () => newPipeline(null),
             },
@@ -149,8 +152,8 @@ export function SettingsPipelinesRouteScreen() {
         ) : (
           <Text className="px-2 text-base text-foreground-muted">
             {availableTargets.length === 0
-              ? "Connect an environment to view and create pipelines."
-              : "No environments match these filters. Change the filter above."}
+              ? gt("Connect an environment to view and create pipelines.")
+              : gt("No environments match these filters. Change the filter above.")}
           </Text>
         )}
       </ScrollView>
@@ -161,14 +164,17 @@ export function SettingsPipelinesRouteScreen() {
 // The "New pipeline" action clears the editor before this screen opens, so it starts from the
 // default target.
 export function SettingsPipelineNewRouteScreen() {
-  return <SettingsPipelineEditorScreen title="New pipeline" />;
+  const gt = useGT();
+  return <SettingsPipelineEditorScreen title={gt("New pipeline")} />;
 }
 
 export function SettingsPipelineEditRouteScreen() {
-  return <SettingsPipelineEditorScreen title="Edit pipeline" />;
+  const gt = useGT();
+  return <SettingsPipelineEditorScreen title={gt("Edit pipeline")} />;
 }
 
 function SettingsPipelineEditorScreen({ title }: { readonly title: string }) {
+  const gt = useGT();
   const { editor, setEditor, hasChanges, pipelineTargets, modelForEnvironment } =
     usePipelineEditor();
   const navigation = useNavigation();
@@ -183,13 +189,16 @@ function SettingsPipelineEditorScreen({ title }: { readonly title: string }) {
       return;
     }
     if (saving) {
-      Dialog.alert("Saving pipeline", "Wait for the pipeline to finish saving before leaving.");
+      Dialog.alert(
+        gt("Saving pipeline"),
+        gt("Wait for the pipeline to finish saving before leaving."),
+      );
       return;
     }
-    Dialog.alert("Discard changes?", "Your unsaved changes will be lost.", [
-      { text: "Keep editing", style: "cancel" },
+    Dialog.alert(gt("Discard changes?"), gt("Your unsaved changes will be lost."), [
+      { text: gt("Keep editing"), style: "cancel" },
       {
-        text: "Discard changes",
+        text: gt("Discard changes"),
         style: "destructive",
         onPress: () => {
           discardPipelineEditor();
@@ -211,7 +220,7 @@ function SettingsPipelineEditorScreen({ title }: { readonly title: string }) {
               withNativeGlassHeaderItem({
                 type: "button",
                 label: "",
-                accessibilityLabel: "Back",
+                accessibilityLabel: gt("Back", { $context: "navigation button" }),
                 icon: { type: "sfSymbol", name: "chevron.backward" },
                 onPress: () => navigation.goBack(),
               }),
@@ -275,9 +284,9 @@ function SettingsPipelineEditorScreen({ title }: { readonly title: string }) {
                 return;
               }
               Dialog.confirm({
-                title: `Save on ${target.label}?`,
-                message: "Step models belong to the machine, so they reset to its default.",
-                confirmText: "Reset models",
+                title: gt("Save on {name}?", { name: target.label }),
+                message: gt("Step models belong to the machine, so they reset to its default."),
+                confirmText: gt("Reset models"),
                 destructive: true,
                 onConfirm: change,
               });
@@ -285,7 +294,9 @@ function SettingsPipelineEditorScreen({ title }: { readonly title: string }) {
           />
         ) : (
           <Text className="px-2 text-base text-foreground-muted">
-            Connect an environment that supports pipelines, or update its server, to create one.
+            <T>
+              Connect an environment that supports pipelines, or update its server, to create one.
+            </T>
           </Text>
         )}
       </ScrollView>
@@ -316,6 +327,8 @@ function PipelineForm({
   readonly onSaved: () => void;
   readonly onChangeEnvironment: (target: SettingsTarget) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const navigation = useNavigation<NativeStackNavigationProp<PipelineRoutes>>();
   const pipelines = useEnvironmentQuery(
     serverEnvironment.pipelinesLive({ environmentId, input: {} }),
@@ -335,6 +348,7 @@ function PipelineForm({
   const issues = pipelineDraftIssues(
     draft,
     config ? pipelineAvailableInstanceIds(config) : undefined,
+    m,
   ).messages;
   const stepIds = resolveStepIds(draft.steps);
 
@@ -355,7 +369,10 @@ function PipelineForm({
       return;
     const input = issues.length === 0 ? draftToUpsertInput(draft) : null;
     if (!input) {
-      Dialog.alert("Incomplete pipeline", issues[0] ?? "Fix the highlighted problems first.");
+      Dialog.alert(
+        gt("Incomplete pipeline"),
+        issues[0] ?? gt("Fix the highlighted problems first."),
+      );
       return;
     }
     submissionPending.current = true;
@@ -364,7 +381,7 @@ function PipelineForm({
     setSaving(false);
     if (result._tag === "Failure") {
       submissionPending.current = false;
-      reportFailure("Could not save pipeline", result);
+      reportFailure(gt("Could not save pipeline"), result);
       return;
     }
     onSaved();
@@ -380,17 +397,20 @@ function PipelineForm({
       >
         {pipelineMissing ? (
           <Text className="px-1 text-base text-danger-foreground">
-            This pipeline no longer exists.
+            <T>This pipeline no longer exists.</T>
           </Text>
         ) : null}
         {environmentUnavailable ? (
           <Text className="px-1 text-base text-danger-foreground">
-            This environment is disconnected or does not support pipelines. Reconnect before saving.
+            <T>
+              This environment is disconnected or does not support pipelines. Reconnect before
+              saving.
+            </T>
           </Text>
         ) : null}
         <SettingsSection>
           <SelectRow
-            label="Saved on"
+            label={gt("Saved on")}
             value={environmentLabel}
             valueIcon={
               <EnvironmentMachineSymbol
@@ -418,12 +438,12 @@ function PipelineForm({
             }}
           />
         </SettingsSection>
-        <SettingsSection title="Pipeline">
+        <SettingsSection title={gt("Pipeline")}>
           <FormField
-            label="Name"
+            label={gt("Name", { $context: "pipeline name field" })}
             disabled={saving}
             value={draft.name}
-            placeholder="Plan, build, review"
+            placeholder={gt("Plan, build, review")}
             onChange={(name) => setDraft({ ...draft, name })}
           />
         </SettingsSection>
@@ -440,6 +460,7 @@ function PipelineForm({
             modelLabel={modelLabel(
               buildModelOptions(config, step.modelSelection, undefined, null),
               step,
+              m,
             )}
             onChange={(patch) => updateStep(step.key, patch)}
             onPickModel={() => {
@@ -456,8 +477,8 @@ function PipelineForm({
         <Button
           label={
             draft.steps.length >= PIPELINE_MAX_STEPS
-              ? `Up to ${PIPELINE_MAX_STEPS} steps`
-              : "Add step"
+              ? gt("Up to {count} steps", { count: PIPELINE_MAX_STEPS })
+              : gt("Add step")
           }
           icon="plus"
           disabled={saving || draft.steps.length >= PIPELINE_MAX_STEPS}
@@ -482,9 +503,11 @@ function PipelineForm({
           </View>
         ) : null}
         <Text className="px-2 text-sm text-foreground-muted">
-          All steps run in the same workspace, one after another. Each prompt template can use{" "}
-          {"{{input}}"} (the text you start the pipeline with), {"{{previous.output}}"} and{" "}
-          {"{{steps.<id>.output}}"}.
+          <T>
+            All steps run in the same workspace, one after another. Each prompt template can use{" "}
+            <Var>{"{{input}}"}</Var> (the text you start the pipeline with),{" "}
+            <Var>{"{{previous.output}}"}</Var> and <Var>{"{{steps.<id>.output}}"}</Var>.
+          </T>
         </Text>
       </View>
       <Button
@@ -493,7 +516,9 @@ function PipelineForm({
         loading={saving}
         disabled={!canOperate || pipelineMissing || environmentUnavailable || issues.length > 0}
         onPress={() => void save()}
-        label={saving ? "Saving…" : draft.editingId ? "Save changes" : "Create pipeline"}
+        label={
+          saving ? gt("Saving…") : draft.editingId ? gt("Save changes") : gt("Create pipeline")
+        }
       />
     </View>
   );
@@ -502,9 +527,11 @@ function PipelineForm({
 function modelLabel(
   options: ReturnType<typeof buildModelOptions>,
   step: PipelineStepDraft,
+  resolve: MessageResolver,
 ): string {
   const selection = step.modelSelection;
-  if (!selection) return options.length ? "Choose model" : "No models available";
+  if (!selection)
+    return options.length ? resolve(msg("Choose model")) : resolve(msg("No models available"));
   return (
     options.find(
       (option) =>
@@ -554,6 +581,8 @@ function StepSection(props: {
   readonly onMove: (delta: -1 | 1) => void;
   readonly onRemove: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { step, index } = props;
   const [skillInput, setSkillInput] = useState("");
   const skillName = normalizeSkillName(skillInput);
@@ -564,29 +593,28 @@ function StepSection(props: {
     }
     setSkillInput("");
   };
-  const runtimeLabel =
-    RUNTIME_MODE_CHOICES.find((choice) => choice.mode === step.runtimeMode)?.label ??
-    step.runtimeMode;
+  const runtimeChoice = RUNTIME_MODE_CHOICES.find((choice) => choice.mode === step.runtimeMode);
+  const runtimeLabel = runtimeChoice ? m(runtimeChoice.label) : step.runtimeMode;
 
   return (
     <SettingsSection
-      title={`Step ${index + 1}`}
+      title={gt("Step {number}", { number: index + 1 })}
       trailing={
         <View className="flex-row items-center pr-2">
           <IconAction
-            label={`Move step ${index + 1} up`}
+            label={gt("Move step {number} up", { number: index + 1 })}
             name="chevron.up"
             disabled={props.disabled || index === 0}
             onPress={() => props.onMove(-1)}
           />
           <IconAction
-            label={`Move step ${index + 1} down`}
+            label={gt("Move step {number} down", { number: index + 1 })}
             name="chevron.down"
             disabled={props.disabled || index === props.count - 1}
             onPress={() => props.onMove(1)}
           />
           <IconAction
-            label={`Remove step ${index + 1}`}
+            label={gt("Remove step {number}", { number: index + 1 })}
             name="trash"
             danger
             disabled={props.disabled || props.count <= 1}
@@ -596,25 +624,25 @@ function StepSection(props: {
       }
     >
       <FormField
-        label="Step name"
+        label={gt("Step name")}
         disabled={props.disabled}
         value={step.name}
         onChange={(name) => props.onChange({ name })}
       />
       <PickerRow
-        label="Model"
+        label={gt("Model", { $context: "AI model picker label" })}
         borderTop
         value={props.modelLabel}
         disabled={props.disabled}
         onPress={props.onPickModel}
       />
       <SelectRow
-        label="Permissions"
+        label={gt("Permissions", { $context: "agent runtime access level" })}
         borderTop
         value={runtimeLabel}
         actions={RUNTIME_MODE_CHOICES.map((choice) => ({
           id: choice.mode,
-          title: choice.label,
+          title: m(choice.label),
           state: choice.mode === step.runtimeMode ? ("on" as const) : undefined,
         }))}
         onSelect={(id) => {
@@ -623,14 +651,16 @@ function StepSection(props: {
         }}
       />
       <View className="gap-2 border-t border-border-subtle px-4 py-3">
-        <Text className="text-sm text-foreground-muted">Skills</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>Skills</T>
+        </Text>
         {step.skills.length > 0 ? (
           <View className="flex-row flex-wrap gap-2">
             {step.skills.map((skill) => (
               <Pressable
                 key={skill}
                 accessibilityRole="button"
-                accessibilityLabel={`Remove skill ${skill}`}
+                accessibilityLabel={gt("Remove skill {skill}", { skill })}
                 disabled={props.disabled}
                 onPress={() => props.onChange({ skills: step.skills.filter((s) => s !== skill) })}
                 className="flex-row items-center gap-1 rounded-full bg-subtle px-3 py-1.5 active:opacity-70"
@@ -643,7 +673,7 @@ function StepSection(props: {
         ) : null}
         {step.skills.length < PIPELINE_STEP_SKILLS_MAX ? (
           <RNTextInput
-            accessibilityLabel="Add skill"
+            accessibilityLabel={gt("Add skill")}
             value={skillInput}
             readOnly={props.disabled}
             onChangeText={setSkillInput}
@@ -653,16 +683,18 @@ function StepSection(props: {
             autoCorrect={false}
             returnKeyType="done"
             submitBehavior="blurAndSubmit"
-            placeholder="Add a skill name"
+            placeholder={gt("Add a skill name")}
             placeholderTextColorClassName="accent-foreground-muted"
             className="min-h-8 font-sans text-base text-foreground"
           />
         ) : null}
       </View>
       <View className="gap-2 border-t border-border-subtle px-4 py-3">
-        <Text className="text-sm text-foreground-muted">Prompt template</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>Prompt template</T>
+        </Text>
         <RNTextInput
-          accessibilityLabel={`Prompt template for step ${index + 1}`}
+          accessibilityLabel={gt("Prompt template for step {number}", { number: index + 1 })}
           value={step.promptTemplate}
           readOnly={props.disabled}
           onChangeText={(promptTemplate) => props.onChange({ promptTemplate })}
@@ -677,17 +709,25 @@ function StepSection(props: {
         />
         <Text className="text-sm text-foreground-muted">
           {index === 0
-            ? "Variables: {{input}}, {{steps.<id>.output}}. This step's id is "
-            : "Variables: {{input}}, {{previous.output}}, {{steps.<id>.output}}. This step's id is "}
-          {props.stepId}.
+            ? gt("Variables: {input}, {stepOutput}. This step's id is {id}.", {
+                input: "{{input}}",
+                stepOutput: "{{steps.<id>.output}}",
+                id: props.stepId,
+              })
+            : gt("Variables: {input}, {previousOutput}, {stepOutput}. This step's id is {id}.", {
+                input: "{{input}}",
+                previousOutput: "{{previous.output}}",
+                stepOutput: "{{steps.<id>.output}}",
+                id: props.stepId,
+              })}
         </Text>
       </View>
       <View className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3">
         <Text textRole="body" className="min-w-0 flex-1 text-foreground">
-          Pause before this step
+          <T>Pause before this step</T>
         </Text>
         <ThemedSwitch
-          accessibilityLabel={`Pause before step ${index + 1}`}
+          accessibilityLabel={gt("Pause before step {number}", { number: index + 1 })}
           value={step.pauseBefore}
           disabled={props.disabled}
           onValueChange={(pauseBefore) => props.onChange({ pauseBefore })}
@@ -695,10 +735,10 @@ function StepSection(props: {
       </View>
       <View className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3">
         <Text textRole="body" className="min-w-0 flex-1 text-foreground">
-          Compact after handoff
+          <T>Compact after handoff</T>
         </Text>
         <ThemedSwitch
-          accessibilityLabel={`Compact step ${index + 1} after handoff`}
+          accessibilityLabel={gt("Compact step {number} after handoff", { number: index + 1 })}
           value={props.compactAfterHandoff}
           disabled={props.disabled}
           onValueChange={(compactAfterHandoff) => props.onChange({ compactAfterHandoff })}
@@ -715,6 +755,8 @@ function EnvironmentPipelines({
   readonly environment: SettingsTarget;
   readonly onEdit: (pipeline: PipelineDefinition) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const environmentId = environment.environmentId;
   const supported = pipelineTargetSupportsPipelines(environment);
   const pipelines = useEnvironmentQuery(
@@ -727,15 +769,15 @@ function EnvironmentPipelines({
   });
 
   const confirmDelete = (pipeline: PipelineDefinition) =>
-    Dialog.alert("Delete pipeline?", pipeline.name, [
-      { text: "Cancel", style: "cancel" },
+    Dialog.alert(gt("Delete pipeline?"), pipeline.name, [
+      { text: gt("Cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: gt("Delete", { $context: "verb, deletes a pipeline" }),
         style: "destructive",
         onPress: () => {
           if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
           void remove({ environmentId, input: { id: pipeline.id } }).then((result) =>
-            reportFailure("Could not delete pipeline", result),
+            reportFailure(gt("Could not delete pipeline"), result),
           );
         },
       },
@@ -756,14 +798,18 @@ function EnvironmentPipelines({
     >
       {!supported ? (
         <Text className="p-4 text-base text-foreground-muted">
-          This server doesn't support pipelines yet. Update it to use them.
+          <T>This server doesn't support pipelines yet. Update it to use them.</T>
         </Text>
       ) : pipelines.error ? (
         <Text className="p-4 text-base text-danger-foreground">{pipelines.error}</Text>
       ) : !pipelines.data ? (
-        <Text className="p-4 text-base text-foreground-muted">Loading pipelines…</Text>
+        <Text className="p-4 text-base text-foreground-muted">
+          <T>Loading pipelines…</T>
+        </Text>
       ) : pipelines.data.pipelines.length === 0 ? (
-        <Text className="p-4 text-base text-foreground-muted">No pipelines yet.</Text>
+        <Text className="p-4 text-base text-foreground-muted">
+          <T>No pipelines yet.</T>
+        </Text>
       ) : (
         pipelines.data.pipelines.map((pipeline, index) => (
           <View
@@ -776,7 +822,7 @@ function EnvironmentPipelines({
           >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Edit ${pipeline.name}`}
+              accessibilityLabel={gt("Edit {name}", { name: pipeline.name })}
               onPress={() => onEdit(pipeline)}
               className="min-w-0 flex-1 gap-1 active:opacity-70"
             >
@@ -784,15 +830,15 @@ function EnvironmentPipelines({
                 {pipeline.name}
               </Text>
               <Text className="text-sm text-foreground-muted" numberOfLines={2}>
-                {describePipelineSteps(pipeline.steps)}
+                {describePipelineSteps(pipeline.steps, m)}
               </Text>
             </Pressable>
             <Menu
               actions={[
-                { id: "edit", title: "Edit" },
+                { id: "edit", title: gt("Edit", { $context: "verb, edits a pipeline" }) },
                 {
                   id: "delete",
-                  title: "Delete",
+                  title: gt("Delete", { $context: "verb, deletes a pipeline" }),
                   attributes: { destructive: true, disabled: !canOperate },
                 },
               ]}
@@ -803,7 +849,7 @@ function EnvironmentPipelines({
             >
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Actions for ${pipeline.name}`}
+                accessibilityLabel={gt("Actions for {name}", { name: pipeline.name })}
                 className="h-11 w-11 items-center justify-center"
               >
                 <SymbolView

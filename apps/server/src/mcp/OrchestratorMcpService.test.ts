@@ -1,6 +1,5 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,

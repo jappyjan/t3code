@@ -4125,7 +4125,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 key="stuck-shelf-header"
                                 marker="stuck-header"
                                 className={cn(workingThreads.length === 0 && "mt-auto")}
-                                label="Possibly stuck"
+                                label={gt("Possibly stuck", { $context: "sidebar section" })}
                                 count={stuckThreads.length}
                                 toggle={{
                                   expanded: stuckShelfExpanded,

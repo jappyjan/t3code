@@ -471,10 +471,11 @@ function AssistantFeedbackButton(props: {
   readonly iconColor: ColorValue;
   readonly onSendFeedback: (messageText: string) => void;
 }) {
+  const gt = useGT();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Send feedback"
+      accessibilityLabel={gt("Send feedback")}
       onPress={() => {
         void Haptics.selectionAsync();
         props.onSendFeedback(props.text);

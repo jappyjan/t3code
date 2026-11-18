@@ -8,6 +8,7 @@ import {
 import { pipelineProgressSegments } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { PipelineRun, PipelineRunSummary, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { lazy, memo, Suspense, useRef } from "react";
 
 import { ComposerHandleContext } from "../../composerHandleContext";
@@ -52,6 +53,8 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
   /** The step's diff panel and terminal, which the embedded chat uses in place of its own. */
   readonly parentPanel: SideChatParentPanel;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { environmentId, threadId } = props.stepThreadRef;
   const navigate = useNavigate();
   const composerRef = useRef<ChatComposerHandle | null>(null);
@@ -70,7 +73,7 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
   if (run === null || parentRef === null) {
     return (
       <p className="p-4 text-sm text-muted-foreground">
-        {query.error ?? "Loading pipeline run..."}
+        {query.error ?? gt("Loading pipeline run...")}
       </p>
     );
   }
@@ -109,10 +112,15 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
               />
             }
           >
-            Step {currentIndex + 1}/{run.steps.length} · {stepName(run, currentIndex)} ·{" "}
-            {pipelineRunStateLabel(run, waitOf(awaitingShell))}
+            <T>
+              Step <Var>{currentIndex + 1}</Var>/<Var>{run.steps.length}</Var> ·{" "}
+              <Var>{stepName(run, currentIndex, m)}</Var> ·{" "}
+              <Var>{pipelineRunStateLabel(run, waitOf(awaitingShell), m)}</Var>
+            </T>
           </TooltipTrigger>
-          <TooltipPopup side="left">Open the run's main page</TooltipPopup>
+          <TooltipPopup side="left">
+            <T>Open the run's main page</T>
+          </TooltipPopup>
         </Tooltip>
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col" data-step-thread={threadId}>
@@ -134,7 +142,7 @@ export const PipelineCoordinatorPanel = memo(function PipelineCoordinatorPanel(p
           </BackgroundThreadContext>
         ) : (
           <p className="p-4 text-sm text-muted-foreground">
-            The coordinator chat is not available.
+            <T>The coordinator chat is not available.</T>
           </p>
         )}
       </div>

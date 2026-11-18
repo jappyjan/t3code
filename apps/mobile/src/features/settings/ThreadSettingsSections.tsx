@@ -162,15 +162,17 @@ export function AutoSettleSettingsRows(props: {
         </SettingsSection>
       ) : null}
       {!projectSelected ? (
-        <SettingsSection title="Possibly stuck">
+        <SettingsSection title={gt("Possibly stuck")}>
           <View className="flex-row items-center gap-4 px-4 py-4 android:min-h-14 android:py-3">
             <View className="flex-1 gap-1">
               <Text className="text-foreground text-lg android:text-base">
-                Mark threads as possibly stuck after
+                <T>Mark threads as possibly stuck after</T>
               </Text>
               <Text className="text-sm text-foreground-muted">
-                A thread whose last turn ended while background work kept running this long is
-                listed under Possibly stuck. Pull request watches never count. 0 turns it off.
+                <T>
+                  A thread whose last turn ended while background work kept running this long is
+                  listed under Possibly stuck. Pull request watches never count. 0 turns it off.
+                </T>
               </Text>
             </View>
             <PossiblyStuckHoursField

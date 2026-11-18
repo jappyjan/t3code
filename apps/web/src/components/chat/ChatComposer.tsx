@@ -4161,7 +4161,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             : showProviderUnavailable
                               ? gt("Enable a provider in Settings to send a message")
                               : activeThread?.pipeline?.stepId === null
-                                ? "Ask the coordinator to check, fix or steer this run…"
+                                ? gt("Ask the coordinator to check, fix or steer this run…")
                                 : (offeredPromptSuggestion ?? m(DEFAULT_COMPOSER_PLACEHOLDER))
                     }
                     placeholderSuffix={

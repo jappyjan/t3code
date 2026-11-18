@@ -439,16 +439,19 @@ export interface CommandPalettePipeline {
  * "Start pipeline..." targets: one submenu per project that has pipelines, listing them. Projects
  * without pipelines (or on servers without them) are left out.
  */
-export function buildStartPipelineProjectItems(input: {
-  projects: ReadonlyArray<CommandPaletteProject>;
-  pipelinesByEnvironment: ReadonlyMap<EnvironmentId, ReadonlyArray<CommandPalettePipeline>>;
-  projectIcon: (project: CommandPaletteProject) => ReactNode;
-  projectDescription?: (project: CommandPaletteProject) => ReactNode;
-  pipelineIcon: ReactNode;
-  addonIcon: ReactNode;
-  describeSteps: (steps: CommandPalettePipeline["steps"]) => string;
-  start: (project: CommandPaletteProject, pipeline: CommandPalettePipeline) => Promise<void>;
-}): CommandPaletteSubmenuItem[] {
+export function buildStartPipelineProjectItems(
+  input: {
+    projects: ReadonlyArray<CommandPaletteProject>;
+    pipelinesByEnvironment: ReadonlyMap<EnvironmentId, ReadonlyArray<CommandPalettePipeline>>;
+    projectIcon: (project: CommandPaletteProject) => ReactNode;
+    projectDescription?: (project: CommandPaletteProject) => ReactNode;
+    pipelineIcon: ReactNode;
+    addonIcon: ReactNode;
+    describeSteps: (steps: CommandPalettePipeline["steps"]) => string;
+    start: (project: CommandPaletteProject, pipeline: CommandPalettePipeline) => Promise<void>;
+  },
+  resolve: MessageResolver = m,
+): CommandPaletteSubmenuItem[] {
   return input.projects.flatMap((project): CommandPaletteSubmenuItem[] => {
     const pipelines = input.pipelinesByEnvironment.get(project.environmentId) ?? [];
     if (pipelines.length === 0) return [];
@@ -465,7 +468,7 @@ export function buildStartPipelineProjectItems(input: {
         groups: [
           {
             value: `${valuePrefix}:pipelines`,
-            label: "Pipelines",
+            label: resolve(msg("Pipelines")),
             items: pipelines.map((pipeline): CommandPaletteActionItem => ({
               kind: "action",
               value: `${valuePrefix}:${pipeline.id}`,

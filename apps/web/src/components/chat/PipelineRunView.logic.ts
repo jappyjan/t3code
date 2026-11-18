@@ -8,7 +8,9 @@ import {
 import type { PipelineStepWait } from "@t3tools/client-runtime/state/pipeline-nesting";
 import type { ModelSelection, PipelineRun, PipelineRunStep } from "@t3tools/contracts";
 import { formatModelSlugName, resolveSelectableModel } from "@t3tools/shared/model";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { getTriggerDisplayModelName } from "./providerIconUtils";
 
@@ -41,9 +43,9 @@ export function pipelineStepModelLabel(
 export type PipelineChildLiveState = "approval" | "input" | "working";
 
 const PIPELINE_CHILD_LIVE_STATE_LABEL: Record<PipelineChildLiveState, string> = {
-  approval: "Needs approval",
-  input: "Needs input",
-  working: "Working",
+  approval: msg("Needs approval"),
+  input: msg("Needs input"),
+  working: msg("Working", { $context: "pipeline step status" }),
 };
 
 /** What the step's thread is doing right now, or null when it is idle or not loaded. */
@@ -78,24 +80,28 @@ export function pipelineStepStatusDisplay(
   wait: PipelineStepWait | null = null,
   /** The run is paused at this step: a failed or stopped one waits on the user. */
   pausedAtStep = false,
+  resolve: MessageResolver = m,
 ): PipelineStepStatusDisplay {
   if (step.status === "running" && awaitingHandoff && wait === "possibly_stuck") {
-    return { label: pipelineStepWaitLabel(wait), tone: "attention" };
+    return { label: pipelineStepWaitLabel(wait, resolve), tone: "attention" };
   }
   if (step.status === "running" && liveState !== null) {
     return {
-      label: PIPELINE_CHILD_LIVE_STATE_LABEL[liveState],
+      label: resolve(PIPELINE_CHILD_LIVE_STATE_LABEL[liveState]),
       tone: liveState === "working" ? "working" : "attention",
     };
   }
   if (step.status === "running" && awaitingHandoff && wait !== null) {
-    return { label: pipelineStepWaitLabel(wait), tone: "default" };
+    return { label: pipelineStepWaitLabel(wait, resolve), tone: "default" };
   }
   if (step.status === "running" && awaitingHandoff) {
-    return { label: "No handoff", tone: "attention" };
+    return {
+      label: resolve(msg("No handoff", { $context: "pipeline step status" })),
+      tone: "attention",
+    };
   }
   return {
-    label: pipelineStepStatusLabel(step),
+    label: pipelineStepStatusLabel(step, resolve),
     tone:
       pausedAtStep &&
       (step.status === "failed" || step.status === "stopped" || step.status === "cancelled")

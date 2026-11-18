@@ -510,9 +510,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "possibly-stuck-after-hours",
-    title: "Mark threads as possibly stuck after",
+    title: msg("Mark threads as possibly stuck after"),
     to: "/settings/threads",
-    searchTerms: ["stale stuck background work hours monitor dev server sidebar group"],
+    searchTerms: [msg("stale stuck background work hours monitor dev server sidebar group")],
   },
   {
     id: "working-shelf",
@@ -1165,10 +1165,12 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "pipelines",
-    title: "Pipelines",
+    title: msg("Pipelines"),
     to: "/settings/pipelines",
     searchTerms: [
-      "workflow chain steps sequence implement review handoff multi model agents prompt template pause",
+      msg(
+        "workflow chain steps sequence implement review handoff multi model agents prompt template pause",
+      ),
     ],
   },
   {

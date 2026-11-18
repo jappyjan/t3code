@@ -420,11 +420,15 @@ export const ChatHeader = memo(function ChatHeader({
           size="xs"
           variant="ghost-muted"
           className="relative shrink-0"
-          aria-label={coordinatorUnread ? "Coordinator (new reply)" : "Coordinator"}
+          aria-label={
+            coordinatorUnread
+              ? gt("Coordinator (new reply)")
+              : gt("Coordinator", { $context: "pipeline coordinator chat" })
+          }
           onClick={onOpenCoordinator}
         >
           <MessageSquareIcon className="size-3" />
-          Coordinator
+          {gt("Coordinator", { $context: "pipeline coordinator chat" })}
           {coordinatorUnread ? (
             <span aria-hidden className="absolute end-0.5 top-0.5 size-1.5 rounded-full bg-info" />
           ) : null}

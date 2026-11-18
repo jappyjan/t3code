@@ -164,7 +164,7 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     iconTintClassName: "accent-foreground-muted",
   },
   stuck: {
-    label: "Possibly stuck",
+    label: msg("Possibly stuck", { $context: "thread status" }),
     icon: "exclamationmark.circle",
     className: "text-warning-foreground",
     iconTintClassName: "accent-warning-foreground",
@@ -259,6 +259,7 @@ function PipelineProgressLine(props: {
   readonly iconTintClassName: string;
   readonly countClassName: string;
 }) {
+  const gt = useGT();
   const content = (
     <>
       {props.expanded === undefined ? null : (
@@ -292,7 +293,7 @@ function PipelineProgressLine(props: {
       // Padding cancelled by negative margin grows the touch target without moving the bar.
       className="-my-1.5 flex-row items-center gap-1.5 py-1.5"
       accessibilityRole="button"
-      accessibilityLabel={props.expanded ? "Hide pipeline steps" : "Show pipeline steps"}
+      accessibilityLabel={props.expanded ? gt("Hide pipeline steps") : gt("Show pipeline steps")}
       accessibilityState={{ expanded: props.expanded }}
       onPress={props.onToggle}
       // Handle long-press so opening the iOS row menu cannot also toggle the steps on release.
@@ -454,10 +455,12 @@ const SHELF_COPY = {
     expand: msg("Expands the working threads."),
   },
   stuck: {
-    label: "Possibly stuck",
-    count: "{count, plural, one {{count} possibly stuck thread} other {{count} possibly stuck threads}}",
-    collapse: "Collapses the possibly stuck threads.",
-    expand: "Expands the possibly stuck threads.",
+    label: msg("Possibly stuck", { $context: "thread list section" }),
+    count: msg(
+      "{count, plural, one {{count} possibly stuck thread} other {{count} possibly stuck threads}}",
+    ),
+    collapse: msg("Collapses the possibly stuck threads."),
+    expand: msg("Expands the possibly stuck threads."),
   },
   snoozed: {
     label: msg("Snoozed", { $context: "thread list section" }),
@@ -1088,15 +1091,15 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
         : [
             {
               name: "togglePipelineSteps",
-              label: pipelineExpanded ? "Hide pipeline steps" : "Show pipeline steps",
+              label: pipelineExpanded ? gt("Hide pipeline steps") : gt("Show pipeline steps"),
             },
           ],
-    [pipelineExpanded],
+    [gt, pipelineExpanded],
   );
   const rowAccessibilityActions = useMemo(
     () => [
       ...(attentionBadge && props.attentionLabel !== undefined
-        ? [{ name: "openAttention", label: `Open ${props.attentionLabel}` }]
+        ? [{ name: "openAttention", label: gt("Open {name}", { name: props.attentionLabel }) }]
         : []),
       ...(prBadgeLabel ? [{ name: "openPullRequests", label: prBadgeLabel }] : []),
       ...(showsWoke ? [{ name: "dismissWoke", label: gt("Dismiss Woke notification") }] : []),
@@ -1119,7 +1122,10 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
         title:
           earlierAttemptLabel === null
             ? thread.title
-            : `${earlierAttemptLabel}, attempt ${props.earlierAttempt}`,
+            : gt("{label}, attempt {attempt}", {
+                label: earlierAttemptLabel,
+                attempt: props.earlierAttempt,
+              }),
         variant,
         woke: showsWoke,
         // Working and waiting rows show only an icon and a duration, so name them for speech.
@@ -2019,7 +2025,7 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
                   {earlierAttemptLabel}
                 </Text>
                 <Text className={cn(titleClassName, "shrink-0")} numberOfLines={1}>
-                  {` · attempt ${props.earlierAttempt}`}
+                  {` · ${gt("attempt {attempt}", { attempt: props.earlierAttempt })}`}
                 </Text>
               </View>
             )}
@@ -2115,8 +2121,8 @@ const ThreadListV2ThreadRow = memo(function ThreadListV2ThreadRow(props: {
                   },
                 ]
               : []),
-            { id: "copy-thread", title: "Copy thread", image: "text.bubble" },
-            { id: "copy-thread-id", title: "Copy thread ID", image: "doc.on.doc" },
+            { id: "copy-thread", title: gt("Copy thread"), image: "text.bubble" },
+            { id: "copy-thread-id", title: gt("Copy thread ID"), image: "doc.on.doc" },
             ...nestedMenuActions,
           ]}
           onPressAction={handleMenuAction}
