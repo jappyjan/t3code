@@ -159,7 +159,7 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     iconTintClassName: "accent-adaptive-sky-600-400",
   },
   queued: {
-    label: "Queued",
+    label: msg("Queued", { $context: "thread status" }),
     icon: "clock",
     className: "text-foreground-muted",
     iconTintClassName: "accent-foreground-muted",

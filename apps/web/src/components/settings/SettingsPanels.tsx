@@ -854,6 +854,9 @@ function PossiblyStuckHoursInput({
 }
 
 function HostCapacitySettings(props: { readonly environmentId: EnvironmentId }) {
+  const gt = useGT();
+  const m = useMessages();
+  const setting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const admission = useServerConfigs().get(props.environmentId)?.hostAdmission;
@@ -862,12 +865,14 @@ function HostCapacitySettings(props: { readonly environmentId: EnvironmentId }) 
     admission !== undefined &&
     (settings.paceNewTurnsByHostLoad || settings.maxRunningTurns !== null);
   return (
-    <SettingsSection id="host-capacity" title="Host capacity">
+    <SettingsSection id="host-capacity" title={gt("Host capacity")}>
       <SettingsRow
         serverScoped
         settingKeys={["paceNewTurnsByHostLoad"]}
-        {...searchableSetting("pace-new-turns-by-host-load")}
-        description="Holds new turns while memory is critically low and starts them one at a time while the host is busy."
+        {...setting("pace-new-turns-by-host-load")}
+        description={gt(
+          "Holds new turns while memory is critically low and starts them one at a time while the host is busy.",
+        )}
         control={
           <ScopedSwitch
             settingKeys={["paceNewTurnsByHostLoad"]}
@@ -875,18 +880,18 @@ function HostCapacitySettings(props: { readonly environmentId: EnvironmentId }) 
             onCheckedChange={(checked) =>
               updateSettings({ paceNewTurnsByHostLoad: Boolean(checked) })
             }
-            aria-label="Pace new turns by host load"
+            aria-label={gt("Pace new turns by host load")}
           />
         }
       />
       <SettingsRow
         serverScoped
         settingKeys={["maxRunningTurns"]}
-        {...searchableSetting("limit-running-turns")}
+        {...setting("limit-running-turns")}
         description={
           showCounts
-            ? hostAdmissionCounts(admission)
-            : "Further turns wait until a running one finishes. Running turns are never paused."
+            ? hostAdmissionCounts(admission, m)
+            : gt("Further turns wait until a running one finishes. Running turns are never paused.")
         }
         control={
           <ScopedSwitch
@@ -895,7 +900,7 @@ function HostCapacitySettings(props: { readonly environmentId: EnvironmentId }) 
             onCheckedChange={(checked) =>
               updateSettings({ maxRunningTurns: checked ? DEFAULT_MAX_RUNNING_TURNS : null })
             }
-            aria-label="Limit running turns"
+            aria-label={gt("Limit running turns")}
           />
         }
       />
@@ -903,13 +908,13 @@ function HostCapacitySettings(props: { readonly environmentId: EnvironmentId }) 
         <SettingsRow
           serverScoped
           settingKeys={["maxRunningTurns"]}
-          title={searchableSetting("maximum-running-turns").title}
+          title={setting("maximum-running-turns").title}
           control={
             <BoundedIntegerInput
               value={settings.maxRunningTurns}
               min={MIN_MAX_RUNNING_TURNS}
               max={MAX_MAX_RUNNING_TURNS}
-              label="Maximum running turns"
+              label={gt("Maximum running turns")}
               onCommit={(turns, options) => updateSettings({ maxRunningTurns: turns }, options)}
             />
           }
@@ -934,7 +939,6 @@ function BoundedIntegerInput({
   label: string;
   onCommit: (value: number, options: { onFailed: () => void }) => void;
 }) {
-  const gt = useGT();
   const [stored, setField] = useState(() => autoSettleDaysField(value));
   const field = syncAutoSettleDaysField(stored, value);
   if (field !== stored) setField(field);

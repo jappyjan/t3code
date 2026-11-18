@@ -1391,7 +1391,7 @@ export function resolveThreadStatusPill(input: {
 
   if (threadRuntimeAwaitsTurn(thread.runtime)) {
     return {
-      label: msg("Queued", { $context: "thread status: waiting for the host" }),
+      label: msg("Queued"),
       colorClass: "text-sidebar-muted-foreground",
       dotClass: "bg-sidebar-muted-foreground",
       pulse: false,

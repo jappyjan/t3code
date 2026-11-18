@@ -253,6 +253,8 @@ export function HostCapacitySettingsRows(props: {
   readonly write: (patch: ServerSettingsPatch) => void;
   readonly pending: boolean;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const { selectedTargets, selectedProjectKey } = useSettingsEnvironmentFilter();
   const writableEnvironments = useEnvironmentsWithScope(selectedTargets, AuthSettingsWriteScope);
   const serverConfigs = useServerConfigs();
@@ -270,7 +272,7 @@ export function HostCapacitySettingsRows(props: {
   const disabledFor = (key: string) =>
     props.pending ||
     !writableEnvironments.has(target.environmentId) ||
-    managedSettingReason(displayTargets, key) !== undefined;
+    managedSettingReason(displayTargets, [key]) !== undefined;
   const maxRunningTurns = settings.maxRunningTurns;
   const admission = serverConfigs.get(target.environmentId)?.hostAdmission;
   // The server republishes counts only while a setting is on, so they go stale once both are off.
@@ -278,22 +280,24 @@ export function HostCapacitySettingsRows(props: {
     admission !== undefined && (settings.paceNewTurnsByHostLoad || maxRunningTurns !== null);
 
   return (
-    <SettingsSection title="Host capacity">
+    <SettingsSection title={gt("Host capacity")}>
       <SettingsSwitchRow
         icon="clock"
-        label="Pace new turns by host load"
-        subtitle="Holds new turns while memory is critically low and starts them one at a time while the host is busy."
+        label={gt("Pace new turns by host load")}
+        subtitle={gt(
+          "Holds new turns while memory is critically low and starts them one at a time while the host is busy.",
+        )}
         value={settings.paceNewTurnsByHostLoad}
         disabled={disabledFor("paceNewTurnsByHostLoad")}
         onValueChange={(value) => props.write({ paceNewTurnsByHostLoad: value })}
       />
       <SettingsSwitchRow
         icon="bolt.circle"
-        label="Limit running turns"
+        label={gt("Limit running turns")}
         subtitle={
           showCounts
-            ? hostAdmissionCounts(admission)
-            : "Further turns wait until a running one finishes. Running turns are never paused."
+            ? hostAdmissionCounts(admission, messages)
+            : gt("Further turns wait until a running one finishes. Running turns are never paused.")
         }
         value={maxRunningTurns !== null}
         disabled={disabledFor("maxRunningTurns")}
@@ -305,7 +309,7 @@ export function HostCapacitySettingsRows(props: {
         <View className="flex-row items-center gap-4 px-4 py-4 android:min-h-14 android:py-3">
           <View className="w-[22px] android:w-6" />
           <Text className="flex-1 text-foreground text-lg android:text-base">
-            Maximum running turns
+            <T>Maximum running turns</T>
           </Text>
           <HostCapacityTurnsField
             value={maxRunningTurns}

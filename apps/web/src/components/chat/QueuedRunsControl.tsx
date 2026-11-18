@@ -362,7 +362,7 @@ export function QueuedRunsControl({
                 ) : null}
                 {item.admissionWait ? (
                   <span className="px-1">
-                    {hostAdmissionWaitReason(item.admissionWait, hostAdmission)}
+                    {hostAdmissionWaitReason(item.admissionWait, hostAdmission, messages)}
                   </span>
                 ) : null}
                 {item.pending ? (

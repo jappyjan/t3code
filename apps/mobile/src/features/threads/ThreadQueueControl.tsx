@@ -294,7 +294,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           isGuestMessage: context?.guest !== undefined,
           text,
         });
-        const admissionReason = hostAdmissionWaitReason(run.admissionWait, hostAdmission);
+        const admissionReason = hostAdmissionWaitReason(run.admissionWait, hostAdmission, m);
         const title =
           controls.displayText ||
           (attachments.length > 0 ? gt("Attachments") : gt("Queued message"));

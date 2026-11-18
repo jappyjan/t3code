@@ -98,7 +98,7 @@ function rowStatusLabel(
 ): string {
   switch (status) {
     case "pending":
-      return "Queued";
+      return resolve(msg("Queued", { $context: "agent status" }));
     case "running":
       return resolve(msg("Working", { $context: "agent status" }));
     case "waiting":
