@@ -6,6 +6,7 @@ import {
 } from "@t3tools/client-runtime/host-admission-presentation";
 import type { EnvironmentId, HostAdmissionState, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT, useMessages } from "gt-react";
 import { ClockIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -42,9 +43,15 @@ function HostAdmissionPill(props: {
   readonly admission: HostAdmissionState;
 }) {
   const { admission } = props;
-  const prefix = props.label === null ? "" : `${props.label}: `;
-  const title = `${prefix}${hostAdmissionWaitingLabel(admission)}`;
-  const reason = hostAdmissionHoldReason(admission);
+  const gt = useGT();
+  const messages = useMessages();
+  const waitingLabel = hostAdmissionWaitingLabel(admission, messages);
+  const summary = hostAdmissionSummary(admission, messages);
+  const title =
+    props.label === null
+      ? waitingLabel
+      : gt("{environment}: {status}", { environment: props.label, status: waitingLabel });
+  const reason = hostAdmissionHoldReason(admission, messages);
   return (
     <Popover>
       <PopoverTrigger
@@ -58,13 +65,19 @@ function HostAdmissionPill(props: {
         }
       >
         <ClockIcon />
-        <span className="min-w-0 truncate">{`${prefix}${hostAdmissionSummary(admission)}`}</span>
+        <span className="min-w-0 truncate">
+          {props.label === null
+            ? summary
+            : gt("{environment}: {status}", { environment: props.label, status: summary })}
+        </span>
       </PopoverTrigger>
       <PopoverPopup side="top" align="start" padding="compact">
         <div className="w-72 max-w-full">
           <PopoverTitle>{title}</PopoverTitle>
           <p className="mt-1 text-2xs text-muted-foreground">
-            {`${reason === null ? "" : `${reason}. `}Start one now from its thread.`}
+            {reason === null
+              ? gt("Start one now from its thread.")
+              : gt("{reason}. Start one now from its thread.", { reason })}
           </p>
           <ul className="mt-2 flex max-h-60 flex-col gap-1 overflow-y-auto">
             {admission.waitingThreadIds.map((threadId) => (
@@ -85,6 +98,7 @@ function WaitingThreadRow(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const gt = useGT();
   const navigate = useNavigate();
   const threadRef = scopeThreadRef(props.environmentId, props.threadId);
   const thread = useThreadShell(threadRef);
@@ -99,7 +113,7 @@ function WaitingThreadRow(props: {
           })
         }
       >
-        <span className="truncate">{thread?.title ?? "Untitled thread"}</span>
+        <span className="truncate">{thread?.title ?? gt("Untitled thread")}</span>
       </InlineButton>
     </li>
   );
