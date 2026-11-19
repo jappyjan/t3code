@@ -116,7 +116,7 @@ export const IssueListRow = memo(function IssueListRow(props: {
               </View>
               {props.blocked ? (
                 <Text className="shrink-0 rounded-full bg-danger/15 px-1.5 text-2xs font-t3-medium text-danger-foreground">
-                  Blocked
+                  {gt("Blocked", { $context: "issue status badge" })}
                 </Text>
               ) : null}
               {subIssueCount > 0 ? (

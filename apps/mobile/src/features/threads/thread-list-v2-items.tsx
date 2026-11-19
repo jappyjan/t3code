@@ -46,7 +46,7 @@ import {
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { MenuAction } from "@react-native-menu/menu";
 import { useNavigation } from "@react-navigation/native";
-import { msg, T, useGT, useMessages } from "gt-react-native";
+import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Platform, Pressable, Text as RNText, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";

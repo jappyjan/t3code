@@ -4,7 +4,7 @@ import { contextMenuSourceOf } from "../../contextMenuSource";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
-import { T, useGT, useMessages } from "gt-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { SquarePenIcon, XIcon } from "lucide-react";
 import {
   memo,
@@ -177,7 +177,9 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
             </span>
             {props.linearIdentifier ? (
               <span className="shrink-0 text-2xs text-muted-foreground">
-                Draft · from {props.linearIdentifier}
+                <T>
+                  Draft · from <Var>{props.linearIdentifier}</Var>
+                </T>
               </span>
             ) : null}
             <span

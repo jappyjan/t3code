@@ -16,6 +16,8 @@ import {
   formatTokenEstimate,
 } from "@t3tools/shared/linearLaunch";
 import * as Schema from "effect/Schema";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 export type LinearLaunchWorkspace = "worktree" | "local";
 
@@ -214,7 +216,7 @@ export function pipelineInputText(input: {
 }
 
 /** Size of the input; `startable` when it is non-empty and within the limit. */
-export function pipelineInputSummary(text: string) {
+export function pipelineInputSummary(text: string, resolve: MFunctionType = mFallback) {
   const tokens = formatTokenEstimate(text.length);
   const overLimit = text.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
   return {
@@ -222,7 +224,10 @@ export function pipelineInputSummary(text: string) {
     overLimit,
     startable: text.trim().length > 0 && !overLimit,
     sizeLabel: overLimit
-      ? `${tokens} · over the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS.toLocaleString("en-US")} character limit`
+      ? resolve(msg("{tokens} · over the {limit} character limit"), {
+          tokens,
+          limit: PROVIDER_SEND_TURN_MAX_INPUT_CHARS.toLocaleString("en-US"),
+        })
       : tokens,
   };
 }

@@ -1302,10 +1302,10 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "git-host-issues",
-    title: "Issues from git hosts",
+    title: msg("Issues from git hosts"),
     to: "/settings/source-control",
     environmentOnly: true,
-    searchTerms: ["issues page github gitlab linear only hide noise tracker list"],
+    searchTerms: [msg("issues page github gitlab linear only hide noise tracker list")],
   },
   {
     id: "issue-trackers",

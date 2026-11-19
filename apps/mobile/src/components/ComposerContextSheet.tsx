@@ -87,6 +87,7 @@ function ContextSource(props: { source: ElementContextSource | null }) {
 
 function LinearIssueSnapshot(props: { readonly record: LinearIssueContextRecord }) {
   const { record } = props;
+  const gt = useGT();
   const breadcrumb = [record.teamName, record.projectName, record.milestoneName].filter(
     (part): part is string => part !== null && part.length > 0,
   );
@@ -98,15 +99,21 @@ function LinearIssueSnapshot(props: { readonly record: LinearIssueContextRecord 
   return (
     <View className="gap-4">
       <ContextField label={breadcrumb.join(" › ")} value={`${record.identifier} ${record.title}`} />
-      <ContextField label="Status" value={meta.join(" · ")} />
-      <ContextField label="Labels" value={record.labels.join(", ")} />
       <ContextField
-        label="Description"
+        label={gt("Status", { $context: "issue workflow state" })}
+        value={meta.join(" · ")}
+      />
+      <ContextField
+        label={gt("Labels", { $context: "issue labels" })}
+        value={record.labels.join(", ")}
+      />
+      <ContextField
+        label={gt("Description")}
         value={excerpt.length < description.length ? `${excerpt}…` : excerpt}
       />
       {record.subIssues.length > 0 ? (
         <ContextField
-          label={`Sub-issues (${record.subIssues.length})`}
+          label={gt("Sub-issues ({count})", { count: record.subIssues.length })}
           value={record.subIssues
             .slice(0, 5)
             .map((sub) => `${sub.identifier} ${sub.title}`)
@@ -116,7 +123,7 @@ function LinearIssueSnapshot(props: { readonly record: LinearIssueContextRecord 
       ) : null}
       {record.blockedBy && record.blockedBy.length > 0 ? (
         <ContextField
-          label="Blocked by"
+          label={gt("Blocked by")}
           value={record.blockedBy
             .map((blocker) => `${blocker.identifier} ${blocker.title}`)
             .join("\n")}
@@ -124,7 +131,7 @@ function LinearIssueSnapshot(props: { readonly record: LinearIssueContextRecord 
       ) : null}
       {record.comments.length > 0 ? (
         <ContextField
-          label={`Comments (${record.comments.length})`}
+          label={gt("Comments ({count})", { count: record.comments.length })}
           value={record.comments
             .slice(-2)
             .map(
@@ -134,11 +141,11 @@ function LinearIssueSnapshot(props: { readonly record: LinearIssueContextRecord 
         />
       ) : null}
       <Text className="text-xs text-foreground-muted">
-        Snapshot taken when attached; later edits in Linear are not included.
+        <T>Snapshot taken when attached; later edits in Linear are not included.</T>
       </Text>
       {/^https?:\/\//i.test(record.url) ? (
         <Button
-          label="Open in Linear"
+          label={gt("Open in Linear")}
           tone="secondary"
           onPress={() => void tryOpenExternalUrl(record.url, "markdown-link")}
           fullWidth

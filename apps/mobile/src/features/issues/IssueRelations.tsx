@@ -6,6 +6,7 @@ import {
   type IssueRelatedRef,
 } from "@t3tools/contracts";
 import { sortBlockers } from "@t3tools/shared/linearLaunch";
+import { useGT } from "gt-react-native";
 import { Pressable, View } from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -44,6 +45,7 @@ export function IssueRelations(props: {
   readonly detail: IssueDetail;
 }) {
   const { params, detail } = props;
+  const gt = useGT();
   const navigation = useNavigation();
   const containers = detail.containers ?? [];
   const project = containers.find((container) => container.kind === "project");
@@ -91,7 +93,9 @@ export function IssueRelations(props: {
       {project ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Browse ${containers.map((container) => container.name).join(", ")}`}
+          accessibilityLabel={gt("Browse {containers}", {
+            containers: containers.map((container) => container.name).join(", "),
+          })}
           onPress={openContainer}
           className="flex-row items-center gap-2 active:opacity-70"
         >
@@ -105,7 +109,7 @@ export function IssueRelations(props: {
       {detail.branchName ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Branch ${detail.branchName}. Copy`}
+          accessibilityLabel={gt("Branch {branch}. Copy", { branch: detail.branchName })}
           onPress={() => copyTextWithHaptic(detail.branchName!, { target: "branch name" })}
           className="flex-row items-center gap-2 active:opacity-70"
         >
@@ -123,7 +127,7 @@ export function IssueRelations(props: {
       {detail.priorityLabel ? (
         <View
           accessible
-          accessibilityLabel={`Priority ${detail.priorityLabel}`}
+          accessibilityLabel={gt("Priority {priority}", { priority: detail.priorityLabel })}
           className="flex-row items-center gap-2"
         >
           <SymbolView name="chart.bar.xaxis" size={14} tintColorClassName="accent-icon-muted" />

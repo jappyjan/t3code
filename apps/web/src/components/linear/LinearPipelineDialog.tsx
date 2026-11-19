@@ -16,9 +16,11 @@ import { nextPipelineStartAttempt } from "@t3tools/client-runtime/pipeline-start
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, IssueDetail, PipelineDefinition } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { WorkflowIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { m } from "~/i18n/messages";
 import { randomUUID } from "../../lib/utils";
 import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
@@ -96,6 +98,7 @@ function PipelineChoice({
   readonly selected: boolean;
   readonly lastUsed: boolean;
 }) {
+  const gt = useGT();
   return (
     <label
       className={`block cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${selected ? "border-primary bg-primary/5" : "border-border/70 hover:bg-accent/40"}`}
@@ -104,11 +107,13 @@ function PipelineChoice({
         <Radio value={pipeline.id} />
         <span className="text-sm font-medium text-foreground">{pipeline.name}</span>
         <span className="text-xs text-muted-foreground">
-          {pipeline.steps.length} {pipeline.steps.length === 1 ? "step" : "steps"}
+          {gt("{count, plural, one {{count} step} other {{count} steps}}", {
+            count: pipeline.steps.length,
+          })}
         </span>
         {lastUsed ? (
           <span className="ms-auto rounded border border-border px-1.5 py-px text-2xs text-muted-foreground">
-            Last used
+            <T>Last used</T>
           </span>
         ) : null}
       </div>
@@ -132,6 +137,8 @@ function PipelineDialogBody({
   readonly detail: IssueDetail;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const navigate = useNavigate();
   const storage = typeof window === "undefined" ? undefined : window.localStorage;
   const allProjects = useProjects();
@@ -205,7 +212,8 @@ function PipelineDialogBody({
   const baseRef = projectStatus.data?.refName ?? null;
 
   const text = pipelineInputText({ detail, edited });
-  const summary = pipelineInputSummary(text);
+  const summary = pipelineInputSummary(text, messages);
+  const runsInTitle = project?.title ?? issueProject?.title;
   const canStart =
     !pending && pipeline !== null && machine !== null && project !== null && summary.startable;
 
@@ -233,7 +241,9 @@ function PipelineDialogBody({
     setPending(false);
     if (result._tag === "Failure") {
       const failure = squashAtomCommandFailure(result);
-      setError(failure instanceof Error ? failure.message : "Failed to start the pipeline.");
+      setError(
+        failure instanceof Error ? failure.message : m(msg("Failed to start the pipeline.")),
+      );
       return;
     }
     const run = result.value.run;
@@ -250,8 +260,14 @@ function PipelineDialogBody({
     toastManager.add(
       stackedThreadToast({
         type: "success",
-        title: "Pipeline started",
-        description: `${pipeline.name} on ${detail.displayKey}${isPrimaryRun ? "" : ` · ${machine.label}`}`,
+        title: m(msg("Pipeline started")),
+        description: isPrimaryRun
+          ? m(msg("{pipeline} on {issue}"), { pipeline: pipeline.name, issue: detail.displayKey })
+          : m(msg("{pipeline} on {issue} · {machine}"), {
+              pipeline: pipeline.name,
+              issue: detail.displayKey,
+              machine: machine.label,
+            }),
       }),
     );
     void navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(parentRef) });
@@ -262,7 +278,9 @@ function PipelineDialogBody({
       <DialogHeader>
         <div className="flex items-center gap-2">
           <WorkflowIcon aria-hidden className="size-4 text-muted-foreground" />
-          <DialogTitle>Run pipeline from issue</DialogTitle>
+          <DialogTitle>
+            <T>Run pipeline from issue</T>
+          </DialogTitle>
         </div>
         <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
           <span className="font-mono text-xs">{detail.displayKey}</span>
@@ -272,14 +290,18 @@ function PipelineDialogBody({
       <DialogPanel>
         <div className="space-y-4">
           <section className="space-y-1.5">
-            <h3 className="text-xs font-medium text-muted-foreground">Pipeline</h3>
+            <h3 className="text-xs font-medium text-muted-foreground">
+              <T>Pipeline</T>
+            </h3>
             {pipelines.pipelines.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {!pipelines.loaded
-                  ? "Loading pipelines..."
+                  ? gt("Loading pipelines...")
                   : machineState.listEnvironmentId !== environmentId && listMachineLabel !== null
-                    ? `No pipelines on ${listMachineLabel}. Choose another machine.`
-                    : "No pipelines yet. Create one in Settings, then come back."}
+                    ? gt("No pipelines on {machine}. Choose another machine.", {
+                        machine: listMachineLabel,
+                      })
+                    : gt("No pipelines yet. Create one in Settings, then come back.")}
               </p>
             ) : (
               <RadioGroup
@@ -302,8 +324,17 @@ function PipelineDialogBody({
             )}
             {unmatchedName !== null && pipeline !== null ? (
               <p role="status" className="text-xs text-muted-foreground">
-                &quot;{unmatchedName}&quot; isn&apos;t on {listMachineLabel ?? "this machine"}, so{" "}
-                {pipeline.name} is selected.
+                {listMachineLabel === null ? (
+                  <T>
+                    &quot;<Var>{unmatchedName}</Var>&quot; isn&apos;t on this machine, so{" "}
+                    <Var>{pipeline.name}</Var> is selected.
+                  </T>
+                ) : (
+                  <T>
+                    &quot;<Var>{unmatchedName}</Var>&quot; isn&apos;t on{" "}
+                    <Var>{listMachineLabel}</Var>, so <Var>{pipeline.name}</Var> is selected.
+                  </T>
+                )}
               </p>
             ) : null}
           </section>
@@ -311,20 +342,22 @@ function PipelineDialogBody({
           <section className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-xs font-medium text-muted-foreground">
-                Input{" "}
-                <span className="font-normal">
-                  · the pipeline&apos;s first step receives this as text
-                </span>
+                <T>
+                  Input{" "}
+                  <span className="font-normal">
+                    · the pipeline&apos;s first step receives this as text
+                  </span>
+                </T>
               </h3>
               <div className="flex items-center gap-2">
                 {edited !== null ? (
                   <Button type="button" variant="ghost" size="xs" onClick={() => setEdited(null)}>
-                    Reset edits
+                    <T>Reset edits</T>
                   </Button>
                 ) : null}
                 <div
                   role="tablist"
-                  aria-label="Input view"
+                  aria-label={gt("Input view")}
                   className="flex rounded-md bg-muted p-0.5 text-xs"
                 >
                   {(["preview", "edit"] as const).map((value) => (
@@ -336,7 +369,9 @@ function PipelineDialogBody({
                       onClick={() => setTab(value)}
                       className={`rounded px-2 py-0.5 capitalize ${tab === value ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
                     >
-                      {value}
+                      {value === "preview"
+                        ? gt("preview", { $context: "tab showing the rendered input" })
+                        : gt("edit", { $context: "tab for editing the input text" })}
                     </button>
                   ))}
                 </div>
@@ -349,7 +384,7 @@ function PipelineDialogBody({
                 </div>
               ) : (
                 <Textarea
-                  aria-label="Pipeline input"
+                  aria-label={gt("Pipeline input")}
                   value={text}
                   onChange={(event) => setEdited(event.target.value)}
                   unstyled
@@ -370,24 +405,26 @@ function PipelineDialogBody({
           <div className="grid gap-3 sm:grid-cols-2">
             {machines.length >= 2 ? (
               <section className="min-w-0 space-y-1.5">
-                <h3 className="text-xs font-medium text-muted-foreground">Machine</h3>
+                <h3 className="text-xs font-medium text-muted-foreground">
+                  <T>Machine</T>
+                </h3>
                 <Select
                   value={machineState.effective as string | null}
                   onValueChange={(value) => {
                     if (value !== null) machineState.choose(value as EnvironmentId | "auto");
                   }}
                 >
-                  <SelectTrigger aria-label="Machine" className="w-full">
+                  <SelectTrigger aria-label={gt("Machine")} className="w-full">
                     <SelectValue>
                       {() => {
                         if (machineState.effective !== "auto") {
-                          return machine?.label ?? "Choose a machine";
+                          return machine?.label ?? gt("Choose a machine");
                         }
-                        if (auto.state.kind === "checking") return "Checking machines…";
+                        if (auto.state.kind === "checking") return gt("Checking machines…");
                         if (auto.state.kind === "unavailable") {
-                          return "Auto balance unavailable. Choose a machine";
+                          return gt("Auto balance unavailable. Choose a machine");
                         }
-                        return `Auto balance · ${machine?.label ?? ""}`;
+                        return gt("Auto balance · {machine}", { machine: machine?.label ?? "" });
                       }}
                     </SelectValue>
                   </SelectTrigger>
@@ -402,7 +439,7 @@ function PipelineDialogBody({
                           auto.recheck();
                         }}
                       >
-                        Auto balance
+                        <T>Auto balance</T>
                       </SelectItem>
                     ) : null}
                     {machines.map((candidate) => (
@@ -415,35 +452,49 @@ function PipelineDialogBody({
               </section>
             ) : null}
             <section className="min-w-0 space-y-1.5">
-              <h3 className="text-xs font-medium text-muted-foreground">Workspace</h3>
+              <h3 className="text-xs font-medium text-muted-foreground">
+                <T>Workspace</T>
+              </h3>
               <Select
                 value={workspace}
                 onValueChange={(value) => {
                   if (value === "worktree" || value === "local") setWorkspace(value);
                 }}
               >
-                <SelectTrigger aria-label="Workspace" className="w-full">
+                <SelectTrigger aria-label={gt("Workspace")} className="w-full">
                   <SelectValue>
                     {() =>
                       workspace === "worktree" ? (
                         <span className="flex min-w-0 items-baseline gap-2">
-                          <span>New worktree</span>
+                          <span>
+                            <T>New worktree</T>
+                          </span>
                           <span className="truncate font-mono text-xs text-muted-foreground">
                             {branchName}
                           </span>
                         </span>
                       ) : (
-                        "Local checkout"
+                        gt("Local checkout")
                       )
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="start" alignItemWithTrigger={false}>
                   <SelectItem value="worktree">
-                    New worktree{branchName ? ` · ${branchName}` : ""}
-                    {baseRef ? ` from ${baseRef}` : ""}
+                    {branchName
+                      ? baseRef
+                        ? gt("New worktree · {branch} from {base}", {
+                            branch: branchName,
+                            base: baseRef,
+                          })
+                        : gt("New worktree · {branch}", { branch: branchName })
+                      : baseRef
+                        ? gt("New worktree from {base}", { base: baseRef })
+                        : gt("New worktree")}
                   </SelectItem>
-                  <SelectItem value="local">Local checkout</SelectItem>
+                  <SelectItem value="local">
+                    <T>Local checkout</T>
+                  </SelectItem>
                 </SelectPopup>
               </Select>
             </section>
@@ -451,7 +502,7 @@ function PipelineDialogBody({
 
           {issueProject === null ? (
             <p role="alert" className="text-sm text-destructive">
-              The project this issue is read through is not on this machine.
+              <T>The project this issue is read through is not on this machine.</T>
             </p>
           ) : null}
           {error !== null ? (
@@ -463,16 +514,21 @@ function PipelineDialogBody({
       </DialogPanel>
       <DialogFooter className="items-center sm:justify-between">
         <p className="text-xs text-muted-foreground">
-          Runs in {project?.title ?? issueProject?.title ?? "the issue's project"}. Steps use their
-          own models.
+          {runsInTitle === undefined ? (
+            <T>Runs in the issue&apos;s project. Steps use their own models.</T>
+          ) : (
+            <T>
+              Runs in <Var>{runsInTitle}</Var>. Steps use their own models.
+            </T>
+          )}
         </p>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={pending}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button type="button" size="sm" disabled={!canStart} onClick={() => void start()}>
             {pending ? <Spinner size="sm" /> : null}
-            Start pipeline
+            <T>Start pipeline</T>
           </Button>
         </div>
       </DialogFooter>

@@ -323,11 +323,11 @@ export function IssuesScreen(
         header={
           <View className="flex-row">
             <Chip
-              label="Issue list"
+              label={gt("Issue list")}
               icon="line.3.horizontal"
               glass
               colorScheme={themeAppearance}
-              accessibilityLabel="Show the issue list"
+              accessibilityLabel={gt("Show the issue list")}
               onPress={() => setShowList(true)}
             />
           </View>
@@ -429,12 +429,12 @@ export function IssuesScreen(
               />
               {browseTeams.length > 0 ? (
                 <Chip
-                  label="Projects"
+                  label={gt("Projects")}
                   icon="folder.fill"
                   trailingIcon="chevron.right"
                   glass
                   colorScheme={themeAppearance}
-                  accessibilityLabel="Browse projects"
+                  accessibilityLabel={gt("Browse projects")}
                   onPress={() =>
                     standaloneOnly
                       ? setShowList(false)

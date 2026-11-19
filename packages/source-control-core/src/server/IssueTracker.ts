@@ -99,13 +99,13 @@ export interface TrackerIssueDetail extends TrackerIssueSummary {
   readonly commentsCursor: string | null;
   readonly events: ReadonlyArray<IssueEvent>;
   readonly linkedPullRequests: ReadonlyArray<IssueLinkedPullRequest>;
-  readonly branchName?: string;
-  readonly priorityLabel?: string;
-  readonly containers?: ReadonlyArray<IssueContainerRef>;
-  readonly parent?: IssueRelatedRef;
-  readonly subIssues?: ReadonlyArray<IssueRelatedRef>;
-  readonly blockedBy?: ReadonlyArray<IssueRelatedRef>;
-  readonly blocks?: ReadonlyArray<IssueRelatedRef>;
+  readonly branchName?: string | undefined;
+  readonly priorityLabel?: string | undefined;
+  readonly containers?: ReadonlyArray<IssueContainerRef> | undefined;
+  readonly parent?: IssueRelatedRef | undefined;
+  readonly subIssues?: ReadonlyArray<IssueRelatedRef> | undefined;
+  readonly blockedBy?: ReadonlyArray<IssueRelatedRef> | undefined;
+  readonly blocks?: ReadonlyArray<IssueRelatedRef> | undefined;
 }
 
 export interface TrackerBrowsePage {
