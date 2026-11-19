@@ -103,15 +103,21 @@ done
 # within 4 days; Xcode then fetches a fresh 7-day one.
 profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
 old_profiles="$BUILDS/old-profiles"
+# Prints when a profile for this app expires (epoch seconds); fails for other profiles.
+profile_expiry() {
+  local decoded expires
+  decoded="$(security cms -D -i "$1" 2>/dev/null)" || return 1
+  [[ "$(plutil -extract Entitlements.application-identifier raw -o - - <<<"$decoded" 2>/dev/null)" == \
+    "$TEAM_ID.$T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID" ]] || return 1
+  expires="$(plutil -extract ExpirationDate raw -o - - <<<"$decoded")"
+  date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$expires" +%s
+}
 renew_before=$(($(date +%s) + 4 * 86400))
 for profile in "$profiles"/*.mobileprovision; do
   [[ -f "$profile" ]] || continue
-  decoded="$(security cms -D -i "$profile" 2>/dev/null)" || continue
-  [[ "$(plutil -extract Entitlements.application-identifier raw -o - - <<<"$decoded" 2>/dev/null)" == \
-    "$TEAM_ID.$T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID" ]] || continue
-  expires="$(plutil -extract ExpirationDate raw -o - - <<<"$decoded")"
-  if (($(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$expires" +%s) < renew_before)); then
-    echo "Renewing the provisioning profile that expires $expires" >>"$log"
+  expiry="$(profile_expiry "$profile")" || continue
+  if ((expiry < renew_before)); then
+    echo "Renewing the provisioning profile that expires $(date -u -r "$expiry" +%FT%TZ)" >>"$log"
     mkdir -p "$old_profiles"
     mv "$profile" "$old_profiles/"
   fi
@@ -121,19 +127,38 @@ done
 destination="generic/platform=iOS"
 [[ -n "$register_device" ]] && destination="id=$register_device"
 echo "Running xcodebuild ($scheme, Release, $destination)" >>"$log"
-xcodebuild \
-  -workspace "$workspace" \
-  -scheme "$scheme" \
-  -configuration Release \
-  -destination "$destination" \
-  -derivedDataPath "$BUILDS/DerivedData" \
-  -allowProvisioningUpdates \
-  -allowProvisioningDeviceRegistration \
-  -hideShellScriptEnvironment \
-  DEVELOPMENT_TEAM="$TEAM_ID" \
-  CURRENT_PROJECT_VERSION="$stamp" \
-  build >>"$log" 2>&1 || fail "xcodebuild failed"
-
+xcodebuild_app() {
+  xcodebuild \
+    -workspace "$workspace" \
+    -scheme "$scheme" \
+    -configuration Release \
+    -destination "$destination" \
+    -derivedDataPath "$BUILDS/DerivedData" \
+    -allowProvisioningUpdates \
+    -allowProvisioningDeviceRegistration \
+    -hideShellScriptEnvironment \
+    DEVELOPMENT_TEAM="$TEAM_ID" \
+    CURRENT_PROJECT_VERSION="$stamp" \
+    build >>"$log" 2>&1
+}
+if ! xcodebuild_app; then
+  # Renewing needs the Apple account in Xcode. Without it, sign with a set-aside profile that is
+  # still valid, so a fix still ships while the account is fixed; say so, since the app then
+  # stops opening when that profile expires.
+  latest=0
+  for profile in "$old_profiles"/*.mobileprovision; do
+    [[ -f "$profile" ]] || continue
+    expiry="$(profile_expiry "$profile")" || continue
+    ((expiry > $(date +%s) + 3600)) || continue
+    mv "$profile" "$profiles/"
+    ((expiry > latest)) && latest=$expiry
+  done
+  ((latest > 0)) || fail "xcodebuild failed"
+  restored="$(date -u -r "$latest" +%FT%TZ)"
+  echo "xcodebuild failed; retrying with the old provisioning profile (until $restored)" >>"$log"
+  xcodebuild_app || fail "xcodebuild failed, also with the old provisioning profile"
+  echo "WARNING: could not renew the provisioning profile, so this build expires $restored. Xcode needs my Apple account (Xcode > Settings > Accounts) before then."
+fi
 built="$BUILDS/DerivedData/Build/Products/Release-iphoneos/$scheme.app"
 [[ -d "$built" ]] || fail "xcodebuild finished but $built is missing"
 app="$out/$scheme.app"

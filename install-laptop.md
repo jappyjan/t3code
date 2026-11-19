@@ -63,8 +63,10 @@ Run `~/code/t3dotgg/t3code-fork-tools/build-ios.sh` as a background command, aft
 build (both use the checkout), and wait for it. Its last output line is the path of the built
 `.app`. If it fails, put the end of its output in the report and skip the iOS install. A signing
 or provisioning failure (no account, expired Apple ID session, App ID limit) needs me in Xcode:
-say what it asks for, don't work around it. If the build stops progressing at a `codesign` step, a
-macOS keychain prompt is waiting for my password: tell me.
+say what it asks for, don't work around it. A `WARNING:` line means it could not renew and signed
+with the old profile: the build is good, so install it and put that line in the report. If the
+build stops progressing at a `codesign` step, a macOS keychain prompt is waiting for my password:
+tell me.
 
 ## 4. Install
 
