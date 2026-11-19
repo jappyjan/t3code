@@ -3,9 +3,11 @@
  * (`ENG-123`). A workflow state is closed when its type is `completed` or `canceled`, so closing
  * picks the team's first state of that type, as Linear's own "Done" and "Canceled" do.
  */
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
+  IssueStateType,
   type IssueActor,
   type IssueCapabilities,
   type IssueComment,
@@ -130,10 +132,48 @@ function parseIdentifier(key: string): string | null {
   return /^[A-Za-z][A-Za-z0-9]*-[1-9]\d*$/.test(key.trim()) ? key.trim().toUpperCase() : null;
 }
 
-function toState(state: LinearApi.LinearWorkflowState): IssueState {
+/** A started state's place on its team's workflow, by state id: Linear's pie fill, 0..1. */
+type StartedFills = ReadonlyMap<string, number>;
+
+/** (index + 1) / (count + 1) among the team's started states, ordered by `position`. */
+export function startedFillsOf(
+  states: ReadonlyArray<{
+    readonly id: string;
+    readonly position: number;
+    readonly team: { readonly key: string };
+  }>,
+): StartedFills {
+  const byTeam = new Map<string, Array<(typeof states)[number]>>();
+  for (const state of states) {
+    const team = byTeam.get(state.team.key);
+    if (team) team.push(state);
+    else byTeam.set(state.team.key, [state]);
+  }
+  const fills = new Map<string, number>();
+  for (const team of byTeam.values()) {
+    team
+      .toSorted((a, b) => a.position - b.position)
+      .forEach((state, index) => fills.set(state.id, (index + 1) / (team.length + 1)));
+  }
+  return fills;
+}
+
+const STATE_TYPES: ReadonlySet<string> = new Set(IssueStateType.literals);
+
+function toState(
+  state: LinearApi.LinearWorkflowState,
+  fills: StartedFills = new Map(),
+): IssueState {
+  const type = STATE_TYPES.has(state.type) ? (state.type as IssueStateType) : undefined;
+  const fill = state.type === "started" ? fills.get(state.id) : undefined;
+  const look = {
+    ...(type === undefined ? {} : { type }),
+    ...(state.color ? { color: state.color } : {}),
+    ...(fill === undefined ? {} : { startedFill: fill }),
+  };
   return CLOSED_STATE_TYPES.includes(state.type)
-    ? { category: "closed", name: state.name, closeReason: state.type }
-    : { category: "open", name: state.name };
+    ? { category: "closed", name: state.name, closeReason: state.type, ...look }
+    : { category: "open", name: state.name, ...look };
 }
 
 /**
@@ -167,14 +207,18 @@ function userName(user: LinearApi.LinearUser): string {
 }
 
 /** Linear's connections report no totals, so a listing shows no comment count. */
-function toSummary(issue: LinearApi.LinearIssue, commentCount = 0): TrackerIssueSummary {
+function toSummary(
+  issue: LinearApi.LinearIssue,
+  fills: StartedFills,
+  commentCount = 0,
+): TrackerIssueSummary {
   return {
     key: issue.identifier,
     displayKey: issue.identifier,
     title: issue.title,
     url: issue.url,
     author: actorOf(issue.creator, issue.botActor),
-    state: toState(issue.state),
+    state: toState(issue.state, fills),
     createdAt: issue.createdAt,
     updatedAt: issue.updatedAt,
     closedAt: issue.completedAt ?? issue.canceledAt ?? null,
@@ -186,18 +230,18 @@ function toSummary(issue: LinearApi.LinearIssue, commentCount = 0): TrackerIssue
 
 type LinearIssueRefNode = NonNullable<LinearApi.LinearIssueDetail["parent"]>;
 
-function toRelated(issue: LinearIssueRefNode): IssueRelatedRef {
+function toRelated(issue: LinearIssueRefNode, fills: StartedFills): IssueRelatedRef {
   return {
     key: issue.identifier,
     displayKey: issue.identifier,
     title: issue.title,
     url: issue.url,
-    state: toState(issue.state),
+    state: toState(issue.state, fills),
   };
 }
 
 /** Linear stores "A blocks B" once, on A; B finds it among its inverse relations. */
-function detailExtras(issue: LinearApi.LinearIssueDetail) {
+function detailExtras(issue: LinearApi.LinearIssueDetail, fills: StartedFills) {
   const containers: IssueContainerRef[] = [
     ...(issue.project === null
       ? []
@@ -216,14 +260,14 @@ function detailExtras(issue: LinearApi.LinearIssueDetail) {
     ...(issue.branchName ? { branchName: issue.branchName } : {}),
     ...(issue.priorityLabel ? { priorityLabel: issue.priorityLabel } : {}),
     containers,
-    ...(issue.parent === null ? {} : { parent: toRelated(issue.parent) }),
-    subIssues: issue.children.nodes.map(toRelated),
+    ...(issue.parent === null ? {} : { parent: toRelated(issue.parent, fills) }),
+    subIssues: issue.children.nodes.map((child) => toRelated(child, fills)),
     blockedBy: issue.inverseRelations.nodes
       .filter((relation) => relation.type === "blocks")
-      .map((relation) => toRelated(relation.issue)),
+      .map((relation) => toRelated(relation.issue, fills)),
     blocks: issue.relations.nodes
       .filter((relation) => relation.type === "blocks")
-      .map((relation) => toRelated(relation.relatedIssue)),
+      .map((relation) => toRelated(relation.relatedIssue, fills)),
   };
 }
 
@@ -244,15 +288,17 @@ function toProjectContainer(project: LinearApi.LinearProject): IssueContainer {
   };
 }
 
+/** Linear reports a milestone's progress as a percentage (0..100), a project's as 0..1. */
 function toMilestoneContainer(milestone: LinearApi.LinearMilestone): IssueContainer {
+  const progress = Math.min(1, Math.max(0, milestone.progress / 100));
   return {
     kind: "milestone",
     id: milestone.id,
     name: milestone.name,
-    progress: milestone.progress,
+    progress,
     targetDate: milestone.targetDate ?? null,
     status: null,
-    completed: milestone.progress >= 1,
+    completed: progress >= 1,
     url: null,
   };
 }
@@ -484,6 +530,15 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
         : Effect.succeed(member.id);
     };
 
+    /** Fill data is decoration: a failed read leaves started states at the client's default. */
+    const startedFills: Effect.Effect<StartedFills> = yield* Effect.cachedWithTTL(
+      linear.listStartedStates().pipe(
+        Effect.map(startedFillsOf),
+        Effect.orElseSucceed((): StartedFills => new Map()),
+      ),
+      Duration.minutes(5),
+    );
+
     const viewerId: Effect.Effect<string | null> = linear.viewer().pipe(
       Effect.map((data) => data.viewer.id),
       Effect.orElseSucceed(() => null),
@@ -549,26 +604,30 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
                 ],
               }),
         };
-        return linear
-          .listIssues({
-            filter,
-            first: input.limit,
-            after: input.cursor,
-            orderBy: input.sort === "created" ? "createdAt" : "updatedAt",
-          })
-          .pipe(
-            Effect.map((page) => ({
-              items: page.nodes.map((node) => toSummary(node)),
-              nextCursor: page.nextCursor,
-            })),
-          );
+        return Effect.all(
+          [
+            linear.listIssues({
+              filter,
+              first: input.limit,
+              after: input.cursor,
+              orderBy: input.sort === "created" ? "createdAt" : "updatedAt",
+            }),
+            startedFills,
+          ],
+          { concurrency: 2 },
+        ).pipe(
+          Effect.map(([page, fills]) => ({
+            items: page.nodes.map((node) => toSummary(node, fills)),
+            nextCursor: page.nextCursor,
+          })),
+        );
       }),
 
       getIssue: Effect.fn("LinearIssueTracker.getIssue")(function* (input) {
         const identifier = yield* requireIdentifier("getIssue", input.key);
         // One read of the viewer: the id matches reactions, the handle is what the client sees.
         // A missing issue interrupts it rather than waiting for it.
-        const [issue, me] = yield* Effect.all(
+        const [issue, me, fills] = yield* Effect.all(
           [
             linear.getIssue(identifier, COMMENTS_PAGE).pipe(
               Effect.filterOrElse(
@@ -580,16 +639,17 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
               Effect.map((data) => data.viewer),
               Effect.orElseSucceed(() => null),
             ),
+            startedFills,
           ],
-          { concurrency: 2 },
+          { concurrency: 3 },
         );
         const viewer = me?.id ?? null;
         return {
-          ...toSummary(issue, issue.comments.nodes.length),
+          ...toSummary(issue, fills, issue.comments.nodes.length),
           body: issue.description ?? "",
           viewer: me === null ? null : toActor(me).login,
           viewerPermissions: VIEWER_PERMISSIONS,
-          states: inWorkflowOrder(issue.team.states.nodes).map(toState),
+          states: inWorkflowOrder(issue.team.states.nodes).map((node) => toState(node, fills)),
           reactions: toReactions(issue.reactions, viewer),
           comments: issue.comments.nodes.map((comment) => toComment(comment, viewer)),
           commentsCursor: issue.comments.pageInfo.hasNextPage
@@ -597,7 +657,7 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
             : null,
           events: toEvents(issue.history.nodes),
           linkedPullRequests: toLinkedPullRequests(issue.attachments.nodes),
-          ...detailExtras(issue),
+          ...detailExtras(issue, fills),
         };
       }),
 
@@ -636,15 +696,14 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
                 },
               }),
         };
-        const page = yield* linear.browseIssues({
-          filter,
-          first: input.limit,
-          after: input.cursor,
-        });
+        const [page, fills] = yield* Effect.all(
+          [linear.browseIssues({ filter, first: input.limit, after: input.cursor }), startedFills],
+          { concurrency: 2 },
+        );
         return {
           containers: milestones,
           items: page.nodes.map((node) => ({
-            ...toSummary(node),
+            ...toSummary(node, fills),
             parentKey: node.parent?.identifier ?? null,
             subIssueCount: node.children.nodes.length,
             blocked: node.inverseRelations.nodes.some(

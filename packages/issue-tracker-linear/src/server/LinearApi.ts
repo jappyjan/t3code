@@ -138,6 +138,15 @@ export class LinearApi extends Context.Service<
       { readonly nodes: ReadonlyArray<LinearComment>; readonly nextCursor: string | null },
       IssueTrackerError
     >;
+    /** Every started state of the workspace, to place each on its team's workflow. */
+    readonly listStartedStates: () => Effect.Effect<
+      ReadonlyArray<{
+        readonly id: string;
+        readonly position: number;
+        readonly team: { readonly key: string };
+      }>,
+      IssueTrackerError
+    >;
     /** Null when no team has that key. */
     readonly listProjects: (
       teamKey: string,
@@ -366,6 +375,11 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const listStartedStates: LinearApi["Service"]["listStartedStates"] = () =>
+    call("listStartedStates", (linear) => linear.T3StartedStates()).pipe(
+      Effect.map((data) => data.workflowStates.nodes),
+    );
+
   const listProjects: LinearApi["Service"]["listProjects"] = (key) =>
     call("listProjects", (linear) => linear.T3TeamProjects({ key })).pipe(
       Effect.map((data) => data.teams.nodes[0]?.projects.nodes ?? null),
@@ -477,6 +491,7 @@ export const make = Effect.gen(function* () {
     getIssue,
     getComments,
     getTeam,
+    listStartedStates,
     listProjects,
     listMilestones,
     browseIssues,

@@ -17,6 +17,7 @@ fragment LinearWorkflowState on WorkflowState {
   name
   type
   position
+  color
 }
 
 fragment LinearLabel on IssueLabel {
@@ -342,6 +343,18 @@ query T3CommentReactions($id: String!) {
     }
     reactions {
       ...LinearReaction
+    }
+  }
+}
+
+query T3StartedStates {
+  workflowStates(first: 250, filter: { type: { eq: "started" } }) {
+    nodes {
+      id
+      position
+      team {
+        key
+      }
     }
   }
 }

@@ -26,6 +26,7 @@ const state = (name: string, type: string, position = 0) => ({
   name,
   type,
   position,
+  color: "#5e6ad2",
 });
 
 const issue = (
@@ -259,6 +260,15 @@ describe("LinearIssueTracker", () => {
           organization: { urlKey: "acme" },
           teams: { nodes: [] },
         }),
+        // Two started states on ENG: In Progress sits a third of the way, In Review two thirds.
+        T3StartedStates: () => ({
+          workflowStates: {
+            nodes: [
+              { id: "st_in-review", position: 2, team: { key: "ENG" } },
+              { id: "st_in-progress", position: 1, team: { key: "ENG" } },
+            ],
+          },
+        }),
         T3Issues: (variables) => {
           expect(variables.filter).toMatchObject({
             team: { key: { eq: "ENG" } },
@@ -301,8 +311,28 @@ describe("LinearIssueTracker", () => {
       });
       expect(page.nextCursor).toBe("cur_2");
       expect(page.items.map((item) => [item.key, item.displayKey, item.state])).toEqual([
-        ["ENG-2", "ENG-2", { category: "closed", name: "Done", closeReason: "completed" }],
-        ["ENG-1", "ENG-1", { category: "open", name: "In Progress" }],
+        [
+          "ENG-2",
+          "ENG-2",
+          {
+            category: "closed",
+            name: "Done",
+            closeReason: "completed",
+            type: "completed",
+            color: "#5e6ad2",
+          },
+        ],
+        [
+          "ENG-1",
+          "ENG-1",
+          {
+            category: "open",
+            name: "In Progress",
+            type: "started",
+            color: "#5e6ad2",
+            startedFill: 1 / 3,
+          },
+        ],
       ]);
       // A listing carries no comment totals, whatever the row's position.
       expect(page.items.map((item) => item.commentCount)).toEqual([0, 0]);
@@ -313,9 +343,12 @@ describe("LinearIssueTracker", () => {
         labels: [{ name: "Bug", color: "#f00" }],
       });
       // The stored key goes in as-is, not as a bearer token.
-      expect(requests.map((request) => request.authorization)).toEqual(["lin_api_stored"]);
+      expect(requests.map((request) => request.authorization)).toEqual([
+        "lin_api_stored",
+        "lin_api_stored",
+      ]);
       // Rows never show a body, so the listing leaves descriptions to the detail query.
-      expect(requests[0]?.query).not.toMatch(/\bdescription\b/);
+      for (const request of requests) expect(request.query).not.toMatch(/\bdescription\b/);
 
       // Linear's reset header is an absolute time in epoch milliseconds.
       const resetAt = 4_102_444_800_000;
@@ -605,7 +638,10 @@ describe("LinearIssueTracker", () => {
             projectMilestones: {
               nodes: [
                 { id: "ms_2", name: "GA", progress: 0, targetDate: null, sortOrder: 2 },
-                { id: "ms_1", name: "Beta", progress: 1, targetDate: null, sortOrder: 1 },
+                { id: "ms_1", name: "Beta", progress: 100, targetDate: null, sortOrder: 1 },
+                // Linear's milestone progress is a percentage: 75 is three quarters, not done.
+                { id: "ms_3", name: "RC", progress: 75, targetDate: null, sortOrder: 3 },
+                { id: "ms_4", name: "Early", progress: 0.5, targetDate: null, sortOrder: 4 },
               ],
             },
           },
@@ -655,9 +691,17 @@ describe("LinearIssueTracker", () => {
         state: "open",
         limit: 50,
       });
-      expect(project.containers.map((milestone) => [milestone.name, milestone.completed])).toEqual([
-        ["Beta", true],
-        ["GA", false],
+      expect(
+        project.containers.map((milestone) => [
+          milestone.name,
+          milestone.progress,
+          milestone.completed,
+        ]),
+      ).toEqual([
+        ["Beta", 1, true],
+        ["GA", 0, false],
+        ["RC", 0.75, false],
+        ["Early", 0.005, false],
       ]);
       expect(project.items[0]).toMatchObject({
         key: "ENG-7",

@@ -55,11 +55,29 @@ export type IssueLabel = typeof IssueLabel.Type;
 export const IssueStateCategory = Schema.Literals(["open", "closed"]);
 export type IssueStateCategory = typeof IssueStateCategory.Type;
 
+/** A workflow state's kind in trackers that have one (Linear); it picks the status glyph. */
+export const IssueStateType = Schema.Literals([
+  "triage",
+  "backlog",
+  "unstarted",
+  "started",
+  "completed",
+  "canceled",
+  "duplicate",
+]);
+export type IssueStateType = typeof IssueStateType.Type;
+
 export const IssueState = Schema.Struct({
   category: IssueStateCategory,
   name: TrimmedNonEmptyString,
   /** How a closed state ended, where the tracker says: `completed`, or its word for not done. */
   closeReason: Schema.optional(TrimmedNonEmptyString),
+  /** The tracker's own workflow type. Absent where states are just open or closed. */
+  type: Schema.optional(IssueStateType),
+  /** The state's `#rrggbb` colour, where the tracker has one. */
+  color: Schema.optional(TrimmedNonEmptyString),
+  /** For a started state: how far along the workflow it sits, 0..1 exclusive of the ends. */
+  startedFill: Schema.optional(Schema.Number),
 });
 export type IssueState = typeof IssueState.Type;
 
