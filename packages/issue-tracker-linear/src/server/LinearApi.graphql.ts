@@ -50,7 +50,9 @@ export const LinearWorkflowState = Schema.Struct({
   /** The type of the state. One of "triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate". */
   type: Schema.String,
   /** The position of the state in the team's workflow. States are displayed in ascending order of position within their type group. */
-  position: Shared.Float
+  position: Shared.Float,
+  /** The state's UI color as a HEX string. */
+  color: Schema.String
 })
 export interface LinearWorkflowState extends Schema.Struct.Type<typeof LinearWorkflowState.fields> {}
 
@@ -272,7 +274,7 @@ export const T3Issues = GraphQL.query("T3Issues", {
     fragments: [
       { name: "LinearIssue", body: ["on Issue{id identifier number title url createdAt updatedAt completedAt canceledAt state{...LinearWorkflowState}team{key}creator{...LinearUser}botActor{...LinearBot}assignee{...LinearUser}labels{nodes{...LinearLabel}}}"] },
       { name: "LinearPageInfo", body: ["on PageInfo{hasNextPage endCursor}"] },
-      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position}"] },
+      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position color}"] },
       { name: "LinearUser", body: ["on User{id name displayName email avatarUrl}"] },
       { name: "LinearBot", body: ["on ActorBot{name userDisplayName avatarUrl}"] },
       { name: "LinearLabel", body: ["on IssueLabel{id name color}"] }
@@ -494,7 +496,7 @@ export const T3Issue = GraphQL.query("T3Issue", {
     fragments: [
       { name: "LinearIssue", body: ["on Issue{id identifier number title url createdAt updatedAt completedAt canceledAt state{...LinearWorkflowState}team{key}creator{...LinearUser}botActor{...LinearBot}assignee{...LinearUser}labels{nodes{...LinearLabel}}}"] },
       { name: "LinearIssueRef", body: ["on Issue{id identifier title url state{...LinearWorkflowState}}"] },
-      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position}"] },
+      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position color}"] },
       { name: "LinearComment", body: ["on Comment{id body createdAt url user{...LinearUser}botActor{...LinearBot}reactions{...LinearReaction}}"] },
       { name: "LinearPageInfo", body: ["on PageInfo{hasNextPage endCursor}"] },
       { name: "LinearReaction", body: ["on Reaction{id emoji user{...LinearUser}}"] },
@@ -635,7 +637,7 @@ export const T3Team = GraphQL.query("T3Team", {
       { name: "issueLabels", body: ["(first:250 filter:{team:{null:true}}){nodes{...LinearTeamLabel}pageInfo{...LinearPageInfo}}"] }
     ],
     fragments: [
-      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position}"] },
+      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position color}"] },
       { name: "LinearPageInfo", body: ["on PageInfo{hasNextPage endCursor}"] },
       { name: "LinearTeamLabel", body: ["on IssueLabel{...LinearLabel description}"] },
       { name: "LinearUser", body: ["on User{id name displayName email avatarUrl}"] },
@@ -902,6 +904,41 @@ export declare namespace T3CommentReactions {
   export type Result = typeof T3CommentReactions.result.Type
 }
 
+/** A state in a team's workflow, representing an issue status such as Triage, Backlog, Todo, In Progress, In Review, Done, or Canceled. Each team has its own set of workflow states that define the progression of issues through the team's process. Workflow states have a type that categorizes them (triage, backlog, unstarted, started, completed, canceled), a position that determines their display order, and a color for visual identification. States can be inherited from parent teams to sub-teams. */
+export const NodesWorkflowState = Schema.Struct({
+  /** The unique identifier of the entity. */
+  id: Shared.ID,
+  /** The position of the state in the team's workflow. States are displayed in ascending order of position within their type group. */
+  position: Shared.Float,
+  /** The team that this workflow state belongs to. Each team has its own set of workflow states. */
+  team: LinearIssueTeamTeam
+})
+export interface NodesWorkflowState extends Schema.Struct.Type<typeof NodesWorkflowState.fields> {}
+
+export const WorkflowStatesWorkflowStateConnection = Schema.Struct({
+  nodes: Schema.Array(NodesWorkflowState)
+})
+export interface WorkflowStatesWorkflowStateConnection extends Schema.Struct.Type<typeof WorkflowStatesWorkflowStateConnection.fields> {}
+
+/** `query T3StartedStates` */
+export const T3StartedStates = GraphQL.query("T3StartedStates", {
+  document: {
+    variables: [],
+    selections: [
+      { name: "workflowStates", body: ["(first:250 filter:{type:{eq:\"started\"}}){nodes{id position team{key}}}"] }
+    ],
+    fragments: []
+  },
+  result: Schema.Struct({
+    /** All issue workflow states (issue statuses). Returns a paginated list of workflow states visible to the authenticated user, across all teams they have access to. */
+    workflowStates: WorkflowStatesWorkflowStateConnection
+  })
+})
+export declare namespace T3StartedStates {
+  export type Variables = typeof T3StartedStates.variables.Type
+  export type Result = typeof T3StartedStates.result.Type
+}
+
 /** A custom project status within a workspace. Statuses are grouped by type (backlog, planned, started, paused, completed, canceled) and define the lifecycle stages a project can move through. Each workspace can customize the names and colors of its project statuses. */
 export const ProjectStatus = Schema.Struct({
   /** The name of the status. */
@@ -1037,16 +1074,16 @@ export const NodesChildrenIssueConnection = Schema.Struct({
 export interface NodesChildrenIssueConnection extends Schema.Struct.Type<typeof NodesChildrenIssueConnection.fields> {}
 
 /** A state in a team's workflow, representing an issue status such as Triage, Backlog, Todo, In Progress, In Review, Done, or Canceled. Each team has its own set of workflow states that define the progression of issues through the team's process. Workflow states have a type that categorizes them (triage, backlog, unstarted, started, completed, canceled), a position that determines their display order, and a color for visual identification. States can be inherited from parent teams to sub-teams. */
-export const WorkflowState = Schema.Struct({
+export const StateWorkflowState = Schema.Struct({
   /** The type of the state. One of "triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate". */
   type: Schema.String
 })
-export interface WorkflowState extends Schema.Struct.Type<typeof WorkflowState.fields> {}
+export interface StateWorkflowState extends Schema.Struct.Type<typeof StateWorkflowState.fields> {}
 
 /** An issue is the core work item in Linear. Issues belong to a team, have a workflow status, can be assigned to users, carry a priority level, and can be organized into projects and cycles. Issues support sub-issues (parent-child hierarchy up to 10 levels deep), labels, due dates, estimates, and SLA tracking. They can also be linked to other issues via relations, attached to releases, and tracked through their full history of changes. */
 export const NodesIssueIssue = Schema.Struct({
   /** The workflow state (issue status) that the issue is currently in. Workflow states represent the issue's progress through the team's workflow, such as Triage, Todo, In Progress, Done, or Canceled. */
-  state: WorkflowState
+  state: StateWorkflowState
 })
 export interface NodesIssueIssue extends Schema.Struct.Type<typeof NodesIssueIssue.fields> {}
 
@@ -1096,7 +1133,7 @@ export const T3BrowseIssues = GraphQL.query("T3BrowseIssues", {
     fragments: [
       { name: "LinearIssue", body: ["on Issue{id identifier number title url createdAt updatedAt completedAt canceledAt state{...LinearWorkflowState}team{key}creator{...LinearUser}botActor{...LinearBot}assignee{...LinearUser}labels{nodes{...LinearLabel}}}"] },
       { name: "LinearPageInfo", body: ["on PageInfo{hasNextPage endCursor}"] },
-      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position}"] },
+      { name: "LinearWorkflowState", body: ["on WorkflowState{id name type position color}"] },
       { name: "LinearUser", body: ["on User{id name displayName email avatarUrl}"] },
       { name: "LinearBot", body: ["on ActorBot{name userDisplayName avatarUrl}"] },
       { name: "LinearLabel", body: ["on IssueLabel{id name color}"] }
@@ -1118,4 +1155,4 @@ export declare namespace T3BrowseIssues {
 }
 
 /** Every operation in LinearApi.graphql. */
-export const LinearApiGraphQLGroup = GraphQLGroup.make(T3Viewer, T3Issues, T3Issue, T3Comments, T3Team, T3IssueCreate, T3IssueUpdate, T3CommentCreate, T3ReactionCreate, T3ReactionDelete, T3IssueReactions, T3CommentReactions, T3TeamProjects, T3ProjectMilestones, T3BrowseIssues)
+export const LinearApiGraphQLGroup = GraphQLGroup.make(T3Viewer, T3Issues, T3Issue, T3Comments, T3Team, T3IssueCreate, T3IssueUpdate, T3CommentCreate, T3ReactionCreate, T3ReactionDelete, T3IssueReactions, T3CommentReactions, T3StartedStates, T3TeamProjects, T3ProjectMilestones, T3BrowseIssues)
