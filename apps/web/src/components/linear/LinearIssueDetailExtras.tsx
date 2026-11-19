@@ -17,6 +17,7 @@ import type {
   ProjectId,
 } from "@t3tools/contracts";
 import { sortBlockers } from "@t3tools/shared/linearLaunch";
+import { msg, T, useGT, Var } from "gt-react";
 import {
   ChevronDownIcon,
   ListTreeIcon,
@@ -31,6 +32,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { m } from "~/i18n/messages";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useProjects } from "../../state/entities";
 import { issueTrackerEnvironment } from "../../state/issueTrackers";
@@ -62,6 +64,7 @@ export function LinearIssueLaunchBar({
   readonly environmentId: EnvironmentId;
   readonly detail: IssueDetail;
 }) {
+  const gt = useGT();
   const newThread = useNewThreadHandler();
   const [pipelineOpen, setPipelineOpen] = useState(false);
   const projects = useProjects().filter((project) => project.environmentId === environmentId);
@@ -97,8 +100,8 @@ export function LinearIssueLaunchBar({
     if (opened === null) {
       toastManager.add({
         type: "error",
-        title: `Could not open a chat for ${detail.displayKey}`,
-        description: "Try again from the project, or open a thread first.",
+        title: m(msg("Could not open a chat for {displayKey}"), { displayKey: detail.displayKey }),
+        description: m(msg("Try again from the project, or open a thread first.")),
       });
       return;
     }
@@ -116,10 +119,10 @@ export function LinearIssueLaunchBar({
             if (next) pick(next as ProjectId);
           }}
         >
-          <SelectTrigger aria-label="Project to start in" className="w-48" size="sm">
+          <SelectTrigger aria-label={gt("Project to start in")} className="w-48" size="sm">
             <SelectValue>
               {projects.find((project) => project.id === target.projectId)?.title ??
-                "Choose a project"}
+                gt("Choose a project")}
             </SelectValue>
           </SelectTrigger>
           <SelectPopup>
@@ -139,21 +142,31 @@ export function LinearIssueLaunchBar({
           onClick={() => void startChat("worktree")}
         >
           <MessageSquarePlusIcon aria-hidden />
-          Start chat
+          <T>Start chat</T>
         </Button>
         <GroupSeparator />
         <Menu>
           <MenuTrigger
             disabled={launchDetail === null}
-            render={<Button size="icon-sm" variant="outline" aria-label="More ways to start" />}
+            render={
+              <Button size="icon-sm" variant="outline" aria-label={gt("More ways to start")} />
+            }
           >
             <ChevronDownIcon aria-hidden />
           </MenuTrigger>
           <MenuPopup align="end">
             <MenuItem onClick={() => void startChat("worktree")}>
-              New worktree{detail.branchName ? ` · ${detail.branchName}` : ""}
+              {detail.branchName ? (
+                <T>
+                  New worktree · <Var>{detail.branchName}</Var>
+                </T>
+              ) : (
+                <T>New worktree</T>
+              )}
             </MenuItem>
-            <MenuItem onClick={() => void startChat("local")}>Local checkout</MenuItem>
+            <MenuItem onClick={() => void startChat("local")}>
+              <T>Local checkout</T>
+            </MenuItem>
           </MenuPopup>
         </Menu>
       </Group>
@@ -164,7 +177,7 @@ export function LinearIssueLaunchBar({
         onClick={() => setPipelineOpen(true)}
       >
         <WorkflowIcon aria-hidden />
-        Run pipeline
+        <T>Run pipeline</T>
       </Button>
       {pipelineOpen && launchDetail !== null ? (
         <LinearPipelineDialog
@@ -229,13 +242,14 @@ export function LinearIssueRelations({
   /** Opens a related issue beside this one; absent, the link goes to the tracker. */
   readonly onOpenIssue?: ((issue: IssueRelatedRef) => void) | undefined;
 }) {
+  const gt = useGT();
   const rows: Array<{ key: string; icon: ReactNode; label: string; value: ReactNode }> = [];
   const containers = detail.containers ?? [];
   if (containers.length > 0) {
     rows.push({
       key: "project",
       icon: <FolderKanbanIcon className="size-3.5" />,
-      label: "Project",
+      label: gt("Project"),
       value: (
         <span className="min-w-0 truncate">
           {containers.map((container) => container.name).join(" › ")}
@@ -247,7 +261,7 @@ export function LinearIssueRelations({
     rows.push({
       key: "branch",
       icon: <GitBranchIcon className="size-3.5" />,
-      label: "Branch",
+      label: gt("Branch", { $context: "git branch" }),
       value: <span className="min-w-0 truncate font-mono text-xs">{detail.branchName}</span>,
     });
   }
@@ -255,29 +269,41 @@ export function LinearIssueRelations({
     rows.push({
       key: "priority",
       icon: <SignalIcon className="size-3.5" />,
-      label: "Priority",
+      label: gt("Priority"),
       value: <span className="min-w-0 truncate">{detail.priorityLabel}</span>,
     });
   }
   // None of these may be a circle: the related issues' own status glyphs are circles.
-  const groups: Array<[string, ReactNode, ReadonlyArray<IssueRelatedRef>]> = [
+  const groups: Array<[string, string, ReactNode, ReadonlyArray<IssueRelatedRef>]> = [
     [
-      "Parent",
+      "parent",
+      gt("Parent", { $context: "parent issue" }),
       <CornerLeftUpIcon key="parent" className="size-3.5" />,
       detail.parent ? [detail.parent] : [],
     ],
-    ["Sub-issues", <ListTreeIcon key="sub" className="size-3.5" />, detail.subIssues ?? []],
     [
-      "Blocked by",
+      "sub-issues",
+      gt("Sub-issues"),
+      <ListTreeIcon key="sub" className="size-3.5" />,
+      detail.subIssues ?? [],
+    ],
+    [
+      "blocked-by",
+      gt("Blocked by"),
       <OctagonAlertIcon key="by" className="size-3.5" />,
       sortBlockers(detail.blockedBy ?? []),
     ],
-    ["Blocking", <HandIcon key="blocking" className="size-3.5" />, detail.blocks ?? []],
+    [
+      "blocking",
+      gt("Blocking", { $context: "issues this issue blocks" }),
+      <HandIcon key="blocking" className="size-3.5" />,
+      detail.blocks ?? [],
+    ],
   ];
-  for (const [label, icon, issues] of groups) {
+  for (const [key, label, icon, issues] of groups) {
     if (issues.length === 0) continue;
     rows.push({
-      key: label,
+      key,
       icon,
       label,
       value: <RelatedList issues={issues} onOpen={onOpenIssue} />,

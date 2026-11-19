@@ -560,7 +560,7 @@ export function IssuesPage() {
     <PullRequestListGhost />
   ) : noneAnswered && list.error ? (
     <PullRequestsUnavailableState
-      title="Could not load issues"
+      title={gt("Could not load issues")}
       icon={<IssueGlyph.issue />}
       error={list.error}
       onRetry={list.retry}
@@ -839,7 +839,7 @@ export function IssuesPage() {
                     }
                   >
                     <FolderTreeIcon aria-hidden />
-                    Projects
+                    <T>Projects</T>
                   </Button>
                 ) : null}
                 <Button

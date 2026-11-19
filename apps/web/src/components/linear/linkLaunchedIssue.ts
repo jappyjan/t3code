@@ -2,6 +2,9 @@ import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { issueLinkInput, type LinearDraftIssue } from "@t3tools/client-runtime/linear/launch";
 import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 
+import { msg } from "gt-react";
+
+import { m } from "~/i18n/messages";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { threadEnvironment } from "../../state/threads";
 import { toastManager } from "../ui/toast";
@@ -34,8 +37,10 @@ export async function linkLaunchedIssue(input: {
     const failure = squashAtomCommandFailure(result);
     toastManager.add({
       type: "warning",
-      title: `Could not link ${input.issue.identifier} to the new thread`,
-      description: failure instanceof Error ? failure.message : "The server refused it.",
+      title: m(msg("Could not link {identifier} to the new thread"), {
+        identifier: input.issue.identifier,
+      }),
+      description: failure instanceof Error ? failure.message : m(msg("The server refused it.")),
     });
   }
 }

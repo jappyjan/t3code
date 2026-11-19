@@ -749,8 +749,10 @@ function linkCreatedThreadIssue(
     if (AsyncResult.isFailure(result)) {
       const error = Cause.squash(result.cause);
       Dialog.alert(
-        `Could not link ${issue.identifier}`,
-        error instanceof Error ? error.message : "The thread was created without the issue link.",
+        m(msg("Could not link {issue}", { issue: issue.identifier })),
+        error instanceof Error
+          ? error.message
+          : m(msg("The thread was created without the issue link.")),
       );
     }
   });

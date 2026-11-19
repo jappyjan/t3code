@@ -8,6 +8,7 @@ import type {
   IssueListState,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
+import { T, useGT, Var } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
@@ -146,13 +147,18 @@ function IssueBrowseTeams(props: {
   readonly pending?: boolean;
   readonly error?: string | null;
 }) {
+  const gt = useGT();
   const navigation = useNavigation();
   const { environments } = useEnvironments();
   const several = new Set(props.teams.map((team) => team.environmentId)).size > 1;
   return (
     <View className="flex-1 bg-screen">
       {props.header === undefined ? (
-        <AppBar title="Projects" subtitle="Choose a team" onBack={() => navigation.goBack()} />
+        <AppBar
+          title={gt("Projects")}
+          subtitle={gt("Choose a team")}
+          onBack={() => navigation.goBack()}
+        />
       ) : null}
       <NativeScrollView
         className="flex-1"
@@ -164,10 +170,12 @@ function IssueBrowseTeams(props: {
           <AppActivityIndicator className="my-12" colorClassName="accent-icon" />
         ) : props.teams.length === 0 ? (
           <EmptyState
-            title={props.error ? "Couldn't load teams" : "Nothing to browse"}
+            title={props.error ? gt("Couldn't load teams") : gt("Nothing to browse")}
             detail={
               props.error ??
-              "Connect Linear in a computer's Settings → Source control & issues to browse its teams."
+              gt(
+                "Connect Linear in a computer's Settings → Source control & issues to browse its teams.",
+              )
             }
             variant="plain"
           />
@@ -178,7 +186,7 @@ function IssueBrowseTeams(props: {
             icon="person.2"
             title={team.name ?? team.scope}
             detail={teamDetail(team, several ? environments : null)}
-            accessibilityLabel={`Team ${team.name ?? team.scope}`}
+            accessibilityLabel={gt("Team {team}", { team: team.name ?? team.scope })}
             onPress={() => navigation.dispatch(StackActions.push("IssueBrowse", { team }))}
           />
         ))}
@@ -217,6 +225,7 @@ function IssueBrowseLevel(props: {
   readonly header?: ReactNode;
 }) {
   const { team, project, milestone } = props;
+  const gt = useGT();
   const navigation = useNavigation();
   const [state, setState] = useState<IssueListState>("open");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -266,7 +275,7 @@ function IssueBrowseLevel(props: {
         seed: first,
         entries: held?.entries ?? [],
         cursor: nextCursor,
-        error: failure instanceof Error ? failure.message : "The next page failed.",
+        error: failure instanceof Error ? failure.message : gt("The next page failed."),
       });
       return;
     }
@@ -327,7 +336,7 @@ function IssueBrowseLevel(props: {
             container
               ? [
                   {
-                    title: "Issue state",
+                    title: gt("Issue state"),
                     icon:
                       state === "open"
                         ? "line.3.horizontal.decrease.circle"
@@ -358,7 +367,7 @@ function IssueBrowseLevel(props: {
         {!first ? (
           query.error && !query.isPending ? (
             <EmptyState
-              title={`Couldn't load ${project ? "this project" : "projects"}`}
+              title={project ? gt("Couldn't load this project") : gt("Couldn't load projects")}
               detail={query.error}
               variant="plain"
             />
@@ -384,7 +393,9 @@ function IssueBrowseLevel(props: {
                       tintColorClassName="accent-icon-muted"
                     />
                     <Text className="text-xs text-foreground-muted">
-                      Completed ({completed.length})
+                      <T>
+                        Completed (<Var>{completed.length}</Var>)
+                      </T>
                     </Text>
                   </Pressable>
                 ) : null}
@@ -395,12 +406,16 @@ function IssueBrowseLevel(props: {
               <View>
                 <View className="px-4 pb-1">
                   <PullRequestSectionHeading>
-                    {milestone ? "Issues" : "No milestone"}
+                    {milestone ? gt("Issues") : gt("No milestone")}
                   </PullRequestSectionHeading>
                 </View>
                 {nested.length === 0 ? (
                   <Text className="px-4 py-2 text-sm text-foreground-muted">
-                    No {state === "all" ? "" : `${STATES[state].toLowerCase()} `}issues here.
+                    {state === "open"
+                      ? gt("No open issues here.")
+                      : state === "closed"
+                        ? gt("No closed issues here.")
+                        : gt("No issues here.")}
                   </Text>
                 ) : null}
                 {nested.map(({ entry, depth }) => (
@@ -423,12 +438,12 @@ function IssueBrowseLevel(props: {
                     {loadingMore ? (
                       <AppActivityIndicator
                         colorClassName="accent-icon"
-                        accessibilityLabel="Loading more issues"
+                        accessibilityLabel={gt("Loading more issues")}
                       />
                     ) : (
                       <Button
-                        label={held?.error ? "Try again" : "Load more"}
-                        accessibilityLabel="Load more issues"
+                        label={held?.error ? gt("Try again") : gt("Load more")}
+                        accessibilityLabel={gt("Load more issues")}
                         onPress={() => void loadMore()}
                       />
                     )}
@@ -437,8 +452,8 @@ function IssueBrowseLevel(props: {
               </View>
             ) : active.length === 0 && completed.length === 0 ? (
               <EmptyState
-                title="No projects"
-                detail={`${teamName} has no projects yet.`}
+                title={gt("No projects")}
+                detail={gt("{team} has no projects yet.", { team: teamName })}
                 variant="plain"
               />
             ) : null}

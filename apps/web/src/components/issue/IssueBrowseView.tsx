@@ -8,6 +8,7 @@ import type {
   IssueContainer,
   IssueListState,
 } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -100,6 +101,7 @@ export function IssueBrowseView({
   onSelect: (entry: IssueRowTarget) => void;
   onNavigate: (position: IssueBrowsePosition) => void;
 }) {
+  const gt = useGT();
   const projects = useProjects();
   // A single team needs no picking; its level stands in for the teams list.
   const explicitTeam = issueBrowseTeamOf(position);
@@ -108,7 +110,7 @@ export function IssueBrowseView({
 
   const crumbs: Array<{ level: string; label: string; target: IssueBrowsePosition | null }> = [];
   if (teams.length !== 1)
-    crumbs.push({ level: "teams", label: "Teams", target: team === null ? null : {} });
+    crumbs.push({ level: "teams", label: gt("Teams"), target: team === null ? null : {} });
   if (team !== null) {
     const base = teamPosition(team);
     const { project, milestone } = teamLevel;
@@ -127,7 +129,7 @@ export function IssueBrowseView({
   }
 
   const breadcrumb = (
-    <WorkspaceBreadcrumb ariaLabel="Browse breadcrumb" wrap>
+    <WorkspaceBreadcrumb ariaLabel={gt("Browse breadcrumb")} wrap>
       {crumbs.map((crumb, index) => (
         <Fragment key={crumb.level}>
           {index > 0 ? (
@@ -178,7 +180,7 @@ export function IssueBrowseView({
         <PullRequestListGhost />
       ) : teams.length === 0 && teamsError ? (
         <PullRequestsUnavailableState
-          title="Could not load teams"
+          title={gt("Could not load teams")}
           icon={<IssueGlyph.issue />}
           error={teamsError}
           onRetry={onRetryTeams}
@@ -190,9 +192,11 @@ export function IssueBrowseView({
             <UsersIcon />
           </EmptyMedia>
           <EmptyHeader>
-            <EmptyTitle>No teams to browse</EmptyTitle>
+            <EmptyTitle>
+              <T>No teams to browse</T>
+            </EmptyTitle>
             <EmptyDescription>
-              Connect Linear under Settings → Source control & issues.
+              <T>Connect Linear under Settings → Source control & issues.</T>
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -232,13 +236,14 @@ function BrowseToolbar({
   refresh: () => void;
   refreshing: boolean;
 }) {
+  const gt = useGT();
   return (
     <div className="flex min-w-0 items-center gap-2">
       <div className="min-w-0 flex-1">{breadcrumb}</div>
       <Button
         size="icon-xs"
         variant="ghost-muted"
-        aria-label="Refresh"
+        aria-label={gt("Refresh")}
         onClick={refresh}
         disabled={refreshing}
       >
@@ -292,6 +297,7 @@ function BrowseLevel({
   onSelect: (entry: IssueRowTarget) => void;
   onNavigate: (position: IssueBrowsePosition) => void;
 }) {
+  const gt = useGT();
   const query = useEnvironmentQuery(issueEnvironment.browse({ environmentId, input }));
   const loadPage = useAtomCommand(issueEnvironment.browsePage, { reportFailure: false });
   const [more, setMore] = useState<HeldBrowsePage | null>(null);
@@ -307,7 +313,7 @@ function BrowseLevel({
         {toolbar}
         {query.error !== null && !query.isPending ? (
           <PullRequestsUnavailableState
-            title="Could not load this view"
+            title={gt("Could not load this view")}
             icon={<IssueGlyph.issue />}
             error={query.error}
             onRetry={query.refresh}
@@ -362,30 +368,40 @@ function BrowseLevel({
       {toolbar}
       {query.error ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-xs">
-          <span>{query.error} Showing what loaded before.</span>
+          <span>
+            <T>
+              <Var>{query.error}</Var> Showing what loaded before.
+            </T>
+          </span>
           <Button size="xs" variant="outline" onClick={query.refresh}>
-            Retry
+            <T>Retry</T>
           </Button>
         </div>
       ) : null}
       {result.containers.length > 0 ? (
         <ContainerSection
-          heading={atTeam ? "Projects" : "Milestones"}
+          heading={atTeam ? gt("Projects") : gt("Milestones")}
           active={active}
           completed={completed}
           onOpen={openContainer}
         />
       ) : null}
       {atTeam && result.containers.length === 0 ? (
-        <p className="px-3 text-sm text-muted-foreground">This team has no projects.</p>
+        <p className="px-3 text-sm text-muted-foreground">
+          <T>This team has no projects.</T>
+        </p>
       ) : null}
       {!atTeam ? (
         <section className="flex flex-col gap-1">
           {input.container?.kind === "project" ? (
-            <h2 className="px-3 text-xs font-medium text-muted-foreground">No milestone</h2>
+            <h2 className="px-3 text-xs font-medium text-muted-foreground">
+              <T>No milestone</T>
+            </h2>
           ) : null}
           {rows.length === 0 ? (
-            <p className="px-3 text-sm text-muted-foreground">No issues under this filter.</p>
+            <p className="px-3 text-sm text-muted-foreground">
+              <T>No issues under this filter.</T>
+            </p>
           ) : null}
           {rows.map(({ entry, depth }) => {
             const row: EnvironmentIssueEntry = { ...entry, environmentId };
@@ -414,7 +430,7 @@ function BrowseLevel({
               disabled={loadingMore}
               onClick={() => void loadMore()}
             >
-              {loadingMore ? "Loading…" : held.failure === null ? "Load more" : "Retry"}
+              {loadingMore ? gt("Loading…") : held.failure === null ? gt("Load more") : gt("Retry")}
             </Button>
           ) : null}
         </section>
@@ -467,7 +483,9 @@ function ContainerSection({
           onClick={() => setShowCompleted((open) => !open)}
         >
           {showCompleted ? <ChevronDownIcon /> : <ChevronRightIcon />}
-          Completed ({completed.length})
+          <T>
+            Completed (<Var>{completed.length}</Var>)
+          </T>
         </Button>
       ) : null}
       {showCompleted ? completed.map(row) : null}
