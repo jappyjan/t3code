@@ -36,6 +36,7 @@ import {
   type ScopedThreadRef,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { buildLinearIssueContextRecord } from "@t3tools/shared/linearLaunch";
 import { createModelSelection } from "@t3tools/shared/model";
 
 const CODEX_INSTANCE = ProviderInstanceId.make("codex");
@@ -882,6 +883,86 @@ describe("composerDraftStore environment contexts", () => {
     const store = useComposerDraftStore.getState();
     store.addEnvironmentContexts(threadRef, [vps]);
     store.setEnvironmentContexts(threadRef, []);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+});
+
+describe("composerDraftStore linear issue drafts", () => {
+  const draftId = DraftId.make("linear-issue-draft");
+  const threadId = ThreadId.make("thread-from-linear-issue");
+  const projectRef = scopeProjectRef(TEST_ENVIRONMENT_ID, ProjectId.make("project-linear"));
+  const record = buildLinearIssueContextRecord({
+    tracker: "linear",
+    host: "linear.app",
+    scope: "ATT",
+    key: "ATT-612",
+    displayKey: "ATT-612",
+    title: "Handshake",
+    url: "https://linear.app/acme/issue/ATT-612",
+    state: { category: "open", name: "Todo" },
+    assignees: [],
+    labels: [],
+    branchName: "jan/att-612",
+    linkedPullRequests: [],
+    body: "Body",
+    comments: [],
+  } as never);
+  const launch = {
+    issueId: "ATT-612",
+    identifier: "ATT-612",
+    title: "Handshake",
+    url: "https://linear.app/acme/issue/ATT-612",
+    tracker: "linear",
+    host: "linear.app",
+    scope: "ATT",
+    projectId: "project-linear",
+    branchName: "jan/att-612",
+  };
+
+  beforeEach(resetComposerDraftStore);
+
+  it("keeps the attached issue and the launch through persistence", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.addLinearContexts(draftId, [record, { ...record, title: "renamed" }]);
+    store.setDraftLinearIssue(draftId, launch);
+
+    expect(draftByKey(draftId)?.linearContexts).toEqual([record]);
+    const merge = useComposerDraftStore.persist.getOptions().merge!;
+    const hydrated = merge(
+      JSON.parse(
+        JSON.stringify(partializeComposerDraftStoreState(useComposerDraftStore.getState())),
+      ),
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(hydrated.draftsByThreadKey[draftId]?.linearContexts).toEqual([record]);
+    expect(hydrated.draftThreadsByThreadKey[draftId]?.linearIssue).toEqual(launch);
+  });
+
+  it("keeps the launch when the draft's workspace changes", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.setDraftLinearIssue(draftId, launch);
+    store.setDraftThreadContext(draftId, { branch: "develop", envMode: "worktree" });
+    expect(useComposerDraftStore.getState().getDraftSession(draftId)?.linearIssue).toEqual(launch);
+  });
+
+  it("lets the launch be edited and cleared", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.setDraftLinearIssue(draftId, launch);
+    store.setDraftLinearIssue(draftId, { ...launch, branchName: "jan/att-612-b" });
+    expect(useComposerDraftStore.getState().getDraftSession(draftId)?.linearIssue?.branchName).toBe(
+      "jan/att-612-b",
+    );
+    store.setDraftLinearIssue(draftId, null);
+    expect(useComposerDraftStore.getState().getDraftSession(draftId)?.linearIssue).toBeUndefined();
+  });
+
+  it("drops the chip with the record", () => {
+    const store = useComposerDraftStore.getState();
+    store.addLinearContexts(scopeThreadRef(TEST_ENVIRONMENT_ID, threadId), [record]);
+    store.setLinearContexts(scopeThreadRef(TEST_ENVIRONMENT_ID, threadId), []);
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
   });
 });

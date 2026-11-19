@@ -213,6 +213,12 @@ export function RightPanelSurfaceContent(props: {
             key: surface.key,
           }}
           threadRef={threadRef}
+          onSelectIssue={(reference) =>
+            useRightPanelStore.getState().openIssue(threadRef, {
+              ...reference,
+              ...(surface.environmentId ? { environmentId: surface.environmentId } : {}),
+            })
+          }
           onSelectPullRequest={(reference) => {
             useRightPanelStore.getState().openPullRequest(threadRef, {
               ...(surface.environmentId === undefined

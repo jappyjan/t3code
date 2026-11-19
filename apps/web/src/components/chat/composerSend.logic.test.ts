@@ -42,6 +42,7 @@ it("detects draft edits during upload preparation without treating upload metada
     reviewComments: [],
     threadContexts: [],
     environmentContexts: [],
+    linearContexts: [],
     replyTo: null,
     modelSelectionByProvider: {},
     activeProvider: null,

@@ -72,6 +72,8 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   terminalLabel: string | null;
   project: ProjectFaviconProject | null;
   projectDisplayName: string | null;
+  /** Set when the draft was started from a Linear issue, e.g. "ATT-612". */
+  linearIdentifier: string | null;
   isActive: boolean;
   jumpLabel: string | null;
   onNavigate: (draftId: DraftId) => void;
@@ -173,6 +175,11 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
             <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
               {props.projectDisplayName}
             </span>
+            {props.linearIdentifier ? (
+              <span className="shrink-0 text-2xs text-muted-foreground">
+                Draft · from {props.linearIdentifier}
+              </span>
+            ) : null}
             <span
               className={cn(
                 "ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end",
@@ -306,6 +313,7 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
             terminalLabel={draftTerminalLabel(session, props.terminalLabels)}
             project={props.projectByKey.get(projectKey) ?? null}
             projectDisplayName={props.projectDisplayNameByKey.get(projectKey) ?? null}
+            linearIdentifier={session.linearIssue?.identifier ?? null}
             isActive={draftId === props.routeDraftId}
             jumpLabel={props.jumpLabelByDraftId?.get(draftId) ?? null}
             onNavigate={props.onNavigateToDraft}

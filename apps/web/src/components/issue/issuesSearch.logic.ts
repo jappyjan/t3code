@@ -10,6 +10,7 @@ import { splitsSurrogatePair } from "@t3tools/shared/assistantCitations";
 
 import type { IssueListTarget } from "@t3tools/client-runtime/state/issues";
 
+import { issueBrowseFromUrl } from "./issueBrowse.logic";
 import type { IssuesSearch } from "./IssuesPage";
 
 // The router reads a bare `key=42` as a number.
@@ -47,6 +48,8 @@ export const issuesSearchFromUrl = (raw: Record<string, unknown>): IssuesSearch 
   label: labels(raw.label),
   assignee: bounded(raw.assignee),
   order: raw.order === "created" ? "created" : undefined,
+  // Present at all means browsing by team; deliberately not one of the remembered preferences.
+  browse: issueBrowseFromUrl(raw.browse),
   selectedEnvironmentId: bounded(raw.selectedEnvironmentId) as EnvironmentId | undefined,
   selectedProjectId: bounded(raw.selectedProjectId) as ProjectId | undefined,
   selectedHost: bounded(raw.selectedHost),

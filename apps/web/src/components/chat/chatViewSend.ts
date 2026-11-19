@@ -368,6 +368,10 @@ export function restoreComposerDraft(
       (record) => record.contextId,
     ),
   );
+  store.setLinearContexts(
+    draftTarget,
+    withRestored(current?.linearContexts, snapshot.linearContexts, (record) => record.contextId),
+  );
   return images;
 }
 
