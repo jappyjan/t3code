@@ -329,20 +329,6 @@ export function derivePendingBackgroundWork(input: {
   });
 }
 
-/** Whether a link's watch still holds its thread open as pending work. */
-function pullRequestWatchHoldsThread(
-  link: Pick<PendingBackgroundWorkPullRequest, "source" | "snapshot"> & {
-    readonly watch?: unknown;
-  },
-): boolean {
-  // A merged PR's watch ends at the next sweep, whose wake starts its own run, so it holds nothing.
-  return (
-    link.watch !== undefined &&
-    link.source !== "stack-dismissed" &&
-    link.snapshot?.state !== "merged"
-  );
-}
-
 function pullRequestWatchTasks(
   pullRequests: ReadonlyArray<PendingBackgroundWorkPullRequest> | undefined,
 ): Array<PendingBackgroundWorkTask> {
