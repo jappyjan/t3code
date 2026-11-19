@@ -22,6 +22,8 @@ import * as ServerConfig from "../../config.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as ManagedPolicy from "../../policy/ManagedPolicy.ts";
+import * as HostResources from "../../resourceTelemetry/HostResources.ts";
+import * as HostAdmission from "../HostAdmission.ts";
 import * as ThreadManagementService from "../ThreadManagementService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpSessionRegistryTestkit from "../../mcp/McpSessionRegistry.testkit.ts";
@@ -301,6 +303,14 @@ export function layerWithRegistry<Error>(
     readonly providerInstances?: Partial<
       ProviderInstanceRegistry.ProviderInstanceRegistry["Service"]
     >;
+    /** Builds the host admission service with these settings; tests change them through the settings service. */
+    readonly hostCapacity?: {
+      readonly settings: {
+        readonly maxRunningTurns?: number | null;
+        readonly paceNewTurnsByHostLoad?: boolean;
+      };
+      readonly hostResources?: Layer.Layer<HostResources.HostResources>;
+    };
   } = {},
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
@@ -309,7 +319,9 @@ export function layerWithRegistry<Error>(
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2
   | CommandOutputRecorder.CommandOutputRecorder
-  | ThreadCommandExecutor.ThreadCommandExecutor,
+  | ThreadCommandExecutor.ThreadCommandExecutor
+  | HostAdmission.HostAdmission
+  | ServerSettings.ServerSettingsService,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
   const layerServerConfig = Layer.effect(
@@ -334,6 +346,7 @@ export function layerWithRegistry<Error>(
       ServerSettings.layerTest(
         {
           responseStreamingMode: "turn",
+          ...options.hostCapacity?.settings,
           ...(options.continueThreadsAfterServerUpdate === undefined
             ? {}
             : { continueThreadsAfterServerUpdate: options.continueThreadsAfterServerUpdate }),
@@ -523,9 +536,23 @@ export function layerWithRegistry<Error>(
       }),
     }),
   );
+  const layerHostAdmission: Layer.Layer<HostAdmission.HostAdmission> =
+    options.hostCapacity === undefined
+      ? Layer.empty
+      : HostAdmission.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              layerPersistence,
+              ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+              layerServerSettings,
+              options.hostCapacity.hostResources ?? Layer.empty,
+            ),
+          ),
+        );
   const layerOrchestratorProvided = Orchestrator.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        layerHostAdmission,
         layerCheckpointServiceProvided,
         CommandPolicy.layer,
         layerContextHandoffServiceProvided,
@@ -590,6 +617,8 @@ export function layerWithRegistry<Error>(
   const layerReplayRuntime = Layer.mergeAll(
     layerEffectOutboxProvided,
     layerOrchestratorProvided,
+    layerHostAdmission,
+    layerServerSettings,
     layerProviderSessionManagerProvided,
     layerEffectWorkerProvided,
     layerEventSinkProvided,

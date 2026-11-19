@@ -804,6 +804,9 @@ export const OrchestrationV2RunOutput = Schema.Struct({
 });
 export type OrchestrationV2RunOutput = typeof OrchestrationV2RunOutput.Type;
 
+export const OrchestrationV2AdmissionWait = Schema.Literals(["capacity", "host_load"]);
+export type OrchestrationV2AdmissionWait = typeof OrchestrationV2AdmissionWait.Type;
+
 export const OrchestrationV2Run = Schema.Struct({
   id: RunId,
   threadId: ThreadId,
@@ -818,6 +821,8 @@ export const OrchestrationV2Run = Schema.Struct({
   queuePosition: Schema.optional(Schema.NullOr(PositiveInt)),
   queueHeld: Schema.optional(Schema.Boolean),
   steerWhenReadyRunId: Schema.optional(RunId),
+  /** Why a queued run waits for the host instead of behind its thread's own work; set only on transitions. */
+  admissionWait: Schema.optional(OrchestrationV2AdmissionWait),
   requestedAt: Schema.DateTimeUtc,
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
   completedAt: Schema.NullOr(Schema.DateTimeUtc),

@@ -148,6 +148,8 @@ const AUTO_SETTLE_SETTING_KEYS: ReadonlySet<string> = new Set([
   "autoResumeLimitedThreads",
   "snoozeLimitedThreads",
   "possiblyStuckAfterHours",
+  "paceNewTurnsByHostLoad",
+  "maxRunningTurns",
 ]);
 
 function planServerSettingsWrites(
