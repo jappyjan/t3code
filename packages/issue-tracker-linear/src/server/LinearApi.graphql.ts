@@ -916,18 +916,26 @@ export const NodesWorkflowState = Schema.Struct({
 export interface NodesWorkflowState extends Schema.Struct.Type<typeof NodesWorkflowState.fields> {}
 
 export const WorkflowStatesWorkflowStateConnection = Schema.Struct({
-  nodes: Schema.Array(NodesWorkflowState)
+  nodes: Schema.Array(NodesWorkflowState),
+  pageInfo: LinearPageInfo
 })
 export interface WorkflowStatesWorkflowStateConnection extends Schema.Struct.Type<typeof WorkflowStatesWorkflowStateConnection.fields> {}
 
 /** `query T3StartedStates` */
 export const T3StartedStates = GraphQL.query("T3StartedStates", {
   document: {
-    variables: [],
-    selections: [
-      { name: "workflowStates", body: ["(first:250 filter:{type:{eq:\"started\"}}){nodes{id position team{key}}}"] }
+    variables: [
+      { name: "after", body: "String" }
     ],
-    fragments: []
+    selections: [
+      { name: "workflowStates", body: ["(first:250 after:$", "after", " filter:{type:{eq:\"started\"}}){nodes{id position team{key}}pageInfo{...LinearPageInfo}}"] }
+    ],
+    fragments: [
+      { name: "LinearPageInfo", body: ["on PageInfo{hasNextPage endCursor}"] }
+    ]
+  },
+  variables: {
+    after: Schema.optional(Schema.NullOr(Schema.String))
   },
   result: Schema.Struct({
     /** All issue workflow states (issue statuses). Returns a paginated list of workflow states visible to the authenticated user, across all teams they have access to. */

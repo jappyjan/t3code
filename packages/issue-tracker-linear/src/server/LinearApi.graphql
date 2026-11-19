@@ -347,14 +347,17 @@ query T3CommentReactions($id: String!) {
   }
 }
 
-query T3StartedStates {
-  workflowStates(first: 250, filter: { type: { eq: "started" } }) {
+query T3StartedStates($after: String) {
+  workflowStates(first: 250, after: $after, filter: { type: { eq: "started" } }) {
     nodes {
       id
       position
       team {
         key
       }
+    }
+    pageInfo {
+      ...LinearPageInfo
     }
   }
 }

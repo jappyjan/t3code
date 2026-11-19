@@ -260,15 +260,25 @@ describe("LinearIssueTracker", () => {
           organization: { urlKey: "acme" },
           teams: { nodes: [] },
         }),
-        // Two started states on ENG: In Progress sits a third of the way, In Review two thirds.
-        T3StartedStates: () => ({
-          workflowStates: {
-            nodes: [
-              { id: "st_in-review", position: 2, team: { key: "ENG" } },
-              { id: "st_in-progress", position: 1, team: { key: "ENG" } },
-            ],
-          },
-        }),
+        // Two started states on ENG, split over two pages, beside DES's own: In Progress sits a
+        // third of the way, In Review two thirds.
+        T3StartedStates: (variables) =>
+          variables.after === "cur_states"
+            ? {
+                workflowStates: {
+                  nodes: [
+                    { id: "st_in-review", position: 2, team: { key: "ENG" } },
+                    { id: "st_des-doing", position: 0.5, team: { key: "DES" } },
+                  ],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              }
+            : {
+                workflowStates: {
+                  nodes: [{ id: "st_in-progress", position: 1, team: { key: "ENG" } }],
+                  pageInfo: { hasNextPage: true, endCursor: "cur_states" },
+                },
+              },
         T3Issues: (variables) => {
           expect(variables.filter).toMatchObject({
             team: { key: { eq: "ENG" } },
@@ -289,6 +299,8 @@ describe("LinearIssueTracker", () => {
                   completedAt: "2026-07-03T00:00:00.000Z",
                 }),
                 issue("ENG-1"),
+                // A workflow type newer than this client keeps the open or closed mark.
+                issue("ENG-3", { state: state("Paused", "paused") }),
               ],
               pageInfo: { hasNextPage: true, endCursor: "cur_2" },
             },
@@ -333,9 +345,10 @@ describe("LinearIssueTracker", () => {
             startedFill: 1 / 3,
           },
         ],
+        ["ENG-3", "ENG-3", { category: "open", name: "Paused", color: "#5e6ad2" }],
       ]);
       // A listing carries no comment totals, whatever the row's position.
-      expect(page.items.map((item) => item.commentCount)).toEqual([0, 0]);
+      expect(page.items.map((item) => item.commentCount)).toEqual([0, 0, 0]);
       expect(page.items[0]).toMatchObject({
         closedAt: "2026-07-03T00:00:00.000Z",
         author: { login: "julius", name: "julius" },
@@ -343,10 +356,9 @@ describe("LinearIssueTracker", () => {
         labels: [{ name: "Bug", color: "#f00" }],
       });
       // The stored key goes in as-is, not as a bearer token.
-      expect(requests.map((request) => request.authorization)).toEqual([
-        "lin_api_stored",
-        "lin_api_stored",
-      ]);
+      expect(new Set(requests.map((request) => request.authorization))).toEqual(
+        new Set(["lin_api_stored"]),
+      );
       // Rows never show a body, so the listing leaves descriptions to the detail query.
       for (const request of requests) expect(request.query).not.toMatch(/\bdescription\b/);
 
@@ -372,6 +384,45 @@ describe("LinearIssueTracker", () => {
         }),
       );
       expect([refused.reason, refused.retryAt]).toEqual(["rate-limited", resetAt]);
+    }),
+  );
+
+  it.effect("reads started fills again after a failed read instead of keeping the fallback", () =>
+    Effect.gen(function* () {
+      let reads = 0;
+      const { tracker } = fakeLinear({
+        T3StartedStates: () =>
+          ++reads === 1
+            ? new Response(JSON.stringify({ errors: [{ message: "Rate limited" }] }), {
+                status: 429,
+                headers: { "content-type": "application/json" },
+              })
+            : {
+                workflowStates: {
+                  nodes: [{ id: "st_in-progress", position: 1, team: { key: "ENG" } }],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+        T3Issues: () => ({
+          issues: { nodes: [issue("ENG-1")], pageInfo: { hasNextPage: false, endCursor: null } },
+        }),
+      });
+      const api = yield* tracker;
+      const fill = () =>
+        api
+          .listIssues({
+            ...target,
+            state: "open",
+            involvement: "all",
+            viewer: "julius",
+            sort: "created",
+            limit: 50,
+          })
+          .pipe(Effect.map((page) => page.items[0]?.state.startedFill));
+      expect(yield* fill()).toBeUndefined();
+      expect(yield* fill()).toBe(0.5);
+      expect(yield* fill()).toBe(0.5);
+      expect(reads).toBe(2);
     }),
   );
 

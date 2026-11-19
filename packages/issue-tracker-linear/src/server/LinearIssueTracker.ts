@@ -5,6 +5,7 @@
  */
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import {
   IssueStateType,
@@ -136,7 +137,7 @@ function parseIdentifier(key: string): string | null {
 type StartedFills = ReadonlyMap<string, number>;
 
 /** (index + 1) / (count + 1) among the team's started states, ordered by `position`. */
-export function startedFillsOf(
+function startedFillsOf(
   states: ReadonlyArray<{
     readonly id: string;
     readonly position: number;
@@ -158,13 +159,10 @@ export function startedFillsOf(
   return fills;
 }
 
-const STATE_TYPES: ReadonlySet<string> = new Set(IssueStateType.literals);
+const isStateType = Schema.is(IssueStateType);
 
-function toState(
-  state: LinearApi.LinearWorkflowState,
-  fills: StartedFills = new Map(),
-): IssueState {
-  const type = STATE_TYPES.has(state.type) ? (state.type as IssueStateType) : undefined;
+function toState(state: LinearApi.LinearWorkflowState, fills: StartedFills): IssueState {
+  const type = isStateType(state.type) ? state.type : undefined;
   const fill = state.type === "started" ? fills.get(state.id) : undefined;
   const look = {
     ...(type === undefined ? {} : { type }),
@@ -530,13 +528,13 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
         : Effect.succeed(member.id);
     };
 
+    const cachedStartedFills = yield* Effect.cachedWithTTL(
+      linear.listStartedStates().pipe(Effect.map(startedFillsOf)),
+      (exit) => (Exit.isSuccess(exit) ? Duration.minutes(5) : Duration.zero),
+    );
     /** Fill data is decoration: a failed read leaves started states at the client's default. */
-    const startedFills: Effect.Effect<StartedFills> = yield* Effect.cachedWithTTL(
-      linear.listStartedStates().pipe(
-        Effect.map(startedFillsOf),
-        Effect.orElseSucceed((): StartedFills => new Map()),
-      ),
-      Duration.minutes(5),
+    const startedFills = cachedStartedFills.pipe(
+      Effect.orElseSucceed((): StartedFills => new Map()),
     );
 
     const viewerId: Effect.Effect<string | null> = linear.viewer().pipe(

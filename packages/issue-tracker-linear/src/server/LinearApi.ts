@@ -375,10 +375,20 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const listStartedStates: LinearApi["Service"]["listStartedStates"] = () =>
-    call("listStartedStates", (linear) => linear.T3StartedStates()).pipe(
-      Effect.map((data) => data.workflowStates.nodes),
+  // Every page: a team cut off part-way would get wrong fills, not just the default.
+  const startedStatesFrom = (
+    after: string | null,
+  ): ReturnType<LinearApi["Service"]["listStartedStates"]> =>
+    call("listStartedStates", (linear) => linear.T3StartedStates({ after })).pipe(
+      Effect.flatMap(({ workflowStates: page }) => {
+        const cursor = nextCursor(page.pageInfo);
+        return cursor === null
+          ? Effect.succeed(page.nodes)
+          : startedStatesFrom(cursor).pipe(Effect.map((rest) => [...page.nodes, ...rest]));
+      }),
     );
+  const listStartedStates: LinearApi["Service"]["listStartedStates"] = () =>
+    startedStatesFrom(null);
 
   const listProjects: LinearApi["Service"]["listProjects"] = (key) =>
     call("listProjects", (linear) => linear.T3TeamProjects({ key })).pipe(
