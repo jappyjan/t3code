@@ -1,7 +1,12 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { projectsBoundToScope } from "@t3tools/client-runtime/issue-browse";
 import {
   buildLinearChatLaunchPlan,
   canLaunchFromIssue,
+  launchProjectChoiceKey,
+  readLaunchProjectChoice,
+  resolveLaunchProject,
+  writeLaunchProjectChoice,
   type LinearLaunchWorkspace,
 } from "@t3tools/client-runtime/linear/launch";
 import type {
@@ -9,6 +14,7 @@ import type {
   IssueDetail,
   IssueRelatedRef,
   LinearIssueContextRecord,
+  ProjectId,
 } from "@t3tools/contracts";
 import { sortBlockers } from "@t3tools/shared/linearLaunch";
 import {
@@ -24,6 +30,9 @@ import {
 import { useState, type ReactNode } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { useProjects } from "../../state/entities";
+import { issueTrackerEnvironment } from "../../state/issueTrackers";
+import { useEnvironmentQuery } from "../../state/query";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { linearContextReference } from "../../lib/composerContextRecords";
 import { formatInlineContextReference } from "../../lib/composerContextReferences";
@@ -31,6 +40,7 @@ import { PullRequestMetaRow } from "../pullRequest/PullRequestSummaryTab";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { toastManager } from "../ui/toast";
 import { LinearPipelineDialog } from "./LinearPipelineDialog";
 
@@ -39,7 +49,8 @@ const formatReference = (record: LinearIssueContextRecord) =>
 
 /**
  * Start chat and Run pipeline for an issue whose tracker names a branch. Both start in the
- * project the issue is read through: the one bound to its Linear team in Settings.
+ * project bound to its Linear team in Settings; for an unbound team the bar asks for a project
+ * and remembers the pick for the team on this device.
  */
 export function LinearIssueLaunchBar({
   environmentId,
@@ -50,11 +61,33 @@ export function LinearIssueLaunchBar({
 }) {
   const newThread = useNewThreadHandler();
   const [pipelineOpen, setPipelineOpen] = useState(false);
+  const projects = useProjects().filter((project) => project.environmentId === environmentId);
+  const bindings =
+    useEnvironmentQuery(issueTrackerEnvironment.connections({ environmentId, input: {} })).data
+      ?.bindings ?? {};
+  const storage = typeof window === "undefined" ? undefined : window.localStorage;
+  const choiceKey = launchProjectChoiceKey(environmentId, detail.tracker, detail.scope);
+  const [picked, setPicked] = useState<string | null>(() =>
+    readLaunchProjectChoice(storage, choiceKey),
+  );
   if (!canLaunchFromIssue(detail)) return null;
 
+  const target = resolveLaunchProject({
+    bound: projectsBoundToScope(bindings, detail.tracker, detail.scope),
+    remembered: picked,
+    available: projects.map((project) => project.id),
+  });
+  const launchDetail =
+    target.projectId === null ? null : { ...detail, projectId: target.projectId };
+  const pick = (projectId: ProjectId) => {
+    setPicked(projectId);
+    writeLaunchProjectChoice(storage, choiceKey, projectId);
+  };
+
   const startChat = async (workspace: LinearLaunchWorkspace) => {
-    const plan = buildLinearChatLaunchPlan({ detail, workspace, formatReference });
-    const opened = await newThread(scopeProjectRef(environmentId, detail.projectId), {
+    if (launchDetail === null) return;
+    const plan = buildLinearChatLaunchPlan({ detail: launchDetail, workspace, formatReference });
+    const opened = await newThread(scopeProjectRef(environmentId, launchDetail.projectId), {
       ...plan.workspace,
       prompt: plan.prompt,
     }).catch(() => null);
@@ -73,14 +106,42 @@ export function LinearIssueLaunchBar({
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
+      {target.bound ? null : (
+        <Select
+          value={target.projectId ?? ""}
+          onValueChange={(next) => {
+            if (next) pick(next as ProjectId);
+          }}
+        >
+          <SelectTrigger aria-label="Project to start in" className="w-48" size="sm">
+            <SelectValue>
+              {projects.find((project) => project.id === target.projectId)?.title ??
+                "Choose a project"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                {project.title}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      )}
       <Group>
-        <Button size="sm" variant="outline" onClick={() => void startChat("worktree")}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={launchDetail === null}
+          onClick={() => void startChat("worktree")}
+        >
           <MessageSquarePlusIcon aria-hidden />
           Start chat
         </Button>
         <GroupSeparator />
         <Menu>
           <MenuTrigger
+            disabled={launchDetail === null}
             render={<Button size="icon-sm" variant="outline" aria-label="More ways to start" />}
           >
             <ChevronDownIcon aria-hidden />
@@ -93,14 +154,19 @@ export function LinearIssueLaunchBar({
           </MenuPopup>
         </Menu>
       </Group>
-      <Button size="sm" variant="outline" onClick={() => setPipelineOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={launchDetail === null}
+        onClick={() => setPipelineOpen(true)}
+      >
         <WorkflowIcon aria-hidden />
         Run pipeline
       </Button>
-      {pipelineOpen ? (
+      {pipelineOpen && launchDetail !== null ? (
         <LinearPipelineDialog
           environmentId={environmentId}
-          detail={detail}
+          detail={launchDetail}
           onClose={() => setPipelineOpen(false)}
         />
       ) : null}
