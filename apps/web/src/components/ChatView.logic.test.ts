@@ -1249,6 +1249,7 @@ describe("snapshotComposerSend", () => {
       threadContexts: [],
       environmentContexts: [],
       replyTo: null,
+      linearContexts: [],
     });
 
     expect(snapshot.terminalContexts).toEqual([live]);
@@ -1284,6 +1285,7 @@ describe("snapshotComposerSend", () => {
       reviewComments: [],
       threadContexts: [],
       environmentContexts: [],
+      linearContexts: [],
       replyTo,
     });
 

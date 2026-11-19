@@ -14,6 +14,7 @@ describe("issuesSearchFromUrl", () => {
     expect(search.label).toBeUndefined();
     expect(search.assignee).toBeUndefined();
     expect(search.order).toBeUndefined();
+    expect({ browse: {}, ...issuesSearchFromUrl({}) }.browse).toBeUndefined();
     expect(issuesSearchFromUrl({ label: "bug" }).label).toEqual(["bug"]);
     expect(issuesSearchFromUrl({ label: ["bug", " ui "], order: "created" })).toMatchObject({
       label: ["bug", "ui"],
