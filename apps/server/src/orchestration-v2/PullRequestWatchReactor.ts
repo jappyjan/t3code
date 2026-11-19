@@ -1,7 +1,6 @@
 import {
   CommandId,
   isOrchestrationV2WorkActive,
-  MessageId,
   type OrchestrationV2Notification,
   type PullRequestActivity,
   type PullRequestComment,
@@ -826,10 +825,8 @@ export const make = Effect.gen(function* () {
     yield* Effect.forEach(
       ending,
       ([target, reason]) =>
-        (reason === "merged"
-          ? merged(`${target.thread.projectId} ${threadPullRequestKeyOf(target.link)}`, target)
-          : record(target, null).pipe(Effect.tap(() => ended(target, reason)))
-        ).pipe(
+        record(target, null).pipe(
+          Effect.tap(() => ended(target, reason)),
           Effect.catchCause(
             logFailure("pull request watch stop failed", {
               threadId: target.thread.id,
