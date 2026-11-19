@@ -1,7 +1,8 @@
 import type { EnvironmentIssueEntry } from "@t3tools/client-runtime/issue-list";
-import { MessageSquareIcon } from "lucide-react";
+import { ListTreeIcon, MessageSquareIcon } from "lucide-react";
 import { memo } from "react";
 
+import { Badge } from "~/components/ui/badge";
 import { cn } from "~/lib/utils";
 
 import {
@@ -28,6 +29,9 @@ function IssueRowImpl({
   showScope,
   showTracker,
   environmentLabel,
+  depth = 0,
+  subIssueCount = 0,
+  blocked = false,
   onSelect,
 }: {
   entry: EnvironmentIssueEntry;
@@ -38,6 +42,10 @@ function IssueRowImpl({
   showTracker: boolean;
   /** Names the server this row was read from, where the list spans more than one. */
   environmentLabel?: string | undefined;
+  /** How far under its parent a sub-issue sits, where the list nests them. */
+  depth?: number;
+  subIssueCount?: number;
+  blocked?: boolean;
   onSelect: (entry: IssueRowTarget) => void;
 }) {
   const tracker = issueTrackerPresentation(entry.tracker);
@@ -47,6 +55,7 @@ function IssueRowImpl({
         "flex items-center rounded-md [content-visibility:auto] [contain-intrinsic-block-size:56.5px]",
         selected ? "bg-accent" : "hover:bg-accent/60",
       )}
+      style={depth > 0 ? { marginInlineStart: `${depth * 1.25}rem` } : undefined}
     >
       <button
         type="button"
@@ -60,6 +69,20 @@ function IssueRowImpl({
           title={entry.title}
           status={
             <>
+              {blocked ? (
+                <Badge variant="warning" size="sm">
+                  Blocked
+                </Badge>
+              ) : null}
+              {subIssueCount > 0 ? (
+                <span className="inline-flex items-center gap-0.5 tabular-nums">
+                  <ListTreeIcon aria-hidden className="size-3" />
+                  {subIssueCount}
+                  <span className="sr-only">
+                    {subIssueCount === 1 ? "sub-issue" : "sub-issues"}
+                  </span>
+                </span>
+              ) : null}
               {entry.assignees.length > 0 ? (
                 <span className="flex items-center -space-x-1">
                   {entry.assignees.slice(0, 3).map((assignee) => (

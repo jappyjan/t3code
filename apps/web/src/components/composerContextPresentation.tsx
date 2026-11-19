@@ -3,6 +3,7 @@ import { isSvgAttachment } from "@t3tools/shared/image";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
   EnvironmentContextRecord,
+  LinearIssueContextRecord,
   PreviewAnnotationPayload,
   ThreadContextRecord,
 } from "@t3tools/contracts";
@@ -42,6 +43,7 @@ import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { EnvironmentContextChip } from "./EnvironmentContextChip";
+import { LinearIssueContextChip } from "./LinearIssueContextChip";
 import { ThreadContextChip } from "./ThreadContextChip";
 import { useLinkedEnvironments } from "~/state/peerLinks";
 import {
@@ -71,7 +73,8 @@ export type ComposerDraftContextRecord =
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
-  | { kind: "environment"; record: EnvironmentContextRecord };
+  | { kind: "environment"; record: EnvironmentContextRecord }
+  | { kind: "linear-issue"; record: LinearIssueContextRecord };
 
 export {
   ComposerContextActionsContext,
@@ -97,6 +100,7 @@ export function composerContextRecordsFromDraft(input: {
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
+  linearContexts?: ReadonlyArray<LinearIssueContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -135,6 +139,9 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.environmentContexts ?? []) {
     records.set(record.contextId, { kind: "environment", record });
+  }
+  for (const record of input.linearContexts ?? []) {
+    records.set(record.contextId, { kind: "linear-issue", record });
   }
   return records;
 }
@@ -477,6 +484,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
     "preview-annotation",
     "thread",
     "environment",
+    "linear-issue",
   ],
   handlers: [
     {
@@ -569,6 +577,16 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "environment" ? (
           <EnvironmentContextChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "linear-issue",
+      canRender: (entry) => entry.kind === "linear-issue",
+      render: (entry, context) =>
+        entry.kind === "linear-issue" ? (
+          <LinearIssueContextChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

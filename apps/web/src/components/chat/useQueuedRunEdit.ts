@@ -15,6 +15,7 @@ import {
   type ComposerContextRecord,
   type EnvironmentContextRecord,
   type ResponseContextRecord,
+  type LinearIssueContextRecord,
   type EnvironmentId,
   type MessageId,
   type OrchestrationMessageContext,
@@ -102,6 +103,7 @@ interface QueuedRunEditContent {
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
   readonly replyTo?: ResponseContextRecord | null;
+  readonly linearContexts: ReadonlyArray<LinearIssueContextRecord>;
 }
 
 const isDraftOwnedRecord = (record: ComposerContextRecord) =>
@@ -166,6 +168,7 @@ async function submitQueuedRunEdit(input: {
         threadContexts: content.threadContexts,
         environmentContexts: content.environmentContexts,
         replyTo: content.replyTo ?? null,
+        linearContexts: content.linearContexts,
         attachments: newAttachments.map((attachment, index) => ({
           attachment,
           attachmentId: uploads[editing.existingAttachments.length + index]?.id ?? attachment.id,
