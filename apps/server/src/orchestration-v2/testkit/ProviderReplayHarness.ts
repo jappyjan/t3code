@@ -307,8 +307,8 @@ export function layerWithRegistry<Error>(
     readonly providerInstances?: Partial<
       ProviderInstanceRegistry.ProviderInstanceRegistry["Service"]
     >;
-    /** Builds the host admission service with these settings; tests change them through the settings service. */
-    readonly hostCapacity?: {
+    /** Host admission settings; tests change them later through the settings service. */
+    readonly hostAdmission?: {
       readonly settings: {
         readonly maxRunningTurns?: number | null;
         readonly paceNewTurnsByHostLoad?: boolean;
@@ -368,7 +368,7 @@ export function layerWithRegistry<Error>(
       ServerSettings.layerTest(
         {
           responseStreamingMode: "turn",
-          ...options.hostCapacity?.settings,
+          ...options.hostAdmission?.settings,
           ...(options.continueThreadsAfterServerUpdate === undefined
             ? {}
             : { continueThreadsAfterServerUpdate: options.continueThreadsAfterServerUpdate }),
@@ -560,17 +560,14 @@ export function layerWithRegistry<Error>(
       }),
     }),
   );
-  // Without host capacity there is no service; the orchestrator reads it as optional.
-  const layerHostAdmission: Layer.Layer<HostAdmission.HostAdmission> =
-    options.hostCapacity === undefined
-      ? (Layer.empty as Layer.Layer<HostAdmission.HostAdmission>)
-      : HostAdmission.layer.pipe(
+  // Both controls default to off, as in production, so every replay covers the unlimited path.
+  const layerHostAdmission = HostAdmission.layer.pipe(
           Layer.provide(
             Layer.mergeAll(
               layerPersistence,
               ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
               layerServerSettings,
-              options.hostCapacity.hostResources ?? Layer.empty,
+        options.hostAdmission?.hostResources ?? Layer.empty,
             ),
           ),
           Layer.orDie,
