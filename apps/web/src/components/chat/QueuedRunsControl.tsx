@@ -15,6 +15,7 @@ import {
   parseGoalCommand,
   type ChatAttachment as ContractChatAttachment,
   type EnvironmentId,
+  type HostAdmissionState,
   type MessageId,
   type RunId,
   type ThreadId,
@@ -37,7 +38,11 @@ import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref 
 
 import { useAssetUrls } from "../../assets/assetUrls";
 import { threadEnvironment } from "../../state/threads";
-import { useQuietThreadProjection, useQuietThreadShell } from "../../state/entities";
+import {
+  useQuietThreadProjection,
+  useQuietThreadShell,
+  useServerConfigs,
+} from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { isImageAttachment, type ChatImageAttachment, type ChatMessage } from "../../types";
@@ -81,6 +86,20 @@ function queuedImageResources(projection: ThreadQueueProjection | undefined) {
   );
 }
 
+function admissionWaitReason(
+  wait: "capacity" | "host_load",
+  admission: HostAdmissionState | undefined,
+): string {
+  if (wait === "capacity") {
+    return admission?.maxRunningTurns
+      ? `Waiting for a free slot (${admission.runningTurns}/${admission.maxRunningTurns} running)`
+      : "Waiting for a free slot";
+  }
+  return admission?.pacing === "severe"
+    ? "Waiting for the host: memory is critically low"
+    : "Starting turns one at a time while the host is busy";
+}
+
 export function QueuedRunsControl({
   ref,
   ...props
@@ -107,6 +126,7 @@ export function QueuedRunsControl({
   const projection = useQuietThreadProjection(
     scopeThreadRef(props.environmentId, props.threadId),
   )?.projection;
+  const hostAdmission = useServerConfigs().get(props.environmentId)?.hostAdmission;
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue);
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
@@ -145,6 +165,7 @@ export function QueuedRunsControl({
       runId: run.id,
       messageId: run.userMessageId,
       freshContext: run.freshContext === true,
+      admissionWait: run.status === "queued" ? run.admissionWait : undefined,
       serverIndex,
       text,
       // A guest's message keeps the guest's words; the owner can cancel it, not rewrite it.
@@ -166,6 +187,7 @@ export function QueuedRunsControl({
       runId: null,
       messageId: null,
       freshContext: false,
+      admissionWait: undefined,
       serverIndex: null,
       text: message.text,
       editable: true,
@@ -345,10 +367,15 @@ export function QueuedRunsControl({
                         }}
                       >
                         <ArrowUpIcon />
-                        <T>Send now</T>
+                          {item.admissionWait ? <T>Start now</T> : <T>Send now</T>}
                       </Button>
                     </SharedTooltipTrigger>
                   </>
+                ) : null}
+                {item.admissionWait ? (
+                  <span className="px-1">
+                    {admissionWaitReason(item.admissionWait, hostAdmission)}
+                  </span>
                 ) : null}
                 {item.pending ? (
                   <span className="flex items-center gap-1 px-1">

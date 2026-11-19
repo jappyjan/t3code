@@ -1,4 +1,10 @@
-import type { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  HostAdmissionState,
+  OrchestrationV2AdmissionWait,
+  RunId,
+  ThreadId,
+} from "@t3tools/contracts";
 import { msg } from "gt-react-native";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import {
@@ -6,6 +12,24 @@ import {
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
+
+/** Why a queued run waits for the host; counts are omitted when the host's state is unknown. */
+export function resolveAdmissionWaitReason(
+  wait: OrchestrationV2AdmissionWait | undefined,
+  admission: HostAdmissionState | undefined,
+): string | null {
+  if (wait === "capacity") {
+    return admission?.maxRunningTurns
+      ? `Waiting for a free slot (${admission.runningTurns}/${admission.maxRunningTurns} running)`
+      : "Waiting for a free slot";
+  }
+  if (wait === "host_load") {
+    return admission?.pacing === "severe"
+      ? "Waiting for the host: memory is critically low"
+      : "Starting turns one at a time while the host is busy";
+  }
+  return null;
+}
 
 export const REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL = msg("Remove queued message");
 

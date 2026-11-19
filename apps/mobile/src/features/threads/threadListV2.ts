@@ -87,6 +87,7 @@ export type ThreadListV2Status =
   | "input"
   | "request"
   | "working"
+  | "queued"
   | "waiting"
   | "stuck"
   | "failed"
@@ -313,6 +314,10 @@ export function resolveThreadListV2Status(
   if (connectionStatus !== null) return connectionStatus;
   if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) {
     return "waiting";
+  }
+  // Nothing of the thread is running, so only the host's admission holds its queued run back.
+  if (thread.runtime?.status === "queued" && thread.runtime.activeRunId === null) {
+    return "queued";
   }
   if (
     thread.runtime !== null &&

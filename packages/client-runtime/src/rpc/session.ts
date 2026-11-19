@@ -72,6 +72,7 @@ export interface RpcSessionOptions {
   readonly environmentThemes?: boolean;
   readonly usageLimitSources?: boolean;
   readonly hostPressure?: boolean;
+  readonly hostAdmission?: boolean;
   readonly usageLimitsCommand?: boolean;
   readonly providerCatalogsOnDemand?: boolean;
   readonly providerCatalogDigests?: boolean;
@@ -115,12 +116,18 @@ type HostPressureUpdatedEvent = Extract<
   { readonly type: "hostPressureUpdated" }
 >;
 
+type HostAdmissionUpdatedEvent = Extract<
+  ServerConfigStreamEvent,
+  { readonly type: "hostAdmissionUpdated" }
+>;
+
 interface ServerConfigReplayState {
   readonly projection: ServerConfigProjection;
   readonly revision: number;
   readonly themesEvent: EnvironmentThemesUpdatedEvent | undefined;
   readonly sourcesEvent: UsageLimitSourcesUpdatedEvent | undefined;
   readonly pressureEvent: HostPressureUpdatedEvent | undefined;
+  readonly admissionEvent: HostAdmissionUpdatedEvent | undefined;
 }
 
 interface BufferedServerConfigEvent {
@@ -142,6 +149,7 @@ function serverConfigReplayEvents(
     ...(state.themesEvent === undefined ? [] : [state.themesEvent]),
     ...(state.sourcesEvent === undefined ? [] : [state.sourcesEvent]),
     ...(state.pressureEvent === undefined ? [] : [state.pressureEvent]),
+    ...(state.admissionEvent === undefined ? [] : [state.admissionEvent]),
   ];
 }
 
@@ -197,6 +205,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     ...(options.environmentThemes === true ? { environmentThemes: true } : {}),
     ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
     ...(options.hostPressure === true ? { hostPressure: true } : {}),
+    ...(options.hostAdmission === true ? { hostAdmission: true } : {}),
     ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
     ...(options.providerCatalogsOnDemand === true ? { providerCatalogsOnDemand: true } : {}),
     ...(options.providerCatalogDigests === true ? { providerCatalogDigests: true } : {}),
@@ -368,6 +377,10 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
                 event.type === "hostPressureUpdated"
                   ? event
                   : Option.getOrUndefined(current)?.pressureEvent,
+              admissionEvent:
+                event.type === "hostAdmissionUpdated"
+                  ? event
+                  : Option.getOrUndefined(current)?.admissionEvent,
             } satisfies ServerConfigReplayState;
             return [
               Option.some({ event, replay: next, revision: next.revision }),

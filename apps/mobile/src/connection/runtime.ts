@@ -39,6 +39,7 @@ const layerProvidedClientConnection = layerSnapshotLoader.pipe(
     Connection.layerWithOptions({
       usageLimitSources: true,
       hostPressure: true,
+      hostAdmission: true,
       usageLimitsCommand: true,
       providerCatalogsOnDemand: true,
       providerCatalogDigests: true,

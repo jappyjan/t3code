@@ -49,6 +49,7 @@ import {
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
   OrchestrationV2DelegatedFrom,
+  OrchestrationV2AdmissionWait,
   OrchestrationV2RunStatus,
   OrchestrationV2ThreadPipeline,
   OrchestrationV2TurnItemStatus,
@@ -240,7 +241,9 @@ export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
     description:
       "starting means the child's provider has not started its turn yet, so no work has begun.",
   }),
-  workState: Schema.Literals(["working", "waiting_for_children", "result_available"]),
+  workState: Schema.Literals(["queued", "working", "waiting_for_children", "result_available"]),
+  /** On a queued task: "capacity" waits for a free turn slot, "host_load" for the host to calm down. */
+  admissionWait: Schema.optional(OrchestrationV2AdmissionWait),
   hasPendingChildRuns: Schema.Boolean,
   latestTerminalRunId: Schema.NullOr(RunId),
   latestTerminalStatus: Schema.NullOr(OrchestratorMcpTerminalDelegatedTaskStatus),
@@ -598,6 +601,8 @@ export const OrchestratorMcpThreadSendResult = Schema.Struct({
   taskId: Schema.optional(NodeId),
   status: OrchestrationV2RunStatus,
   delivery: Schema.Literals(["started", "queued", "steered", "restarted"]),
+  /** Set on a queued run that waits for the host, not behind another turn of the thread. */
+  admissionWait: Schema.optional(OrchestrationV2AdmissionWait),
 });
 export type OrchestratorMcpThreadSendResult = typeof OrchestratorMcpThreadSendResult.Type;
 

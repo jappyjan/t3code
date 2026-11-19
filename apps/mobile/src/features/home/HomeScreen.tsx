@@ -103,6 +103,7 @@ import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-sw
 import { useFabScroll } from "./FabScrollContext";
 import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-launch-splash";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
+import { HostAdmissionCard } from "./HostAdmissionCard";
 import { HostPressureBanner } from "./HostPressureBanner";
 import { ThreadListFilters } from "./ThreadListFilters";
 import { deriveHomeEmptyState } from "./home-empty-state";
@@ -719,6 +720,7 @@ export function HomeScreen(props: HomeScreenProps) {
     <>
       {listHeader}
       <HostPressureBanner />
+      <HostAdmissionCard />
       {Platform.OS === "ios" && workspace ? (
         <ThreadListFilters
           gutter={sidebarSurface ? 8 : 0}

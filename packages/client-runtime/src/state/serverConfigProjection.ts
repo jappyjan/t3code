@@ -21,7 +21,8 @@ export function withoutEnvironmentThemes(config: ServerConfig): ServerConfig {
   if (
     config.environmentThemes === undefined &&
     config.usageLimitSources === undefined &&
-    config.hostPressure === undefined
+    config.hostPressure === undefined &&
+    config.hostAdmission === undefined
   ) {
     return config;
   }
@@ -29,6 +30,7 @@ export function withoutEnvironmentThemes(config: ServerConfig): ServerConfig {
     environmentThemes: _themes,
     usageLimitSources: _sources,
     hostPressure: _pressure,
+    hostAdmission: _admission,
     ...rest
   } = config;
   return rest;
@@ -123,6 +125,10 @@ export function applyServerConfigProjection(
         heldPressure !== undefined && event.config.environment.capabilities.hostPressure === true
           ? heldPressure
           : undefined;
+      const carriedAdmission =
+        Option.isSome(current) && event.config.environment.capabilities.hostAdmission === true
+          ? current.value.config.hostAdmission
+          : undefined;
       const config: ServerConfig = {
         ...event.config,
         providers: withHeldProviderCatalogs(
@@ -132,6 +138,7 @@ export function applyServerConfigProjection(
         ...(carriedThemes === undefined ? {} : { environmentThemes: carriedThemes }),
         ...(carriedSources === undefined ? {} : { usageLimitSources: carriedSources }),
         ...(carriedPressure === undefined ? {} : { hostPressure: carriedPressure }),
+        ...(carriedAdmission === undefined ? {} : { hostAdmission: carriedAdmission }),
       };
       return Option.some({
         // Every reconnect re-sends the whole config, usually unchanged apart from timestamps.
@@ -207,6 +214,15 @@ export function applyServerConfigProjection(
           source: "live",
         });
       });
+    case "hostAdmissionUpdated":
+      return Option.map(current, (projection) => ({
+        config: {
+          ...projection.config,
+          hostAdmission: reuseUnchanged(projection.config.hostAdmission, event.payload),
+        },
+        latestEvent: event,
+        source: "live",
+      }));
     case "usageLimitSourcesUpdated":
       return Option.map(current, (projection) => ({
         config: {

@@ -46,6 +46,8 @@ vi.mock("../../state/preferences", () => ({
 }));
 vi.mock("./components/AutoSettleDaysField", () => ({ AutoSettleDaysField: () => null }));
 vi.mock("./components/PossiblyStuckHoursField", () => ({ PossiblyStuckHoursField: () => null }));
+vi.mock("./components/HostCapacityTurnsField", () => ({ HostCapacityTurnsField: () => null }));
+vi.mock("../../state/entities", () => ({ useServerConfigs: () => new Map() }));
 vi.mock("./components/IssueTrackerSection", () => ({ IssueTrackerSection: () => null }));
 vi.mock("./components/SourceControlProvidersSection", () => ({
   SourceControlProvidersSection: () => null,
