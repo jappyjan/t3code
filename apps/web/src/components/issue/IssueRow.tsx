@@ -1,4 +1,5 @@
 import type { EnvironmentIssueEntry } from "@t3tools/client-runtime/issue-list";
+import { T } from "gt-react";
 import { ListTreeIcon, MessageSquareIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -71,7 +72,7 @@ function IssueRowImpl({
             <>
               {blocked ? (
                 <Badge variant="warning" size="sm">
-                  Blocked
+                  <T context="issue status">Blocked</T>
                 </Badge>
               ) : null}
               {subIssueCount > 0 ? (

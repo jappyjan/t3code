@@ -19,6 +19,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
+import { T, useGT, useMessages, Var } from "gt-react-native";
 import { useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -82,6 +83,7 @@ export function IssuePipelineSheet({
   const params = route.params;
   const target = issueTarget(params);
   const { environmentId } = target;
+  const gt = useGT();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -168,7 +170,8 @@ export function IssuePipelineSheet({
   const baseRef = projectStatus.data?.refName ?? null;
 
   const text = detail ? pipelineInputText({ detail, edited }) : "";
-  const summary = pipelineInputSummary(text);
+  const messages = useMessages();
+  const summary = pipelineInputSummary(text, messages);
   const canStart =
     !pending && pipeline !== null && machine !== null && project !== null && summary.startable;
 
@@ -197,7 +200,7 @@ export function IssuePipelineSheet({
       setPending(false);
       if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Failed to start the pipeline.");
+        setError(failure instanceof Error ? failure.message : gt("Failed to start the pipeline."));
       }
       return;
     }
@@ -221,8 +224,8 @@ export function IssuePipelineSheet({
       if (linked._tag === "Failure") {
         const failure = squashAtomCommandFailure(linked);
         Dialog.alert(
-          `Could not link ${detail.displayKey} to the run`,
-          failure instanceof Error ? failure.message : "The server refused it.",
+          gt("Could not link {issue} to the run", { issue: detail.displayKey }),
+          failure instanceof Error ? failure.message : gt("The server refused it."),
         );
       }
     });
@@ -241,7 +244,7 @@ export function IssuePipelineSheet({
       );
     } else {
       navigation.goBack();
-      Dialog.alert("Pipeline started", "The run will appear in your thread list shortly.");
+      Dialog.alert(gt("Pipeline started"), gt("The run will appear in your thread list shortly."));
     }
   };
 
@@ -258,13 +261,13 @@ export function IssuePipelineSheet({
       ) : null}
       <SheetHeader
         presentation={Platform.OS === "android" ? "inline" : "native"}
-        title="Run pipeline from issue"
+        title={gt("Run pipeline from issue")}
         subtitle={detail ? `${detail.displayKey} ${detail.title}` : undefined}
         onCancel={() => navigation.goBack()}
         dismissDisabled={pending}
-        accessibilityLabel="Cancel"
+        accessibilityLabel={gt("Cancel")}
         confirm={{
-          label: "Start pipeline",
+          label: gt("Start pipeline"),
           onPress: () => void start(),
           disabled: !canStart,
           loading: pending,
@@ -282,30 +285,40 @@ export function IssuePipelineSheet({
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         >
           {!detail ? (
-            <Text className="text-sm text-foreground-muted">Loading the issue…</Text>
+            <Text className="text-sm text-foreground-muted">
+              <T>Loading the issue…</T>
+            </Text>
           ) : (
             <>
               <View className="gap-1">
-                <Text className="pb-1 text-sm font-t3-medium text-foreground">Pipeline</Text>
+                <Text className="pb-1 text-sm font-t3-medium text-foreground">
+                  <T>Pipeline</T>
+                </Text>
                 {pipelines.length > 0 ? null : !pipelinesKnown ? (
                   <View
                     className="min-h-12 flex-row items-center gap-2"
-                    accessibilityLabel="Loading pipelines"
+                    accessibilityLabel={gt("Loading pipelines")}
                     accessibilityState={{ busy: true }}
                   >
                     <AppActivityIndicator size="small" colorClassName="accent-icon-muted" />
-                    <Text className="text-sm text-foreground-muted">Loading pipelines…</Text>
+                    <Text className="text-sm text-foreground-muted">
+                      <T>Loading pipelines…</T>
+                    </Text>
                   </View>
                 ) : pipelinesQuery.data === null ? (
-                  <Text className="text-sm text-foreground-muted">Couldn't load pipelines.</Text>
+                  <Text className="text-sm text-foreground-muted">
+                    <T>Couldn't load pipelines.</T>
+                  </Text>
                 ) : machineState.listEnvironmentId !== environmentId &&
                   listMachineLabel !== null ? (
                   <Text className="text-sm text-foreground-muted">
-                    No pipelines on {listMachineLabel}. Choose another machine.
+                    <T>
+                      No pipelines on <Var>{listMachineLabel}</Var>. Choose another machine.
+                    </T>
                   </Text>
                 ) : (
                   <Text className="text-sm text-foreground-muted">
-                    No pipelines yet. Create one in T3 Code on your computer.
+                    <T>No pipelines yet. Create one in T3 Code on your computer.</T>
                   </Text>
                 )}
                 {pipelines.map((candidate) => {
@@ -335,8 +348,9 @@ export function IssuePipelineSheet({
                       </View>
                       <View className="min-w-0 flex-1">
                         <Text numberOfLines={1} className="text-sm font-t3-medium text-foreground">
-                          {candidate.name}
-                          {candidate.id === lastUsedId ? "  ·  Last used" : ""}
+                          {candidate.id === lastUsedId
+                            ? gt("{name}  ·  Last used", { name: candidate.name })
+                            : candidate.name}
                         </Text>
                         <Text className="text-xs text-foreground-muted">
                           {candidate.steps.map((step) => step.name).join(" → ")}
@@ -347,30 +361,43 @@ export function IssuePipelineSheet({
                 })}
                 {unmatchedName !== null && pipeline !== null ? (
                   <Text className="pt-1 text-xs text-foreground-muted">
-                    "{unmatchedName}" isn't on {listMachineLabel ?? "this machine"}, so{" "}
-                    {pipeline.name} is selected.
+                    {listMachineLabel !== null ? (
+                      <T>
+                        "<Var>{unmatchedName}</Var>" isn't on <Var>{listMachineLabel}</Var>, so{" "}
+                        <Var>{pipeline.name}</Var> is selected.
+                      </T>
+                    ) : (
+                      <T>
+                        "<Var>{unmatchedName}</Var>" isn't on this machine, so{" "}
+                        <Var>{pipeline.name}</Var> is selected.
+                      </T>
+                    )}
                   </Text>
                 ) : null}
               </View>
 
               <View className="gap-2">
                 <View className="flex-row items-center justify-between gap-2">
-                  <Text className="text-sm font-t3-medium text-foreground">Input</Text>
+                  <Text className="text-sm font-t3-medium text-foreground">
+                    {gt("Input", { $context: "pipeline input text" })}
+                  </Text>
                   {edited !== null ? (
                     <Pressable
                       accessibilityRole="button"
                       onPress={() => setEdited(null)}
                       hitSlop={12}
                     >
-                      <Text className="text-sm text-primary">Reset edits</Text>
+                      <Text className="text-sm text-primary">
+                        <T>Reset edits</T>
+                      </Text>
                     </Pressable>
                   ) : null}
                 </View>
                 <SegmentedControl
                   size="compact"
                   options={[
-                    { value: "preview", label: "Preview" },
-                    { value: "edit", label: "Edit" },
+                    { value: "preview", label: gt("Preview", { $context: "tab, rendered view" }) },
+                    { value: "edit", label: gt("Edit", { $context: "tab, edit the text" }) },
                   ]}
                   selected={tab}
                   onSelect={setTab}
@@ -384,7 +411,7 @@ export function IssuePipelineSheet({
                 ) : (
                   <TextInput
                     multiline
-                    accessibilityLabel="Pipeline input"
+                    accessibilityLabel={gt("Pipeline input")}
                     value={text}
                     onChangeText={setEdited}
                     textAlignVertical="top"
@@ -397,19 +424,18 @@ export function IssuePipelineSheet({
                     summary.overLimit ? "text-danger-text" : "text-foreground-muted",
                   )}
                 >
-                  {summary.sizeLabel}
-                  {" · the first step receives this as text"}
+                  {gt("{size} · the first step receives this as text", { size: summary.sizeLabel })}
                 </Text>
               </View>
 
               <View>
                 {machines.length >= 2 ? (
                   <Menu
-                    title="Machine"
+                    title={gt("Machine")}
                     actions={[
                       {
                         id: "auto",
-                        title: "Auto balance",
+                        title: gt("Auto balance"),
                         state: machineState.effective === "auto" ? "on" : "off",
                       },
                       ...machines.map((candidate) => ({
@@ -435,21 +461,23 @@ export function IssuePipelineSheet({
                     }}
                   >
                     <PickerRow
-                      label="Machine"
+                      label={gt("Machine")}
                       value={
                         machineState.effective !== "auto"
-                          ? (machine?.label ?? "Choose a machine")
+                          ? (machine?.label ?? gt("Choose a machine"))
                           : auto.state.kind === "checking"
-                            ? "Checking machines…"
+                            ? gt("Checking machines…")
                             : auto.state.kind === "unavailable"
-                              ? "Auto balance unavailable. Choose a machine"
-                              : `Auto balance · ${machine?.label ?? ""}`
+                              ? gt("Auto balance unavailable. Choose a machine")
+                              : gt("Auto balance · {machine}", { machine: machine?.label ?? "" })
                       }
                     />
                   </Menu>
                 ) : null}
                 <View className="min-h-12 flex-row items-center gap-3 border-t border-border-subtle py-2">
-                  <Text className="text-sm text-foreground-muted">Project</Text>
+                  <Text className="text-sm text-foreground-muted">
+                    <T>Project</T>
+                  </Text>
                   <Text
                     numberOfLines={1}
                     className="min-w-0 flex-1 text-right text-sm font-t3-medium text-foreground"
@@ -458,16 +486,25 @@ export function IssuePipelineSheet({
                   </Text>
                 </View>
                 <Menu
-                  title="Workspace"
+                  title={gt("Workspace")}
                   actions={[
                     {
                       id: "worktree",
-                      title: `New worktree${branchName ? ` · ${branchName}` : ""}${baseRef ? ` from ${baseRef}` : ""}`,
+                      title: branchName
+                        ? baseRef
+                          ? gt("New worktree · {branch} from {base}", {
+                              branch: branchName,
+                              base: baseRef,
+                            })
+                          : gt("New worktree · {branch}", { branch: branchName })
+                        : baseRef
+                          ? gt("New worktree from {base}", { base: baseRef })
+                          : gt("New worktree"),
                       state: workspace === "worktree" ? "on" : "off",
                     },
                     {
                       id: "local",
-                      title: "Local checkout",
+                      title: gt("Local checkout"),
                       state: workspace === "local" ? "on" : "off",
                     },
                   ]}
@@ -478,8 +515,8 @@ export function IssuePipelineSheet({
                   }}
                 >
                   <PickerRow
-                    label="Workspace"
-                    value={workspace === "worktree" ? "New worktree" : "Local checkout"}
+                    label={gt("Workspace")}
+                    value={workspace === "worktree" ? gt("New worktree") : gt("Local checkout")}
                     {...(workspace === "worktree" && branchName ? { hint: branchName } : {})}
                   />
                 </Menu>
@@ -487,12 +524,14 @@ export function IssuePipelineSheet({
 
               {machines.length === 0 ? (
                 <Text className="text-sm text-foreground-muted">
-                  No connected machine can run pipelines for {detail.projectTitle}.
+                  <T>
+                    No connected machine can run pipelines for <Var>{detail.projectTitle}</Var>.
+                  </T>
                 </Text>
               ) : null}
               {error !== null ? <Text className="text-sm text-danger-text">{error}</Text> : null}
               <Text className="text-xs text-foreground-muted">
-                Steps use their own models. The run takes text only.
+                <T>Steps use their own models. The run takes text only.</T>
               </Text>
             </>
           )}

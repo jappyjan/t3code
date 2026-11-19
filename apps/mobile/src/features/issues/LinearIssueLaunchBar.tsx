@@ -9,6 +9,7 @@ import {
 } from "@t3tools/client-runtime/linear/launch";
 import { ProjectId, type EnvironmentId, type IssueDetail } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
+import { useGT } from "gt-react-native";
 import { useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 
@@ -38,6 +39,7 @@ export function LinearIssueLaunchBar(props: {
   readonly detail: IssueDetail;
 }) {
   const { environmentId, detail } = props;
+  const gt = useGT();
   const navigation = useNavigation();
   const selectDetail = useSelectWorkspaceDetail();
   const canStartPipelines = useAtomValue(
@@ -94,8 +96,8 @@ export function LinearIssueLaunchBar(props: {
       })
       .catch((error: unknown) =>
         Dialog.alert(
-          "Could not start a chat",
-          error instanceof Error ? error.message : "The draft could not be created.",
+          gt("Could not start a chat"),
+          error instanceof Error ? error.message : gt("The draft could not be created."),
         ),
       )
       .finally(() => {
@@ -108,7 +110,7 @@ export function LinearIssueLaunchBar(props: {
     <View className="gap-2">
       {target.bound ? null : (
         <Menu
-          title="Start in project"
+          title={gt("Start in project")}
           actions={projects.map((project) => ({
             id: project.id,
             title: project.title,
@@ -118,31 +120,33 @@ export function LinearIssueLaunchBar(props: {
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Project to start in"
+            accessibilityLabel={gt("Project to start in")}
             className="min-h-11 flex-row items-center gap-2 rounded-xl bg-grouped-card px-3 active:opacity-70"
           >
             <SymbolView name="folder.fill" size={14} tintColorClassName="accent-icon-muted" />
             <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
               {projects.find((project) => project.id === launchProjectId)?.title ??
-                "Choose a project to start in"}
+                gt("Choose a project to start in")}
             </Text>
             <SymbolView name="chevron.down" size={12} tintColorClassName="accent-icon-muted" />
           </Pressable>
         </Menu>
       )}
       <SplitButton
-        label="Start chat"
+        label={gt("Start chat")}
         icon="plus.bubble"
         loading={startingChat}
         disabled={startingChat || launchProjectId === null}
         onPress={() => startChat("worktree")}
-        menuTitle="Start chat in"
+        menuTitle={gt("Start chat in")}
         actions={[
           {
             id: "worktree",
-            title: detail.branchName ? `New worktree · ${detail.branchName}` : "New worktree",
+            title: detail.branchName
+              ? gt("New worktree · {branch}", { branch: detail.branchName })
+              : gt("New worktree"),
           },
-          { id: "local", title: "Local checkout" },
+          { id: "local", title: gt("Local checkout") },
         ]}
         onPressAction={(id) => {
           if (id === "worktree" || id === "local") startChat(id);
@@ -150,7 +154,7 @@ export function LinearIssueLaunchBar(props: {
       />
       {canRunPipeline ? (
         <Button
-          label="Run pipeline"
+          label={gt("Run pipeline")}
           icon="point.3.connected.trianglepath.dotted"
           tone="secondary"
           fullWidth

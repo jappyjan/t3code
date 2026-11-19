@@ -1,4 +1,5 @@
 import { IssueStateType, type LinearIssueContextRecord } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { CircleIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
 import { linearIssueExtrasSummary } from "@t3tools/shared/linearLaunch";
@@ -36,6 +37,7 @@ function IssueStateIcon({
 }
 
 function LinearIssuePreview({ record }: { readonly record: LinearIssueContextRecord }) {
+  const gt = useGT();
   const crumbs = [record.teamName, record.projectName, record.milestoneName].filter(
     (part): part is string => part !== null && part.length > 0,
   );
@@ -76,7 +78,9 @@ function LinearIssuePreview({ record }: { readonly record: LinearIssueContextRec
       {record.subIssues.length > 0 ? (
         <div className="space-y-0.5">
           <div className="text-2xs font-medium text-muted-foreground">
-            Sub-issues ({record.subIssues.length})
+            <T>
+              Sub-issues (<Var>{record.subIssues.length}</Var>)
+            </T>
           </div>
           {record.subIssues.slice(0, 5).map((sub) => (
             <div key={sub.identifier} className="flex items-center gap-1.5">
@@ -87,7 +91,9 @@ function LinearIssuePreview({ record }: { readonly record: LinearIssueContextRec
           ))}
           {record.subIssues.length > 5 ? (
             <div className="text-2xs text-muted-foreground">
-              and {record.subIssues.length - 5} more
+              <T>
+                and <Var>{record.subIssues.length - 5}</Var> more
+              </T>
             </div>
           ) : null}
         </div>
@@ -95,18 +101,22 @@ function LinearIssuePreview({ record }: { readonly record: LinearIssueContextRec
       {record.comments.length > 0 ? (
         <div className="space-y-0.5">
           <div className="text-2xs font-medium text-muted-foreground">
-            Comments ({record.comments.length})
+            <T>
+              Comments (<Var>{record.comments.length}</Var>)
+            </T>
           </div>
           {record.comments.slice(-2).map((comment) => (
             <div key={comment.createdAt + (comment.author ?? "")} className="line-clamp-2">
-              <span className="font-medium">{comment.author ?? "Unknown"}</span>{" "}
+              <span className="font-medium">
+                {comment.author ?? gt("Unknown", { $context: "comment author" })}
+              </span>{" "}
               <span className="text-muted-foreground">{comment.body.trim()}</span>
             </div>
           ))}
         </div>
       ) : null}
       <div className="text-2xs text-muted-foreground">
-        Snapshot taken when attached; later edits in Linear are not included.
+        <T>Snapshot taken when attached; later edits in Linear are not included.</T>
       </div>
     </div>
   );
@@ -118,6 +128,7 @@ export function LinearIssueContextChip(props: {
   copyMarkdown?: string;
 }) {
   const { record } = props;
+  const gt = useGT();
   const extras = linearIssueExtrasSummary(record);
   return (
     <PreviewCard>
@@ -128,7 +139,10 @@ export function LinearIssueContextChip(props: {
             kind="linear-issue"
             tabIndex={0}
             render={<a href={record.url} target="_blank" rel="noreferrer" />}
-            aria-label={`Linear issue, ${record.identifier}: ${record.title}`}
+            aria-label={gt("Linear issue, {identifier}: {title}", {
+              identifier: record.identifier,
+              title: record.title,
+            })}
             data-markdown-copy={props.copyMarkdown}
             className="no-underline"
           >
