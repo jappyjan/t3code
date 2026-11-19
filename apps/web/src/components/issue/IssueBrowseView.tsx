@@ -111,7 +111,10 @@ export function IssueBrowseView({
   if (team !== null) {
     const base = teamPosition(team);
     const { project, milestone } = teamLevel;
-    crumbs.push({ level: "team", label: team.scope, target: project ? base : null });
+    const name =
+      team.name ??
+      teams.find((candidate) => issueBrowseTeamKey(candidate) === issueBrowseTeamKey(team))?.name;
+    crumbs.push({ level: "team", label: name ?? team.scope, target: project ? base : null });
     if (project) {
       crumbs.push({
         level: "project",
@@ -183,7 +186,9 @@ export function IssueBrowseView({
           </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>No teams to browse</EmptyTitle>
-            <EmptyDescription>Bind a project to a Linear team in settings.</EmptyDescription>
+            <EmptyDescription>
+              Connect Linear under Settings → Source control & issues.
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
@@ -197,8 +202,12 @@ export function IssueBrowseView({
               <BrowseRow
                 key={issueBrowseTeamKey(candidate)}
                 icon={<UsersIcon aria-hidden className="size-4 text-muted-foreground" />}
-                title={candidate.scope}
-                meta={[project?.title, environment]}
+                title={candidate.name ?? candidate.scope}
+                meta={[
+                  candidate.name ? candidate.scope : null,
+                  candidate.bound ? project?.title : null,
+                  environment,
+                ]}
                 onClick={() => onNavigate(teamPosition(candidate))}
               />
             );

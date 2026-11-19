@@ -102,6 +102,7 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import { useProjects } from "~/state/entities";
 import { useEnvironments, useIssuesSupported } from "~/state/environments";
 import { issueEnvironment, useIssueList } from "~/state/issues";
+import { useIssueTrackerConnections } from "~/state/issueTrackers";
 import { useDebouncedValue } from "~/state/queries";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 
@@ -114,6 +115,7 @@ export interface IssuesSearch extends IssueListPreferences {
   readonly scope?: string | undefined;
   readonly key?: string | undefined;
   readonly browse?: IssueBrowsePosition | undefined;
+  readonly view?: "list" | undefined;
 }
 
 const STATE_TABS = [
@@ -238,13 +240,26 @@ export function IssuesPage() {
         search.hideProjects,
         listInput,
       );
-  const list = useIssueList(targets);
+  // Off on every environment, git hosts are hidden and the page opens on browsing teams.
+  const standaloneOnly =
+    capableEnvironments.length > 0 &&
+    capableEnvironments.every(
+      (environment) => environment.serverConfig?.settings.gitHostIssuesEnabled === false,
+    );
+  const browsing = search.browse !== undefined || (standaloneOnly && search.view !== "list");
+  const browsePosition = search.browse ?? {};
+  const connections = useIssueTrackerConnections(
+    capableEnvironments.map((environment) => environment.environmentId),
+  );
+  // Browsing reads teams, not the listing; the listing is not fetched behind it.
+  const listTargets = browsing ? [] : targets;
+  const list = useIssueList(listTargets);
   // Refreshing a list still loading would cancel it and start over, losing the scopes already read.
   useLiveRefresh(
     () => {
       if (!list.isPending) list.reload();
     },
-    { key: JSON.stringify(targets) },
+    { key: JSON.stringify(listTargets) },
   );
 
   const [pages, setPages] = useState<ReadonlyMap<EnvironmentId, HeldIssuePage>>(new Map());
@@ -355,6 +370,7 @@ export function IssuesPage() {
       ...(merged.scope ? { scope: merged.scope } : {}),
       ...(merged.key ? { key: merged.key } : {}),
       ...(merged.browse ? { browse: merged.browse } : {}),
+      ...(merged.view ? { view: merged.view } : {}),
     };
     writeIssueListPreferences(issueListPreferences(next));
     void navigate({ search: next });
@@ -518,30 +534,29 @@ export function IssuesPage() {
   const showTracker = groups.length > 1;
   const noneAnswered = list.answers.length === 0;
 
-  const browseTeams = issueBrowseTeams(list.answers);
-  const browseBody: ReactNode =
-    search.browse === undefined ? null : (
-      <IssueBrowseView
-        teams={browseTeams}
-        teamsPending={list.isPending}
-        teamsError={list.error}
-        onRetryTeams={list.refresh}
-        position={search.browse}
-        state={search.status}
-        environmentLabels={capableEnvironments.length > 1 ? environmentLabels : null}
-        isSelected={(row) =>
-          renderedSurface?.kind === "issue" &&
-          renderedSurface.environmentId === row.environmentId &&
-          issueEntryKey({
-            ...renderedSurface,
-            host: renderedSurface.host ?? "",
-            projectId: renderedSurface.projectId as ProjectId,
-          }) === issueEntryKey(row)
-        }
-        onSelect={selectEntry}
-        onNavigate={(browse) => updateSearch({ browse })}
-      />
-    );
+  const browseTeams = issueBrowseTeams(connections.answers, projects);
+  const browseBody: ReactNode = !browsing ? null : (
+    <IssueBrowseView
+      teams={browseTeams}
+      teamsPending={connections.isPending}
+      teamsError={connections.error}
+      onRetryTeams={connections.refresh}
+      position={browsePosition}
+      state={search.status}
+      environmentLabels={capableEnvironments.length > 1 ? environmentLabels : null}
+      isSelected={(row) =>
+        renderedSurface?.kind === "issue" &&
+        renderedSurface.environmentId === row.environmentId &&
+        issueEntryKey({
+          ...renderedSurface,
+          host: renderedSurface.host ?? "",
+          projectId: renderedSurface.projectId as ProjectId,
+        }) === issueEntryKey(row)
+      }
+      onSelect={selectEntry}
+      onNavigate={(browse) => updateSearch({ browse })}
+    />
+  );
 
   const listBody: ReactNode = !issuesSupported ? (
     <PullRequestsUnavailableState
@@ -741,7 +756,7 @@ export function IssuesPage() {
           <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
             <WorkspacePageContainer width="expanded" className="min-h-full gap-4">
               <div className="flex flex-wrap items-center gap-2">
-                {search.browse === undefined ? (
+                {!browsing ? (
                   <>
                     <div className="min-w-0 basis-full @lg/issue-list:min-w-48 @lg/issue-list:basis-0 @lg/issue-list:flex-1">
                       <PullRequestSearchInput
@@ -787,7 +802,7 @@ export function IssuesPage() {
                   hiddenProjects={hiddenProjects}
                   onHiddenProjects={(hideProjects) => updateSearch({ hideProjects })}
                 />
-                {search.browse === undefined ? (
+                {!browsing ? (
                   <>
                     <SavedViewsMenu
                       kind={ISSUE_SAVED_VIEWS}
@@ -816,12 +831,16 @@ export function IssuesPage() {
                     ) : null}
                   </>
                 ) : null}
-                {browseTeams.length > 0 || search.browse !== undefined ? (
+                {browseTeams.length > 0 || browsing ? (
                   <Button
-                    variant={search.browse === undefined ? "outline" : "secondary"}
-                    aria-pressed={search.browse !== undefined}
+                    variant={browsing ? "secondary" : "outline"}
+                    aria-pressed={browsing}
                     onClick={() =>
-                      updateSearch({ browse: search.browse === undefined ? {} : undefined })
+                      updateSearch(
+                        browsing
+                          ? { browse: undefined, view: standaloneOnly ? "list" : undefined }
+                          : { browse: {}, view: undefined },
+                      )
                     }
                   >
                     <FolderTreeIcon aria-hidden />
@@ -832,10 +851,13 @@ export function IssuesPage() {
                   size="icon"
                   variant="outline"
                   aria-label={gt("Refresh issues")}
-                  onClick={list.refresh}
-                  disabled={list.isPending}
+                  onClick={browsing ? connections.refresh : list.refresh}
+                  disabled={browsing ? connections.isPending : list.isPending}
                 >
-                  <RefreshIcon size="md" refreshing={list.isPending} />
+                  <RefreshIcon
+                    size="md"
+                    refreshing={browsing ? connections.isPending : list.isPending}
+                  />
                 </Button>
               </div>
               {browseBody ?? listBody}

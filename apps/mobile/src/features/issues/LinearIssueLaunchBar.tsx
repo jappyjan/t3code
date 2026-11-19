@@ -1,17 +1,27 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { projectsBoundToScope } from "@t3tools/client-runtime/issue-browse";
 import {
   canLaunchFromIssue,
+  launchProjectChoiceKey,
+  resolveLaunchProject,
   type LinearLaunchWorkspace,
 } from "@t3tools/client-runtime/linear/launch";
-import type { EnvironmentId, IssueDetail } from "@t3tools/contracts";
+import { ProjectId, type EnvironmentId, type IssueDetail } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
-import { Platform, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
+import { Menu } from "../../components/ui/Menu";
 import { SplitButton } from "../../components/ui/SplitButton";
-import { useServerConfigs } from "../../state/entities";
+import { useProjects, useServerConfigs } from "../../state/entities";
+import { issueTrackerEnvironment } from "../../state/issueTrackers";
+import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { createLinearChatDraft } from "./linearChatDraft";
@@ -19,7 +29,8 @@ import type { IssueParams } from "./issueParams";
 
 /**
  * Start chat and Run pipeline for an issue whose tracker names a branch. Both start in the
- * project the issue is read through: the one bound to its Linear team in Settings.
+ * project bound to its Linear team in Settings; for an unbound team a Project row asks, and the
+ * pick is remembered for the team on this device.
  */
 export function LinearIssueLaunchBar(props: {
   readonly environmentId: EnvironmentId;
@@ -38,18 +49,41 @@ export function LinearIssueLaunchBar(props: {
   // A second tap while the draft is created would create a second draft.
   const starting = useRef(false);
   const [startingChat, setStartingChat] = useState(false);
+  const projects = useProjects().filter((project) => project.environmentId === environmentId);
+  const bindings =
+    useEnvironmentQuery(issueTrackerEnvironment.connections({ environmentId, input: {} })).data
+      ?.bindings ?? {};
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const choices = AsyncResult.isSuccess(preferences)
+    ? (preferences.value.linearLaunchProjects ?? {})
+    : {};
+  const choiceKey = launchProjectChoiceKey(environmentId, detail.tracker, detail.scope);
   if (!canLaunchFromIssue(detail)) return null;
 
+  const target = resolveLaunchProject({
+    bound: projectsBoundToScope(bindings, detail.tracker, detail.scope),
+    remembered: choices[choiceKey],
+    available: projects.map((project) => project.id),
+  });
+  const launchProjectId = target.projectId;
+  const pick = (projectId: string) =>
+    savePreferences({ linearLaunchProjects: { ...choices, [choiceKey]: projectId } });
+
   const startChat = (workspace: LinearLaunchWorkspace) => {
-    if (starting.current) return;
+    if (starting.current || launchProjectId === null) return;
     starting.current = true;
     setStartingChat(true);
-    void createLinearChatDraft({ environmentId, detail, workspace })
+    void createLinearChatDraft({
+      environmentId,
+      detail: { ...detail, projectId: launchProjectId },
+      workspace,
+    })
       .then((draftKey) => {
         const destination = {
           draft: {
             environmentId: String(environmentId),
-            projectId: String(detail.projectId),
+            projectId: String(launchProjectId),
             draftId: draftKey,
             title: detail.displayKey,
           },
@@ -72,11 +106,35 @@ export function LinearIssueLaunchBar(props: {
 
   return (
     <View className="gap-2">
+      {target.bound ? null : (
+        <Menu
+          title="Start in project"
+          actions={projects.map((project) => ({
+            id: project.id,
+            title: project.title,
+            state: project.id === launchProjectId ? ("on" as const) : ("off" as const),
+          }))}
+          onPressAction={({ nativeEvent }) => pick(ProjectId.make(nativeEvent.event))}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Project to start in"
+            className="min-h-11 flex-row items-center gap-2 rounded-xl bg-grouped-card px-3 active:opacity-70"
+          >
+            <SymbolView name="folder.fill" size={14} tintColorClassName="accent-icon-muted" />
+            <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
+              {projects.find((project) => project.id === launchProjectId)?.title ??
+                "Choose a project to start in"}
+            </Text>
+            <SymbolView name="chevron.down" size={12} tintColorClassName="accent-icon-muted" />
+          </Pressable>
+        </Menu>
+      )}
       <SplitButton
         label="Start chat"
         icon="plus.bubble"
         loading={startingChat}
-        disabled={startingChat}
+        disabled={startingChat || launchProjectId === null}
         onPress={() => startChat("worktree")}
         menuTitle="Start chat in"
         actions={[
@@ -96,7 +154,14 @@ export function LinearIssueLaunchBar(props: {
           icon="point.3.connected.trianglepath.dotted"
           tone="secondary"
           fullWidth
-          onPress={() => navigation.dispatch(StackActions.push("IssuePipeline", props.identity))}
+          disabled={launchProjectId === null}
+          onPress={() =>
+            launchProjectId === null
+              ? undefined
+              : navigation.dispatch(
+                  StackActions.push("IssuePipeline", { ...props.identity, launchProjectId }),
+                )
+          }
         />
       ) : null}
     </View>

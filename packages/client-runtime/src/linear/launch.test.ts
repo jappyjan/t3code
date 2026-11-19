@@ -1,4 +1,4 @@
-import type { ComposerContextRecord, IssueDetail, ThreadId } from "@t3tools/contracts";
+import type { ComposerContextRecord, IssueDetail, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -6,6 +6,7 @@ import {
   draftIssueOf,
   issueLinkInput,
   pipelineWorkspaceStrategy,
+  resolveLaunchProject,
 } from "./launch.ts";
 
 const detail = {
@@ -59,5 +60,21 @@ describe("linear launch", () => {
     expect(
       pipelineWorkspaceStrategy({ workspace: "local", baseRef: "main", branchName: "eng/x" }),
     ).toEqual({ type: "root" });
+  });
+
+  it("starts in the bound project, else a remembered one that still exists, else asks", () => {
+    const [web, api] = ["web", "api"] as ProjectId[];
+    const available = [web!, api!];
+    expect(resolveLaunchProject({ bound: [api!], remembered: web, available })).toEqual({
+      projectId: api,
+      bound: true,
+    });
+    expect(
+      resolveLaunchProject({ bound: ["gone" as ProjectId], remembered: web, available }),
+    ).toEqual({ projectId: web, bound: false });
+    expect(resolveLaunchProject({ bound: [], remembered: "gone", available })).toEqual({
+      projectId: null,
+      bound: false,
+    });
   });
 });

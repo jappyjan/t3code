@@ -2,18 +2,24 @@ import type {
   EnvironmentId,
   IssueBrowseEntry,
   IssueContainer,
-  IssueListResult,
+  IssueTrackerConnectionList,
   IssueTrackerKind,
   ProjectId,
 } from "@t3tools/contracts";
 
-/** A team a T3 project reads, which the browse view can open. */
+/**
+ * A team of a connected standalone tracker. `projectId` serves the reads: the project bound to
+ * the team, or any project of the environment when none is, since the credential spans them all.
+ */
 export interface IssueBrowseTeam {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
   readonly tracker: IssueTrackerKind;
   readonly host: string | undefined;
   readonly scope: string;
+  readonly name?: string | undefined;
+  /** `projectId` is bound to the team in Settings, rather than lending its credential. */
+  readonly bound?: boolean;
 }
 
 export function issueBrowseTeamKey(
@@ -22,32 +28,54 @@ export function issueBrowseTeamKey(
   return `${team.environmentId} ${team.tracker} ${(team.host ?? "").toLowerCase()} ${team.scope.toLowerCase()}`;
 }
 
-/** Every scope a listing covered whose tracker can be browsed, once per environment. */
+/** The projects bound to a tracker's scope, which launches from its issues start in. */
+export function projectsBoundToScope(
+  bindings: IssueTrackerConnectionList["bindings"],
+  tracker: IssueTrackerKind,
+  scope: string,
+): ReadonlyArray<ProjectId> {
+  const wanted = scope.toLowerCase();
+  return Object.entries(bindings)
+    .filter(([, binding]) => binding.tracker === tracker && binding.scope.toLowerCase() === wanted)
+    .map(([projectId]) => projectId as ProjectId);
+}
+
+/** Every team each environment's connected trackers reach, bound to a project or not. */
 export function issueBrowseTeams(
-  answers: ReadonlyArray<readonly [EnvironmentId, IssueListResult]>,
+  answers: ReadonlyArray<readonly [EnvironmentId, IssueTrackerConnectionList]>,
+  projects: ReadonlyArray<{ readonly environmentId: EnvironmentId; readonly id: ProjectId }>,
 ): ReadonlyArray<IssueBrowseTeam> {
-  const teams = new Map<string, IssueBrowseTeam>();
+  const teams: IssueBrowseTeam[] = [];
   for (const [environmentId, answer] of answers) {
-    for (const scope of answer.scopes ?? []) {
-      const browsable = answer.trackers.some(
-        (tracker) =>
-          tracker.tracker === scope.tracker &&
-          (scope.host === undefined || tracker.host.toLowerCase() === scope.host.toLowerCase()) &&
-          tracker.capabilities?.browse === true,
-      );
-      if (!browsable) continue;
-      const team: IssueBrowseTeam = {
-        environmentId,
-        projectId: scope.projectId,
-        tracker: scope.tracker,
-        host: scope.host,
-        scope: scope.scope,
-      };
-      const key = issueBrowseTeamKey(team);
-      if (!teams.has(key)) teams.set(key, team);
+    const own = new Set(
+      projects.filter((project) => project.environmentId === environmentId).map((p) => p.id),
+    );
+    const lender = [...own][0];
+    for (const tracker of answer.trackers) {
+      if (!tracker.connected || tracker.account === null) continue;
+      for (const scope of tracker.scopes) {
+        const bound = projectsBoundToScope(answer.bindings, tracker.tracker, scope.key).find(
+          (projectId) => own.has(projectId),
+        );
+        const projectId = bound ?? lender;
+        if (projectId === undefined) continue;
+        teams.push({
+          environmentId,
+          projectId,
+          tracker: tracker.tracker,
+          host: tracker.host,
+          scope: scope.key,
+          name: scope.name,
+          bound: bound !== undefined,
+        });
+      }
     }
   }
-  return [...teams.values()].sort((a, b) => a.scope.localeCompare(b.scope));
+  return teams.sort(
+    (a, b) =>
+      (a.name ?? a.scope).localeCompare(b.name ?? b.scope) ||
+      a.environmentId.localeCompare(b.environmentId),
+  );
 }
 
 /** Containers still in play first; finished ones go under a collapsed toggle. */

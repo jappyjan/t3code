@@ -25,6 +25,7 @@ import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
 
 import * as ProjectService from "../project/ProjectService.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as IssueService from "./IssueService.ts";
 import * as IssueTrackerRegistry from "./IssueTrackerRegistry.ts";
 
@@ -162,6 +163,7 @@ function makeService(input: {
   readonly readBindings?: ReturnType<
     IssueTrackerBindings.IssueTrackerBindingsRepository["Service"]["list"]
   >;
+  readonly gitHostIssuesEnabled?: boolean;
 }) {
   return IssueService.IssueService.pipe(
     Effect.provide(
@@ -193,6 +195,9 @@ function makeService(input: {
             }),
             Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({
               resolve: () => Effect.succeed(null),
+            }),
+            ServerSettings.layerTest({
+              gitHostIssuesEnabled: input.gitHostIssuesEnabled ?? true,
             }),
           ),
         ),
@@ -921,7 +926,7 @@ describe("IssueService with a standalone tracker", () => {
       });
 
       // Unbound, the standalone scope leaves the listing, but the environment's credential still
-      // serves references, from a project with no repository (No project) too.
+      // serves references for any team, from a project with no repository (No project) too.
       listed.length = 0;
       const unbound = yield* makeService({ projects, trackers });
       const after = yield* unbound.list({ state: "open" });
@@ -944,6 +949,24 @@ describe("IssueService with a standalone tracker", () => {
       expect(
         yield* Effect.flip(unbound.detail({ ...noProjectRef, host: "linear.example" })),
       ).toMatchObject({ _tag: "IssueUnavailableError", reason: "tracker-unsupported" });
+      expect(
+        yield* unbound.detail({ ...linearRef, projectId: "notes" as ProjectId, scope: "OPS" }),
+      ).toMatchObject({ host: "linear.app", scope: "OPS", projectId: "notes", writable: true });
+      // With git hosts hidden the page lists the standalone scope alone and never reads the host;
+      // agents still ask for every tracker.
+      listed.length = 0;
+      const linearOnly = yield* makeService({
+        projects,
+        trackers,
+        bindings: { ["web" as ProjectId]: { tracker: LINEAR, scope: "ENG" } },
+        gitHostIssuesEnabled: false,
+      });
+      const hidden = yield* linearOnly.list({ state: "open" });
+      expect(listed).toEqual(["linear linear.app ENG"]);
+      expect(hidden.trackers.map((tracker) => tracker.tracker)).toEqual(["linear"]);
+      listed.length = 0;
+      yield* linearOnly.list({ state: "open" }, { allTrackers: true });
+      expect(listed.sort()).toEqual(["github github.com acme/web", "linear linear.app ENG"]);
 
       // A project with no remote at all can still be bound, and then has only the standalone one.
       const standaloneOnly = yield* makeService({

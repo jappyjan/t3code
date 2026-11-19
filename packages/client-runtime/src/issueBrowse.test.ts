@@ -2,7 +2,8 @@ import type {
   EnvironmentId,
   IssueBrowseEntry,
   IssueContainer,
-  IssueListResult,
+  IssueTrackerConnectionList,
+  ProjectId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -62,28 +63,42 @@ describe("splitIssueContainers", () => {
 });
 
 describe("issueBrowseTeams", () => {
-  it("lists only scopes whose tracker can browse, once per environment", () => {
+  it("lists every team of a connected tracker, served by its bound project or any other", () => {
     const answer = {
       trackers: [
-        { tracker: "linear", host: "linear.app", capabilities: { browse: true } },
-        { tracker: "github", host: "github.com", capabilities: {} },
+        {
+          tracker: "linear",
+          host: "linear.app",
+          connected: true,
+          account: "jan",
+          scopes: [
+            { key: "ENG", name: "Engineering" },
+            { key: "DES", name: "Design" },
+          ],
+        },
+        { tracker: "jira", host: "jira.example", connected: true, account: null, scopes: [] },
       ],
-      scopes: [
-        { projectId: "p1", tracker: "linear", host: "linear.app", scope: "ENG" },
-        { projectId: "p2", tracker: "linear", host: "Linear.app", scope: "eng" },
-        { projectId: "p3", tracker: "github", host: "github.com", scope: "acme/app" },
-        { projectId: "p4", tracker: "linear", host: "linear.app", scope: "DES" },
+      bindings: { p2: { tracker: "linear", scope: "eng" } },
+    } as unknown as IssueTrackerConnectionList;
+    const projects = [
+      { environmentId: "env-a" as EnvironmentId, id: "p1" as ProjectId },
+      { environmentId: "env-a" as EnvironmentId, id: "p2" as ProjectId },
+      { environmentId: "env-b" as EnvironmentId, id: "p3" as ProjectId },
+    ];
+    const teams = issueBrowseTeams(
+      [
+        ["env-a" as EnvironmentId, answer],
+        ["env-b" as EnvironmentId, answer],
+        // An environment without projects has nothing to serve the reads.
+        ["env-c" as EnvironmentId, answer],
       ],
-    } as unknown as IssueListResult;
-    const teams = issueBrowseTeams([
-      ["env-a" as EnvironmentId, answer],
-      ["env-b" as EnvironmentId, answer],
-    ]);
+      projects,
+    );
     expect(teams.map((team) => `${team.environmentId}/${team.scope}/${team.projectId}`)).toEqual([
-      "env-a/DES/p4",
-      "env-b/DES/p4",
-      "env-a/ENG/p1",
-      "env-b/ENG/p1",
+      "env-a/DES/p1",
+      "env-b/DES/p3",
+      "env-a/ENG/p2",
+      "env-b/ENG/p3",
     ]);
   });
 });

@@ -48,6 +48,8 @@ import { useSearchScrollRestoration } from "../layout/workspace/useSearchScrollR
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { issueBrowseTeams } from "@t3tools/client-runtime/issue-browse";
+import { useIssueTrackerConnections } from "../../state/issueTrackers";
+import { IssueBrowseHome } from "./IssueBrowseScreen";
 import { issueParamsKey } from "./issueParams";
 import { IssueListRow } from "./IssueListRow";
 import type { PullRequestFilterMenu } from "../pull-requests/PullRequestListFilters";
@@ -156,7 +158,20 @@ export function IssuesScreen(
   const targets = connected
     .map((environment) => ({ environmentId: environment.environmentId, input: listInput }))
     .sort((left, right) => left.environmentId.localeCompare(right.environmentId));
-  const list = useIssueList(targets);
+  // Off on every environment, git hosts are hidden and the tab opens on the Linear teams.
+  const standaloneOnly =
+    capable.length > 0 &&
+    capable.every(
+      (environment) =>
+        configs.get(environment.environmentId)?.settings.gitHostIssuesEnabled === false,
+    );
+  const [showList, setShowList] = useState(false);
+  const browsingHome = standaloneOnly && !showList;
+  const connections = useIssueTrackerConnections(
+    connected.map((environment) => environment.environmentId),
+  );
+  // The teams page reads no listing, so none is fetched behind it.
+  const list = useIssueList(browsingHome ? [] : targets);
 
   const [pages, setPages] = useState<ReadonlyMap<EnvironmentId, HeldIssuePage>>(new Map());
   const held = holdIssuePages(list.answers, pages);
@@ -199,7 +214,7 @@ export function IssuesScreen(
   const groups = groupIssues(held, query, projects, sort);
   const entries = groups.flatMap((group) => group.rows).sort(issueOrder(sort));
   const filterScopes = issueFilterScopes(held, projects);
-  const browseTeams = issueBrowseTeams(list.answers);
+  const browseTeams = issueBrowseTeams(connections.answers, projects);
   const notices = [
     // An environment that failed while another answered: its issues are missing from the rows.
     ...(entries.length > 0 && list.error ? [list.error] : []),
@@ -298,6 +313,29 @@ export function IssuesScreen(
           customized,
         }
       : null;
+
+  if (browsingHome) {
+    const home = (
+      <IssueBrowseHome
+        teams={browseTeams}
+        pending={connections.isPending}
+        error={connections.error}
+        header={
+          <View className="flex-row">
+            <Chip
+              label="Issue list"
+              icon="line.3.horizontal"
+              glass
+              colorScheme={themeAppearance}
+              accessibilityLabel="Show the issue list"
+              onPress={() => setShowList(true)}
+            />
+          </View>
+        }
+      />
+    );
+    return props.renderFrame ? props.renderFrame(null, home) : home;
+  }
 
   const content = (
     <View className={sidebar ? "flex-1 bg-drawer" : "flex-1 bg-screen"}>
@@ -398,7 +436,9 @@ export function IssuesScreen(
                   colorScheme={themeAppearance}
                   accessibilityLabel="Browse projects"
                   onPress={() =>
-                    navigation.dispatch(
+                    standaloneOnly
+                      ? setShowList(false)
+                      : navigation.dispatch(
                       StackActions.push(
                         "IssueBrowse",
                         browseTeams.length === 1

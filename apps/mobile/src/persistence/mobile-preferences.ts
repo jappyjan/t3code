@@ -198,6 +198,8 @@ export interface Preferences {
   readonly issueSavedViews?: ReadonlyArray<IssueSavedView>;
   /** The pipeline last started from an issue, by name: ids differ per machine. */
   readonly linearLastPipelineName?: string;
+  /** The project picked for launches from an unbound team's issues, by `launchProjectChoiceKey`. */
+  readonly linearLaunchProjects?: Readonly<Record<string, string>>;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -294,6 +296,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     pullRequestSavedViews?: ReadonlyArray<PullRequestSavedView>;
     issueSavedViews?: ReadonlyArray<IssueSavedView>;
     linearLastPipelineName?: string;
+    linearLaunchProjects?: Readonly<Record<string, string>>;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -493,6 +496,13 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.linearLastPipelineName === "string") {
     preferences.linearLastPipelineName = parsed.linearLastPipelineName;
+  }
+  if (typeof parsed.linearLaunchProjects === "object" && parsed.linearLaunchProjects !== null) {
+    preferences.linearLaunchProjects = Object.fromEntries(
+      Object.entries(parsed.linearLaunchProjects).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
   }
   return preferences;
 }

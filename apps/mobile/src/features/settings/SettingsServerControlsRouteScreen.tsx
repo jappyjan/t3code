@@ -420,6 +420,21 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                     canWrite={(environmentId) => writableEnvironments.has(environmentId)}
                   />
                 )}
+                {projectSelected ? null : (
+                  <SettingsSection title="Issues">
+                    <SettingsSwitchRow
+                      icon="line.3.horizontal"
+                      label="Git host issues"
+                      subtitle={managedSubtitle(
+                        "gitHostIssuesEnabled",
+                        "List issues from GitHub, GitLab, Azure DevOps, Forgejo and Bitbucket in Issues. Off, Issues shows only Linear and opens on its teams; those hosts are not queried for the list. Agents can still read them.",
+                      )}
+                      value={uniform("gitHostIssuesEnabled")}
+                      disabled={disabledFor("gitHostIssuesEnabled")}
+                      onValueChange={(value) => write({ gitHostIssuesEnabled: value })}
+                    />
+                  </SettingsSection>
+                )}
                 {projectSelected ? null : <IssueTrackerSection environments={selectedTargets} />}
                 <SettingsSection title={gt("Pull requests")}>
                   <SettingsSwitchRow

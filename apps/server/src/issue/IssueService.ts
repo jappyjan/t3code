@@ -1,6 +1,7 @@
 // A project bound to a standalone tracker (Linear) in settings lists it beside its git host's.
 // References outside the project's own repositories (upstream and fork) may be read on the host,
-// but every write must pass through requireWritable.
+// but every write must pass through requireWritable. A standalone tracker's credential spans its
+// whole workspace, so any project lends it for any of the tracker's scopes, bound or not.
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -60,6 +61,7 @@ import { parseUrl } from "@t3tools/shared/url";
 import * as IssueTrackerBindings from "../persistence/IssueTrackerBindings.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import * as IssueTrackerRegistry from "./IssueTrackerRegistry.ts";
 
@@ -198,7 +200,14 @@ const unsupported = (operation: string, what: string) =>
 export class IssueService extends Context.Service<
   IssueService,
   {
-    readonly list: (input: IssueListInput) => Effect.Effect<IssueListResult, IssueError>;
+    /**
+     * Git hosts are left out while `gitHostIssuesEnabled` is off, unless `allTrackers` asks for
+     * them: agents still read a repository's issues when the Issues page hides them.
+     */
+    readonly list: (
+      input: IssueListInput,
+      options?: { readonly allTrackers?: boolean },
+    ) => Effect.Effect<IssueListResult, IssueError>;
     readonly detail: (input: IssueDetailInput) => Effect.Effect<IssueDetail, IssueError>;
     readonly linkMetadata: (input: IssueRef) => Effect.Effect<TrackerIssueLink, IssueError>;
     readonly browse: (input: IssueBrowseInput) => Effect.Effect<IssueBrowseResult, IssueError>;
@@ -247,6 +256,7 @@ const make = Effect.gen(function* () {
   const projects = yield* ProjectService.ProjectService;
   const repositoryIdentities = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
   const bindings = yield* IssueTrackerBindings.IssueTrackerBindingsRepository;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
   const details = yield* Cache.makeWith((read: DetailRead) => read.lookup, {
     capacity: DETAIL_CACHE_CAPACITY,
     timeToLive: (exit) => (Exit.isSuccess(exit) ? DETAIL_CACHE_TTL : Duration.zero),
@@ -278,13 +288,20 @@ const make = Effect.gen(function* () {
   const resolveProjectTracker = (
     project: OrchestrationProjectShell,
     binding: IssueTrackerProjectBinding | undefined,
+    gitHosts: boolean,
   ) =>
-    (project.repositoryIdentity != null
-      ? Effect.succeed(project.repositoryIdentity)
-      : repositoryIdentities.resolve(project.workspaceRoot)
+    (!gitHosts
+      ? Effect.succeed([])
+      : (project.repositoryIdentity != null
+          ? Effect.succeed(project.repositoryIdentity)
+          : repositoryIdentities.resolve(project.workspaceRoot)
+        ).pipe(
+          Effect.map((repositoryIdentity) =>
+            resolveGitHostBindings({ ...project, repositoryIdentity }),
+          ),
+        )
     ).pipe(
-      Effect.map((repositoryIdentity) => {
-        const gitHost = resolveGitHostBindings({ ...project, repositoryIdentity });
+      Effect.map((gitHost) => {
         return [...resolveStandaloneBindings(binding), ...gitHost];
       }),
     );
@@ -295,6 +312,7 @@ const make = Effect.gen(function* () {
     readonly host?: string | undefined;
     /** The link's `host:port`, for a host whose binding keeps its port. */
     readonly authority?: string | undefined;
+    readonly gitHosts?: boolean;
   }) =>
     (filter.projectId === undefined
       ? projects.listShells()
@@ -329,7 +347,7 @@ const make = Effect.gen(function* () {
           return yield* Effect.forEach(
             shells,
             (project) =>
-              resolveProjectTracker(project, bound.get(project.id)).pipe(
+              resolveProjectTracker(project, bound.get(project.id), filter.gitHosts ?? true).pipe(
                 Effect.map((candidates) =>
                   candidates.map((candidate) => ({ project, ...candidate })),
                 ),
@@ -430,12 +448,47 @@ const make = Effect.gen(function* () {
           (candidate) => candidate.scope.toLowerCase() === scope.toLowerCase(),
         );
         const served = own ?? onHost[0];
-        if (served === undefined) {
-          return Effect.fail(new IssueUnavailableError({ reason: "tracker-unsupported" }));
-        }
-        return Effect.succeed({ ...served, scope, writable: own !== undefined });
+        if (served === undefined) return lendStandalone(ref);
+        const writable = own !== undefined || isStandaloneIssueTracker(served.api);
+        return Effect.succeed({ ...served, scope, writable });
       }),
     );
+
+  /** A project not bound to a standalone tracker still serves its scopes with the one credential. */
+  const lendStandalone = (
+    ref: IssueScopeRef,
+  ): Effect.Effect<SupportedProject & { readonly writable: boolean }, IssueError> => {
+    const api = registry.standalone.find((candidate) => candidate.kind === ref.tracker);
+    const host = api?.standalone.host;
+    if (
+      api === undefined ||
+      host === undefined ||
+      (ref.host?.trim().toLowerCase() ?? host) !== host
+    )
+      return Effect.fail(new IssueUnavailableError({ reason: "tracker-unsupported" }));
+    return projects.getShell(ref.projectId).pipe(
+      Effect.mapError(
+        (cause) =>
+          new IssueOperationError({
+            operation: "listProjects",
+            detail: "The project list could not be read.",
+            cause,
+          }),
+      ),
+      Effect.flatMap((shell) =>
+        Option.isNone(shell)
+          ? Effect.fail(new IssueUnavailableError({ reason: "tracker-unsupported" }))
+          : Effect.succeed({
+              project: shell.value,
+              tracker: api.kind,
+              host,
+              scope: ref.scope.trim(),
+              api,
+              writable: true,
+            }),
+      ),
+    );
+  };
 
   const requireWritable = (ref: IssueScopeRef, operation: string) =>
     requireProject(ref).pipe(
@@ -445,12 +498,20 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const list: IssueService["Service"]["list"] = Effect.fn("IssueService.list")(function* (input) {
+  const list: IssueService["Service"]["list"] = Effect.fn("IssueService.list")(function* (input, options) {
+    const gitHosts =
+      options?.allTrackers === true ||
+      (yield* serverSettings.getSettings.pipe(
+        Effect.map((settings) => settings.gitHostIssuesEnabled),
+        // Unreadable settings fall back to the default rather than failing the listing.
+        Effect.orElseSucceed(() => true),
+      ));
     // Trackers name every host so a client narrowed to one can switch to another; only the
     // narrowed host's scopes are read.
     const { supported, unimplemented } = yield* listProjects({
       projectId: input.projectId,
       excludeProjectIds: input.excludeProjectIds,
+      gitHosts,
     });
     const host = input.host?.trim().toLowerCase();
     const limit = input.limit ?? DEFAULT_LIST_LIMIT;

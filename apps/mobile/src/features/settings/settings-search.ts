@@ -144,6 +144,8 @@ const SETTINGS_SEARCH_TERMS = {
     msg("pull requests", { $context: "settings search keyword" }),
     msg("co-authors", { $context: "settings search keyword" }),
     msg("agent credits", { $context: "settings search keyword" }),
+    msg("git host issues", { $context: "settings search keyword" }),
+    msg("linear only", { $context: "settings search keyword" }),
     msg("default branch", { $context: "settings search keyword" }),
     msg("automatically pull", { $context: "settings search keyword" }),
     msg("clone into host folders", { $context: "settings search keyword" }),

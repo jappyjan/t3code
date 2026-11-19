@@ -50,6 +50,8 @@ export const issuesSearchFromUrl = (raw: Record<string, unknown>): IssuesSearch 
   order: raw.order === "created" ? "created" : undefined,
   // Present at all means browsing by team; deliberately not one of the remembered preferences.
   browse: issueBrowseFromUrl(raw.browse),
+  // With git hosts hidden the page opens on browsing; `view=list` asks for the flat list.
+  view: raw.view === "list" ? "list" : undefined,
   selectedEnvironmentId: bounded(raw.selectedEnvironmentId) as EnvironmentId | undefined,
   selectedProjectId: bounded(raw.selectedProjectId) as ProjectId | undefined,
   selectedHost: bounded(raw.selectedHost),

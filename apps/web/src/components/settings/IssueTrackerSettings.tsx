@@ -35,10 +35,48 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Skeleton } from "../ui/skeleton";
 import { SecretInput } from "./SecretInput";
+import { Switch } from "../ui/switch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSearchableSetting } from "./settingsSearch";
+import {
+  useScopedSettings,
+  useScopedSettingsMixed,
+  useUpdateScopedSettings,
+} from "./useScopedSettings";
 
 type TrackerIcon = ElementType<{ className?: string }>;
+
+/** Whether the Issues page lists git hosts' issues beside the standalone trackers'. */
+export function IssueListSettingsSection() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const mixed = useScopedSettingsMixed(["gitHostIssuesEnabled"]);
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
+  return (
+    <SettingsSection title={gt("Issues", { $context: "settings section" })}>
+      <SettingsRow
+        serverScoped
+        settingKeys={["gitHostIssuesEnabled"]}
+        mixed={mixed}
+        {...searchableSetting("git-host-issues")}
+        description={gt(
+          "List GitHub, GitLab, Azure DevOps, Forgejo and Bitbucket issues on the Issues page. Off, it shows only Linear, opens on its teams and stops querying those hosts. Agents still read them.",
+        )}
+        control={
+          <Switch
+            mixed={mixed}
+            checked={mixed ? false : settings.gitHostIssuesEnabled}
+            onCheckedChange={(checked) =>
+              updateSettings({ gitHostIssuesEnabled: Boolean(checked) })
+            }
+            aria-label={gt("Git host issues")}
+          />
+        }
+      />
+    </SettingsSection>
+  );
+}
 
 /** Web art per tracker kind; the server supplies everything else about a tracker. */
 const TRACKER_ICONS: Partial<Record<string, TrackerIcon>> = {

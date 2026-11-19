@@ -1301,6 +1301,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("pull request merge squash rebase last selected")],
   },
   {
+    id: "git-host-issues",
+    title: "Git host issues",
+    to: "/settings/source-control",
+    environmentOnly: true,
+    searchTerms: ["issues page github gitlab linear only hide noise tracker list"],
+  },
+  {
     id: "issue-trackers",
     title: msg("Issue trackers"),
     to: "/settings/source-control",

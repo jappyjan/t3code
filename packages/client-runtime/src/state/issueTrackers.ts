@@ -3,15 +3,18 @@ import {
   MAX_ISSUE_TRACKER_ADDITIONAL_SCOPES,
   WS_METHODS,
   issueTrackerBindingScopes,
+  type EnvironmentId,
   type IssueTrackerBindProjectInput,
   type IssueTrackerConnection,
   type IssueTrackerConnectionList,
   type IssueTrackerProjectBinding,
   type ProjectId,
 } from "@t3tools/contracts";
+import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { Atom } from "effect/reactivity";
+import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 import { mFallback, msg } from "gt-i18n";
 import type { MFunctionType } from "gt-i18n/types";
 
@@ -217,4 +220,53 @@ export function hasIssueTrackerTeams(
     tracker.scopes.length > 0 ||
     Object.values(bindings).some((binding) => issueTrackerBindingIsFor(binding, tracker))
   );
+}
+
+export interface MergedIssueTrackerConnections {
+  readonly answers: ReadonlyArray<readonly [EnvironmentId, IssueTrackerConnectionList]>;
+  readonly error: string | null;
+  readonly isPending: boolean;
+}
+
+const NO_CONNECTIONS: MergedIssueTrackerConnections = {
+  answers: [],
+  error: null,
+  isPending: false,
+};
+
+/** Every environment's standalone trackers at once, for the teams the Issues page browses. */
+export function createMergedIssueTrackerConnectionsAtoms<E>(
+  connections: (target: {
+    readonly environmentId: EnvironmentId;
+    readonly input: Record<string, never>;
+  }) => Atom.Atom<AsyncResult.AsyncResult<IssueTrackerConnectionList, E>>,
+  formatError: (cause: Cause.Cause<E>) => string,
+) {
+  const empty = Atom.make(NO_CONNECTIONS).pipe(Atom.withLabel("issue-trackers:merged:empty"));
+  const family = Atom.family((key: string) =>
+    Atom.make((get): MergedIssueTrackerConnections => {
+      const answers: Array<readonly [EnvironmentId, IssueTrackerConnectionList]> = [];
+      let error: string | null = null;
+      let isPending = false;
+      for (const environmentId of JSON.parse(key) as ReadonlyArray<EnvironmentId>) {
+        const result = get(connections({ environmentId, input: {} }));
+        isPending ||= result.waiting;
+        if (result._tag === "Failure" && error === null) error = formatError(result.cause);
+        const value = Option.getOrNull(AsyncResult.value(result));
+        if (value !== null) answers.push([environmentId, value]);
+      }
+      return { answers, error, isPending };
+    }).pipe(Atom.withLabel(`issue-trackers:merged:${key}`)),
+  );
+  return {
+    atom: (environmentIds: ReadonlyArray<EnvironmentId>) =>
+      environmentIds.length === 0 ? empty : family(JSON.stringify([...environmentIds].sort())),
+    refresh: (
+      registry: AtomRegistry.AtomRegistry,
+      environmentIds: ReadonlyArray<EnvironmentId>,
+    ) => {
+      for (const environmentId of environmentIds)
+        registry.refresh(connections({ environmentId, input: {} }));
+    },
+  };
 }

@@ -1,8 +1,10 @@
 import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type ComposerContextRecord,
+  type EnvironmentId,
   type IssueDetail,
   type IssueRef,
+  type IssueTrackerKind,
   type OrchestrationV2ThreadLaunchWorkspaceStrategy,
   type ProjectId,
   type ThreadId,
@@ -119,6 +121,62 @@ export function buildLinearChatLaunchPlan(input: {
 }
 
 export type LinearChatLaunchPlan = ReturnType<typeof buildLinearChatLaunchPlan>;
+
+// ── Launch project ────────────────────────────────────────────────────────
+
+/** Names a team's remembered launch project; team keys repeat across environments. */
+export function launchProjectChoiceKey(
+  environmentId: EnvironmentId,
+  tracker: IssueTrackerKind,
+  scope: string,
+): string {
+  return `${environmentId} ${tracker} ${scope.toLowerCase()}`;
+}
+
+/**
+ * Where a launch from a team's issue starts: the project bound to the team, else the one picked
+ * for it before on this device, while it still exists. Null asks.
+ */
+export function resolveLaunchProject(input: {
+  readonly bound: ReadonlyArray<ProjectId>;
+  readonly remembered: string | null | undefined;
+  readonly available: ReadonlyArray<ProjectId>;
+}): { readonly projectId: ProjectId | null; readonly bound: boolean } {
+  const bound = input.bound.find((projectId) => input.available.includes(projectId));
+  if (bound !== undefined) return { projectId: bound, bound: true };
+  const remembered = input.available.find((projectId) => projectId === input.remembered);
+  return { projectId: remembered ?? null, bound: false };
+}
+
+const LAUNCH_PROJECTS_KEY = "t3code:linear:launch-projects:v1";
+
+export function readLaunchProjectChoice(
+  storage: Pick<Storage, "getItem"> | undefined,
+  key: string,
+): string | null {
+  try {
+    const value = (
+      JSON.parse(storage?.getItem(LAUNCH_PROJECTS_KEY) ?? "{}") as Record<string, unknown>
+    )[key];
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLaunchProjectChoice(
+  storage: Pick<Storage, "getItem" | "setItem"> | undefined,
+  key: string,
+  projectId: ProjectId,
+): void {
+  try {
+    const parsed: unknown = JSON.parse(storage?.getItem(LAUNCH_PROJECTS_KEY) ?? "{}");
+    const choices = typeof parsed === "object" && parsed !== null ? parsed : {};
+    storage?.setItem(LAUNCH_PROJECTS_KEY, JSON.stringify({ ...choices, [key]: projectId }));
+  } catch {
+    // Remembering the pick is a convenience; the launch still asks next time.
+  }
+}
 
 // ── Pipeline ──────────────────────────────────────────────────────────────
 
