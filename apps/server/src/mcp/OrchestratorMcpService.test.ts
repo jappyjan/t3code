@@ -1982,6 +1982,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         result: null,
       };
       const dependencies = Layer.mergeAll(
+        Layer.mock(PipelineService.PipelineService)({}),
         NodeServices.layer,
         NodeCrypto.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
@@ -2110,6 +2111,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         readonly turnItemId: string;
       }>();
       const dependencies = Layer.mergeAll(
+        Layer.mock(PipelineService.PipelineService)({}),
         NodeServices.layer,
         NodeCrypto.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
@@ -2700,6 +2702,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         result: null,
       };
       const dependencies = Layer.mergeAll(
+        Layer.mock(PipelineService.PipelineService)({}),
         NodeServices.layer,
         NodeCrypto.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
@@ -3352,6 +3355,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           completedAt: null,
         };
         const layerDependencies = Layer.mergeAll(
+          Layer.mock(PipelineService.PipelineService)({}),
           NodeServices.layer,
           NodeCrypto.layer,
           Layer.mock(ThreadManagementService.ThreadManagementService)({

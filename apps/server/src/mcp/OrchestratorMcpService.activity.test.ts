@@ -1705,6 +1705,7 @@ it("requestSecret cancels its card when a steering restart supersedes the reques
   const layer = layerOrchestratorService.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(PipelineService.PipelineService)({}),
         Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: () => Effect.sync(projection),
           getThreadShell: () =>
