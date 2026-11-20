@@ -388,171 +388,173 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const list: IssueService["Service"]["list"] = Effect.fn("IssueService.list")(function* (input, options) {
-    const gitHosts =
-      options?.allTrackers === true ||
-      (yield* serverSettings.getSettings.pipe(
-        Effect.map((settings) => settings.gitHostIssuesEnabled),
-        // Unreadable settings fall back to the default rather than failing the listing.
-        Effect.orElseSucceed(() => true),
-      ));
-    // Trackers name every host so a client narrowed to one can switch to another; only the
-    // narrowed host's scopes are read.
-    const { supported, unimplemented } = yield* listProjects({
-      projectId: input.projectId,
-      excludeProjectIds: input.excludeProjectIds,
-      gitHosts,
-    });
-    const host = input.host?.trim().toLowerCase();
-    const limit = input.limit ?? DEFAULT_LIST_LIMIT;
-    // Worktrees of one repository are separate projects, and every repository of an Azure
-    // DevOps project shares its work items; read each scope once.
-    const scopes = new Map<string, SupportedProject>();
-    for (const project of supported) {
-      if (host !== undefined && project.host !== host) continue;
-      const key = listCursorKey(project.host, project.scope);
-      if (!scopes.has(key)) scopes.set(key, project);
-    }
-    const continuing = input.cursors;
-    const viewers = new Map<string, string>();
-    const trackers = new Map<string, IssueTrackerSummary>();
-    const entries: IssueListEntry[] = [];
-    const errors: IssueListProjectError[] = [];
-    const nextCursors: Record<string, string> = {};
+  const list: IssueService["Service"]["list"] = Effect.fn("IssueService.list")(
+    function* (input, options) {
+      const gitHosts =
+        options?.allTrackers === true ||
+        (yield* serverSettings.getSettings.pipe(
+          Effect.map((settings) => settings.gitHostIssuesEnabled),
+          // Unreadable settings fall back to the default rather than failing the listing.
+          Effect.orElseSucceed(() => true),
+        ));
+      // Trackers name every host so a client narrowed to one can switch to another; only the
+      // narrowed host's scopes are read.
+      const { supported, unimplemented } = yield* listProjects({
+        projectId: input.projectId,
+        excludeProjectIds: input.excludeProjectIds,
+        gitHosts,
+      });
+      const host = input.host?.trim().toLowerCase();
+      const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+      // Worktrees of one repository are separate projects, and every repository of an Azure
+      // DevOps project shares its work items; read each scope once.
+      const scopes = new Map<string, SupportedProject>();
+      for (const project of supported) {
+        if (host !== undefined && project.host !== host) continue;
+        const key = listCursorKey(project.host, project.scope);
+        if (!scopes.has(key)) scopes.set(key, project);
+      }
+      const continuing = input.cursors;
+      const viewers = new Map<string, string>();
+      const trackers = new Map<string, IssueTrackerSummary>();
+      const entries: IssueListEntry[] = [];
+      const errors: IssueListProjectError[] = [];
+      const nextCursors: Record<string, string> = {};
 
-    const involvement = input.involvement ?? "all";
-    // Only a narrowed listing compares against the signed-in account; `all` never reads it.
-    const viewerRequests = new Map<string, Effect.Effect<string, IssueTrackerError>>();
-    for (const project of involvement === "all" ? [] : scopes.values()) {
-      if (viewerRequests.has(project.host)) continue;
-      const request = yield* Effect.cached(
-        project.api
-          .getViewer({ cwd: project.project.workspaceRoot, host: project.host })
-          .pipe(Effect.tap((viewer) => Effect.sync(() => viewers.set(project.host, viewer)))),
-      );
-      viewerRequests.set(project.host, request);
-    }
+      const involvement = input.involvement ?? "all";
+      // Only a narrowed listing compares against the signed-in account; `all` never reads it.
+      const viewerRequests = new Map<string, Effect.Effect<string, IssueTrackerError>>();
+      for (const project of involvement === "all" ? [] : scopes.values()) {
+        if (viewerRequests.has(project.host)) continue;
+        const request = yield* Effect.cached(
+          project.api
+            .getViewer({ cwd: project.project.workspaceRoot, host: project.host })
+            .pipe(Effect.tap((viewer) => Effect.sync(() => viewers.set(project.host, viewer)))),
+        );
+        viewerRequests.set(project.host, request);
+      }
 
-    // Every project counts once, including worktrees of a scope read once below and forks.
-    const counted = new Set<string>();
-    for (const project of supported) {
-      const countKey = `${project.host} ${project.project.id}`;
-      if (counted.has(countKey)) continue;
-      counted.add(countKey);
-      const existing = trackers.get(project.host);
-      trackers.set(
-        project.host,
-        existing === undefined
-          ? {
-              tracker: project.tracker,
-              host: project.host,
-              projectCount: 1,
-              capabilities: project.api.capabilities,
-              configured: true,
-              detail: null,
+      // Every project counts once, including worktrees of a scope read once below and forks.
+      const counted = new Set<string>();
+      for (const project of supported) {
+        const countKey = `${project.host} ${project.project.id}`;
+        if (counted.has(countKey)) continue;
+        counted.add(countKey);
+        const existing = trackers.get(project.host);
+        trackers.set(
+          project.host,
+          existing === undefined
+            ? {
+                tracker: project.tracker,
+                host: project.host,
+                projectCount: 1,
+                capabilities: project.api.capabilities,
+                configured: true,
+                detail: null,
+              }
+            : { ...existing, projectCount: existing.projectCount + 1 },
+        );
+      }
+      const recordFailure = (project: SupportedProject, failure: IssueTrackerError) => {
+        const existing = trackers.get(project.host);
+        if (existing !== undefined && isTrackerUnusable(failure))
+          trackers.set(project.host, {
+            ...existing,
+            configured: false,
+            detail: trackerDetail(failure),
+          });
+      };
+
+      yield* Effect.forEach(
+        scopes.values(),
+        (project) =>
+          Effect.gen(function* () {
+            const key = listCursorKey(project.host, project.scope);
+            // A continuation names the scopes it wants; one not named has nothing to add.
+            if (continuing !== undefined && continuing[key] === undefined) return;
+            const cursor = continuing?.[key];
+            const filter: Effect.Effect<IssueInvolvementFilter, IssueTrackerError> =
+              involvement === "all"
+                ? Effect.succeed({ involvement })
+                : viewerRequests
+                    .get(project.host)!
+                    .pipe(Effect.map((viewer) => ({ involvement, viewer })));
+            const page = yield* filter.pipe(
+              Effect.flatMap((filter) =>
+                project.api.listIssues({
+                  ...filter,
+                  cwd: project.project.workspaceRoot,
+                  host: project.host,
+                  scope: project.scope,
+                  state: input.state,
+                  limit,
+                  query: input.query,
+                  labels: input.labels,
+                  assignee: input.assignee,
+                  sort: input.sort ?? "updated",
+                  cursor,
+                  refresh: input.refresh,
+                }),
+              ),
+              Effect.result,
+            );
+            if (page._tag === "Failure") {
+              if (cursor !== undefined) nextCursors[key] = cursor;
+              recordFailure(project, page.failure);
+              // A fork or a multi-team binding reads several scopes; the failure names its own.
+              const forked = supported.some(
+                (other) => other.project.id === project.project.id && other.scope !== project.scope,
+              );
+              errors.push({
+                projectId: project.project.id,
+                projectTitle: forked
+                  ? `${project.project.title} (${project.scope})`
+                  : project.project.title,
+                message: trackerDetail(page.failure),
+              });
+              return;
             }
-          : { ...existing, projectCount: existing.projectCount + 1 },
-      );
-    }
-    const recordFailure = (project: SupportedProject, failure: IssueTrackerError) => {
-      const existing = trackers.get(project.host);
-      if (existing !== undefined && isTrackerUnusable(failure))
-        trackers.set(project.host, {
-          ...existing,
-          configured: false,
-          detail: trackerDetail(failure),
-        });
-    };
-
-    yield* Effect.forEach(
-      scopes.values(),
-      (project) =>
-        Effect.gen(function* () {
-          const key = listCursorKey(project.host, project.scope);
-          // A continuation names the scopes it wants; one not named has nothing to add.
-          if (continuing !== undefined && continuing[key] === undefined) return;
-          const cursor = continuing?.[key];
-          const filter: Effect.Effect<IssueInvolvementFilter, IssueTrackerError> =
-            involvement === "all"
-              ? Effect.succeed({ involvement })
-              : viewerRequests
-                  .get(project.host)!
-                  .pipe(Effect.map((viewer) => ({ involvement, viewer })));
-          const page = yield* filter.pipe(
-            Effect.flatMap((filter) =>
-              project.api.listIssues({
-                ...filter,
-                cwd: project.project.workspaceRoot,
+            for (const item of page.success.items) {
+              entries.push({
+                ...item,
+                tracker: project.tracker,
                 host: project.host,
                 scope: project.scope,
-                state: input.state,
-                limit,
-                query: input.query,
-                labels: input.labels,
-                assignee: input.assignee,
-                sort: input.sort ?? "updated",
-                cursor,
-                refresh: input.refresh,
-              }),
-            ),
-            Effect.result,
-          );
-          if (page._tag === "Failure") {
-            if (cursor !== undefined) nextCursors[key] = cursor;
-            recordFailure(project, page.failure);
-            // A fork or a multi-team binding reads several scopes; the failure names its own.
-            const forked = supported.some(
-              (other) => other.project.id === project.project.id && other.scope !== project.scope,
-            );
-            errors.push({
-              projectId: project.project.id,
-              projectTitle: forked
-                ? `${project.project.title} (${project.scope})`
-                : project.project.title,
-              message: trackerDetail(page.failure),
-            });
-            return;
-          }
-          for (const item of page.success.items) {
-            entries.push({
-              ...item,
-              tracker: project.tracker,
-              host: project.host,
-              scope: project.scope,
-              projectId: project.project.id,
-              projectTitle: project.project.title,
-            });
-          }
-          if (page.success.nextCursor !== null) nextCursors[key] = page.success.nextCursor;
-        }),
-      { concurrency: SCOPE_CONCURRENCY, discard: true },
-    );
+                projectId: project.project.id,
+                projectTitle: project.project.title,
+              });
+            }
+            if (page.success.nextCursor !== null) nextCursors[key] = page.success.nextCursor;
+          }),
+        { concurrency: SCOPE_CONCURRENCY, discard: true },
+      );
 
-    for (const [host, { tracker, projectIds }] of unimplemented) {
-      trackers.set(host, {
-        tracker,
-        host,
-        projectCount: projectIds.size,
-        capabilities: null,
-        configured: false,
-        detail: "Issues cannot be browsed for this host yet.",
-      });
-    }
-    entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return {
-      viewers: Object.fromEntries(viewers),
-      trackers: [...trackers.values()],
-      entries,
-      errors,
-      nextCursors,
-      scopes: [...scopes.values()].map((project) => ({
-        projectId: project.project.id,
-        tracker: project.tracker,
-        host: project.host,
-        scope: project.scope,
-      })),
-    };
-  });
+      for (const [host, { tracker, projectIds }] of unimplemented) {
+        trackers.set(host, {
+          tracker,
+          host,
+          projectCount: projectIds.size,
+          capabilities: null,
+          configured: false,
+          detail: "Issues cannot be browsed for this host yet.",
+        });
+      }
+      entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      return {
+        viewers: Object.fromEntries(viewers),
+        trackers: [...trackers.values()],
+        entries,
+        errors,
+        nextCursors,
+        scopes: [...scopes.values()].map((project) => ({
+          projectId: project.project.id,
+          tracker: project.tracker,
+          host: project.host,
+          scope: project.scope,
+        })),
+      };
+    },
+  );
 
   const toDetail = (
     project: SupportedProject & { readonly writable: boolean },
