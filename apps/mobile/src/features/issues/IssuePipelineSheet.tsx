@@ -1,4 +1,4 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   draftIssueOf,
@@ -38,7 +38,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { useProjects } from "../../state/entities";
 import { issueEnvironment } from "../../state/issues";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { threadEnvironment } from "../../state/threads";
@@ -102,7 +102,7 @@ export function IssuePipelineSheet({
   const attemptRef = useRef<ReturnType<typeof nextPipelineStartAttempt> | null>(null);
 
   const preferences = useAtomValue(mobilePreferencesAtom);
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
   const lastUsed = AsyncResult.isSuccess(preferences)
     ? (preferences.value.linearLastPipelineName ?? null)
     : null;
@@ -206,7 +206,7 @@ export function IssuePipelineSheet({
     }
     const run = result.value.run;
     attemptRef.current = null;
-    savePreferences({ linearLastPipelineName: pipeline.name });
+    void savePreferences({ linearLastPipelineName: pipeline.name });
     // The run exists; linking it is best effort and never delays or blocks the launch.
     void runAtomCommand(
       appAtomRegistry,

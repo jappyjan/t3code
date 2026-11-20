@@ -11,6 +11,7 @@ import {
   type AtomCommand,
   type AtomCommandResult,
   reportAtomCommandResult,
+  runAtomCommand,
 } from "@t3tools/client-runtime/state/runtime";
 import { threadFamilyRead, type ThreadFamilyRead } from "@t3tools/client-runtime/state/threads";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";

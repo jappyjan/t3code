@@ -1,4 +1,4 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { projectsBoundToScope } from "@t3tools/client-runtime/issue-browse";
 import {
@@ -21,7 +21,8 @@ import { Menu } from "../../components/ui/Menu";
 import { SplitButton } from "../../components/ui/SplitButton";
 import { useProjects, useServerConfigs } from "../../state/entities";
 import { issueTrackerEnvironment } from "../../state/issueTrackers";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
@@ -56,7 +57,7 @@ export function LinearIssueLaunchBar(props: {
     useEnvironmentQuery(issueTrackerEnvironment.connections({ environmentId, input: {} })).data
       ?.bindings ?? {};
   const preferences = useAtomValue(mobilePreferencesAtom);
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
   const choices = AsyncResult.isSuccess(preferences)
     ? (preferences.value.linearLaunchProjects ?? {})
     : {};
@@ -70,7 +71,7 @@ export function LinearIssueLaunchBar(props: {
   });
   const launchProjectId = target.projectId;
   const pick = (projectId: string) =>
-    savePreferences({ linearLaunchProjects: { ...choices, [choiceKey]: projectId } });
+    void savePreferences({ linearLaunchProjects: { ...choices, [choiceKey]: projectId } });
 
   const startChat = (workspace: LinearLaunchWorkspace) => {
     if (starting.current || launchProjectId === null) return;
