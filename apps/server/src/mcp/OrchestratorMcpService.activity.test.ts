@@ -1882,6 +1882,7 @@ it("requestSecret delivers a fields card as one file per field", async () => {
         Layer.mock(RemoteDelegation.RemoteDelegation)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
         Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
+        Layer.mock(PipelineService.PipelineService)({}),
         NodeCrypto.layer,
       ),
     ),
