@@ -682,8 +682,9 @@ describe("IssueService with a standalone tracker", () => {
       expect(yield* bound.detail({ ...linearRef, scope: "OPS", key: "OPS-1" })).toMatchObject({
         writable: true,
       });
+      // The workspace credential serves an unbound team too.
       expect(yield* bound.detail({ ...linearRef, scope: "QA", key: "QA-1" })).toMatchObject({
-        writable: false,
+        writable: true,
       });
       expect((yield* bound.projectScope("web" as ProjectId)).scope).toBe("ENG");
       expect((yield* bound.projectScope("web" as ProjectId, "ops-12")).scope).toBe("OPS");
