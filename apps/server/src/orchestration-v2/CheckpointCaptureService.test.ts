@@ -1626,6 +1626,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
                   Layer.mergeAll(
                     IdAllocator.layer,
                     NodeCrypto.layer,
+                    layerNoTrackedFolders,
                     Layer.mock(CheckpointStore.CheckpointStore)({
                       isGitRepository: () => Effect.succeed(true),
                       captureCheckpoint: gitUnavailable,
