@@ -326,6 +326,7 @@ describe("issue toolkit handlers", () => {
               IssueTrackerRegistry.IssueTrackerRegistry,
               IssueTrackerRegistry.fromTrackers([linear]),
             ),
+            ServerSettings.layerTest().pipe(Layer.orDie),
           ),
         ),
       );
