@@ -49,7 +49,7 @@ const insertTaskFolder = Effect.gen(function* () {
 });
 
 describe("Multi-repo schema", () => {
-  it.effect("is created on every start without recording a migration id", () =>
+  it.effect("leaves the schema to the numbered migrations", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations();
@@ -68,7 +68,8 @@ describe("Multi-repo schema", () => {
   it.effect("sets aside a task folder table an earlier fork build created", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: migrationManifest.at(-1)?.[0] });
+      // Before upstream's 104 and 105, which create the column and table this build now uses.
+      yield* runMigrations({ toMigrationInclusive: 103 });
       yield* sql`
         ALTER TABLE projection_projects
         ADD COLUMN tracked_folders_json TEXT NOT NULL DEFAULT '[]'
