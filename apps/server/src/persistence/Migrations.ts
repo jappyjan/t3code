@@ -10,6 +10,7 @@ import {
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
 import { ensurePipelineSchema } from "./PipelineSchema.ts";
+import { ensureMultiRepoSchema, setAsideForkTaskFolders } from "./MultiRepoSchema.ts";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -361,6 +362,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
           readonly id: number | null;
         }>`SELECT MAX(migration_id) AS id FROM effect_sql_migrations`;
   const latestRecordedId = latest?.id ?? 0;
+  yield* setAsideForkTaskFolders;
   const pending = migrationEntries.filter(
     ([id]) =>
       id > latestRecordedId && (toMigrationInclusive === undefined || id <= toMigrationInclusive),
@@ -388,7 +390,10 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   }).pipe(
     Effect.ensuring(Option.isSome(progress) ? Ref.set(progress.value.current, null) : Effect.void),
   );
-  if (toMigrationInclusive === undefined) yield* ensurePipelineSchema;
+  if (toMigrationInclusive === undefined) {
+    yield* ensurePipelineSchema;
+    yield* ensureMultiRepoSchema;
+  }
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
     ? Effect.logDebug("Database schema is current")
