@@ -445,14 +445,12 @@ export function IssueDetailPanel({
 }: {
   environmentId: EnvironmentId;
   reference: IssueRef;
-  /** Opens a related issue (parent, sub-issue, blocker) beside this one. */
-  onSelectIssue?: ((reference: IssueRef & { readonly host: string }) => void) | undefined;
   /** The list row this issue was opened from, shown until the detail arrives. */
   listEntry?: IssueListEntry | null;
   threadRef?: ScopedThreadRef | null;
   /** Opens a linked change request beside this one; absent, the link goes to the host. */
   onSelectPullRequest?: ((reference: PullRequestRef) => void) | undefined;
-  /** Opens a referenced issue beside this one; absent, the link goes to the host. */
+  /** Opens a referenced or related issue beside this one; absent, the link goes to the host. */
   onSelectIssue?: ((reference: IssueRef & { readonly url: string }) => void) | undefined;
 }) {
   const gt = useGT();
@@ -873,6 +871,7 @@ export function IssueDetailPanel({
                       // A sub-issue or blocker can sit in another team.
                       scope: related.key.replace(/-\d+$/u, ""),
                       key: related.key,
+                      url: related.url,
                     })
                 : undefined
             }

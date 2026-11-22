@@ -943,9 +943,6 @@ export function IssuesPage() {
                     scope: renderedSurface.scope,
                     key: renderedSurface.key,
                   }}
-                  onSelectIssue={(reference) =>
-                    selectEntry({ ...reference, environmentId: panelEnvironmentId, url: "" })
-                  }
                   onSelectPullRequest={(reference) => {
                     useRightPanelStore.getState().openPullRequest(rightPanelRef, {
                       projectId: reference.projectId,
