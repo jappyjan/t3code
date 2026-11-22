@@ -1393,7 +1393,7 @@ export const layer: Layer.Layer<
       // The coordinator's role is sent once per provider thread, ahead of the user's first message.
       const coordinatorNote = pipelineCoordinatorNote({
         pipeline: projection.thread.pipeline,
-        nativeCommand: Boolean(goalCommand) || isCompactionCommandMessage(providerMessage),
+        nativeCommand: slashCommand,
         providerThreadId: providerThread.id,
         activeAttemptId: run.activeAttemptId,
         providerTurns: projection.providerTurns,
