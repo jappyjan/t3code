@@ -33,7 +33,10 @@ vi.mock(import("~/state/environments"), async (original) => ({
       {
         environmentId: "env-1",
         label: "Local",
-        serverConfig: { environment: { capabilities: { issues: true } } },
+        serverConfig: {
+          environment: { capabilities: { issues: true } },
+          settings: { gitHostIssuesEnabled: true },
+        },
       },
     ],
   })) as never,

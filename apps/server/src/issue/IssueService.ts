@@ -483,6 +483,7 @@ const make = Effect.gen(function* () {
               tracker: api.kind,
               host,
               scope: ref.scope.trim(),
+              accountId: null,
               api,
               writable: true,
             }),
@@ -498,7 +499,8 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const list: IssueService["Service"]["list"] = Effect.fn("IssueService.list")(function* (input, options) {
+  const list: IssueService["Service"]["list"] = Effect.fn("IssueService.list")(
+    function* (input, options) {
     const gitHosts =
       options?.allTrackers === true ||
       (yield* serverSettings.getSettings.pipe(
@@ -685,7 +687,8 @@ const make = Effect.gen(function* () {
         scope: project.scope,
       })),
     };
-  });
+    },
+  );
 
   const toDetail = (
     project: SupportedProject & { readonly writable: boolean },
