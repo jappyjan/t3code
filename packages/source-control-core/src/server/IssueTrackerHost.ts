@@ -47,6 +47,7 @@ export function asIssueTrackerAccount(
     setReaction,
     listTemplates,
     listCandidates,
+    browse,
   } = api;
   // Every key is required here, so a method added to IssueTrackerApi fails to compile until it
   // is wrapped instead of silently running as the first account.
@@ -65,6 +66,7 @@ export function asIssueTrackerAccount(
     setReaction: setReaction && ((input) => as(setReaction(input))),
     listTemplates: listTemplates && ((input) => as(listTemplates(input))),
     listCandidates: listCandidates && ((input) => as(listCandidates(input))),
+    browse: browse && ((input) => as(browse(input))),
   };
   return Object.fromEntries(
     Object.entries(wrapped).filter(([, value]) => value !== undefined),
