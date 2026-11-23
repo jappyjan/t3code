@@ -10,6 +10,7 @@ import * as Launch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
+import * as PipelineService from "../pipelines/PipelineService.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as Projects from "../project/ProjectService.ts";
@@ -40,6 +41,7 @@ const dependencies = Layer.mergeAll(
   Layer.mock(Git.GitVcsDriver)({}),
   Layer.mock(Secrets.SecretRequests)({}),
   Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+  Layer.mock(PipelineService.PipelineService)({}),
   Layer.mock(Scheduler.Scheduler)({ register: () => Effect.void }),
 );
 
