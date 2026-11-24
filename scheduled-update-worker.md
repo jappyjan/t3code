@@ -96,7 +96,8 @@ One short line each:
   mobile Issues tab), thread launch and worktrees, composer context;
   multi-repo: projects/settings, checkpointing, worktrees/TaskFolders, diff/review, Git
   actions, provider adapters, mobile review/Git; host capacity: resource telemetry/HostResources,
-  agent scope, run admission and the run queue, settings, sidebar, mobile home).
+  agent scope, run admission and the run queue, settings, sidebar, mobile home; no-telemetry:
+  analytics/telemetry, relay tracing, mobile observability, build public config).
 - **Rebase**: per feature branch: rebased and pushed (new short SHA), unchanged, dropped (why,
   and the `refs/wip/...` ref it was saved under) or parked. For rebased ones, conflicts and how
   you resolved them, fixes you committed and check results. Say whether upstream PR #27253

@@ -28,6 +28,7 @@ In stack order. Each branch is rebased onto the last branch before it that made 
 | 2   | `feat/linear`              | pipelines           | active | Linear on upstream's Issues: project/milestone drill-down and Start chat / Run pipeline from an issue.                                                                                           |
 | 3   | `feat/host-capacity`       | -                   | active | Host capacity. First commit ports upstream PR `pingdotgg/t3code#27253` (memory pressure warnings); later commits cap concurrent turns per machine.                                              |
 | 4   | `feat/multi-repo-projects` | pipelines           | active | Multi-repo projects: upstream's open PR series #35921, #35923, #35924, #35925 (one commit each), their schema moved into `MultiRepoSchema.ts`, plus Pipelines glue and a desktop SSH-agent fix. |
+| 5   | `feat/no-telemetry`        | -                   | active | Tracking-free fork: no product analytics, relay tracing or mobile crash reports, and builds without T3 Connect (relay, Clerk sign-in, hosted tracing). Machines connect over Tailscale. |
 
 "Needs" lists the branches whose code it builds on. If one of them dropped out this run, skip the
 branch too (report it as "skipped: needs <branch>").
@@ -112,6 +113,16 @@ text. The fork adds MCP tools, so after a rebase it is often wrong; when
    (`issues.browse`) and Start chat / Run pipeline from an issue, linking the new thread through
    upstream's issue link. On a conflict, keep upstream's Issues behaviour and re-apply those
    additions; never bring back a separate Linear page, route, tab, package or connection.
+
+   No-telemetry switches data off at a few chokepoints instead of removing call sites:
+   `AnalyticsService.ts` is a no-op with upstream's interface, `packages/shared/src/relayTracing.ts`
+   `layer()` never exports, `crashReportingAvailable` in the mobile `observe.ts` is `false`, and
+   `scripts/lib/public-config.ts` strips every Clerk, relay URL and hosted OTLP key from the build
+   environment. On a conflict, take upstream's version and re-apply the chokepoint: if upstream
+   changes the `AnalyticsService` interface, keep it a no-op with the new interface; if upstream
+   adds a new outbound telemetry sink or a new Connect/tracing build key, switch it off the same
+   way and say so in the report. The tests it changed assert that nothing is exported; keep them
+   asserting that.
 
    Multi-repo carries upstream's open series #35921 → #35923 → #35924 → #35925 as cherry-picks
    (`-x`, so each commit names its upstream sha). Check each PR (`gh pr view <n> --repo
