@@ -1,5 +1,10 @@
 # Product analytics
 
+This fork sends no analytics: [`AnalyticsService`](../../apps/server/src/telemetry/AnalyticsService.ts)
+is a no-op, relay tracing never exports, and builds drop the T3 Connect and hosted tracing config
+([`public-config.ts`](../../scripts/lib/public-config.ts)). The rest of this page describes
+upstream, so keep these chokepoints in place when syncing.
+
 The server owns analytics delivery, opt-out, and identity for every connected client. Clients never
 load an analytics browser SDK, and visiting hosted web without an authenticated connection does not
 count as product use.

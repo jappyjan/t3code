@@ -95,7 +95,7 @@ describe("nonInterferingTracer", () => {
   );
 });
 
-it.effect.each([true, false])("filters relay exports at flush (%s)", (enabledAtFlush) => {
+it.effect.each([true, false])("exports nothing at flush (%s)", (enabledAtFlush) => {
   const fetchFn = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
   let enabled = true;
   return Effect.logWarning("private error detail").pipe(
@@ -129,13 +129,8 @@ it.effect.each([true, false])("filters relay exports at flush (%s)", (enabledAtF
     Effect.scoped,
     Effect.andThen(
       Effect.sync(() => {
-        expect(fetchFn).toHaveBeenCalledTimes(Number(enabledAtFlush));
-        if (!enabledAtFlush) return;
-        const sent = new TextDecoder().decode(fetchFn.mock.calls[0]?.[1]?.body as Uint8Array);
-        expect(sent).toContain("/api/threads");
-        expect(sent).not.toMatch(
-          /studio-mac|cursor=secret|server\.port|private error detail|private-host/,
-        );
+        // This fork never exports relay traces, whatever the switch says at flush.
+        expect(fetchFn).not.toHaveBeenCalled();
       }),
     ),
   );
