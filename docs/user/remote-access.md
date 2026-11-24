@@ -4,6 +4,8 @@ Drive T3 Code from your phone, browser (`app.t3.codes`), or another desktop app 
 
 ## T3 Connect (recommended)
 
+This build does not include T3 Connect. Reach your machines over the local network or Tailscale instead: see [Pair over a LAN or private network](#pair-over-a-lan-or-private-network) and [Tailscale HTTPS](#tailscale-https).
+
 T3 Connect links your host to your other devices without router port-forwarding.
 
 - **Desktop host**: Open **Settings → Sharing & access**, sign in, and turn on **T3 Connect** (note: closing the desktop app's last window stops its local server—use the [background service](./background-service.md) for unattended access).

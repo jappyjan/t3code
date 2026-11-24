@@ -17,39 +17,38 @@ afterEach(() => {
 describe("loadRepoEnv", () => {
   it("applies process, root local, and root precedence in that order", () => {
     const repoRoot = makeTemporaryDirectory();
+    NodeFS.writeFileSync(NodePath.join(repoRoot, ".env"), "T3CODE_PORT=1\nT3CODE_HOST=root\n");
+    NodeFS.writeFileSync(NodePath.join(repoRoot, ".env.local"), "T3CODE_PORT=2\n");
+
+    expect(loadRepoEnv({ baseEnv: {}, repoRoot })).toMatchObject({
+      T3CODE_PORT: "2",
+      T3CODE_HOST: "root",
+    });
+    expect(loadRepoEnv({ baseEnv: { T3CODE_PORT: "3" }, repoRoot }).T3CODE_PORT).toBe("3");
+  });
+
+  it("drops T3 Connect, Clerk, and hosted tracing values from every source", () => {
+    const repoRoot = makeTemporaryDirectory();
     NodeFS.writeFileSync(
       NodePath.join(repoRoot, ".env"),
-      "T3CODE_CLERK_PUBLISHABLE_KEY=pk_root\nT3CODE_CLERK_JWT_TEMPLATE=template_root\nT3CODE_CLERK_CLI_OAUTH_CLIENT_ID=oauth_root\nT3CODE_RELAY_URL=https://root.example.test\n",
-    );
-    NodeFS.writeFileSync(
-      NodePath.join(repoRoot, ".env.local"),
-      "T3CODE_CLERK_PUBLISHABLE_KEY=pk_local\nT3CODE_CLERK_JWT_TEMPLATE=template_local\nT3CODE_CLERK_CLI_OAUTH_CLIENT_ID=oauth_local\nT3CODE_RELAY_URL=https://local.example.test\n",
+      "T3CODE_RELAY_URL=https://relay.example.test\nVITE_CLERK_PUBLISHABLE_KEY=pk_root\n",
     );
 
-    expect(loadRepoEnv({ baseEnv: {}, repoRoot }).T3CODE_RELAY_URL).toBe(
-      "https://local.example.test",
-    );
-    expect(
-      loadRepoEnv({
-        baseEnv: {
-          T3CODE_CLERK_PUBLISHABLE_KEY: "pk_ci",
-          T3CODE_CLERK_JWT_TEMPLATE: "template_ci",
-          T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: "oauth_ci",
-          T3CODE_RELAY_URL: "https://ci.example.test",
-        },
-        repoRoot,
-      }),
-    ).toMatchObject({
-      T3CODE_CLERK_PUBLISHABLE_KEY: "pk_ci",
-      T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: "oauth_ci",
-      VITE_CLERK_PUBLISHABLE_KEY: "pk_ci",
-      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_ci",
-      T3CODE_CLERK_JWT_TEMPLATE: "template_ci",
-      VITE_CLERK_JWT_TEMPLATE: "template_ci",
-      EXPO_PUBLIC_CLERK_JWT_TEMPLATE: "template_ci",
-      T3CODE_RELAY_URL: "https://ci.example.test",
-      VITE_T3CODE_RELAY_URL: "https://ci.example.test",
+    const env = loadRepoEnv({
+      baseEnv: {
+        T3CODE_CLERK_PUBLISHABLE_KEY: "pk_ci",
+        EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID: "google",
+        VITE_T3CODE_RELAY_URL: "https://relay.example.test",
+        T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN: "token",
+        VITE_RELAY_OTLP_TRACES_URL: "https://traces.example.test",
+        EXPO_PUBLIC_OTLP_TRACES_DATASET: "mobile",
+        T3CODE_MOBILE_OTLP_TRACES_URL: "https://traces.example.test",
+        T3CODE_PORT: "3773",
+      },
+      repoRoot,
     });
+
+    expect(env).toEqual({ T3CODE_PORT: "3773" });
   });
 });
 
