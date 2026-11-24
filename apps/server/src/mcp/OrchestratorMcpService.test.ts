@@ -2817,6 +2817,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(RemoteDelegation.RemoteDelegation)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        Layer.mock(PipelineService.PipelineService)({}),
       );
       const notARepository = (cwd: string) =>
         new GitCommandError({

@@ -1804,6 +1804,7 @@ it("requestSecret closes its card when the call is aborted while the card is bei
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(RemoteDelegation.RemoteDelegation)({}),
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+          Layer.mock(PipelineService.PipelineService)({}),
           Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
           NodeCrypto.layer,
         ),
