@@ -439,13 +439,13 @@ export function IssuesScreen(
                     standaloneOnly
                       ? setShowList(false)
                       : navigation.dispatch(
-                      StackActions.push(
-                        "IssueBrowse",
-                        browseTeams.length === 1
-                          ? { team: browseTeams[0]! }
-                          : { teams: browseTeams },
-                      ),
-                    )
+                          StackActions.push(
+                            "IssueBrowse",
+                            browseTeams.length === 1
+                              ? { team: browseTeams[0]! }
+                              : { teams: browseTeams },
+                          ),
+                        )
                   }
                 />
               ) : null}

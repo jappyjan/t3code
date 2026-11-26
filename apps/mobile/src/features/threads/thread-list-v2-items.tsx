@@ -742,7 +742,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
                   Draft · from <Var>{draftIssue.identifier}</Var>
                 </T>
               ) : (
-              <T>Draft</T>
+                <T>Draft</T>
               )}
             </Text>
           </View>
