@@ -2,7 +2,7 @@
 
 Drive T3 Code from your phone, browser (`app.t3.codes`), or another desktop app while your agents run on a host computer or server. The host must stay awake and running while you work.
 
-## T3 Connect (recommended)
+## T3 Connect
 
 This build does not include T3 Connect. Reach your machines over the local network or Tailscale instead: see [Pair over a LAN or private network](#pair-over-a-lan-or-private-network) and [Tailscale HTTPS](#tailscale-https).
 
