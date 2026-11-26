@@ -1818,7 +1818,7 @@ function ComposerPromptEditorTiptapInner(
     latestValueRef.current = value;
     // A Suspense boundary revealing again re-runs this against an editor `useEditor` already
     // destroyed; the replacement editor reruns it once it exists.
-    if (!editor?.isInitialized) return;
+    if (!editor || editor.isDestroyed) return;
     // Switching threads swaps the draft in this same editor, which is far cheaper than rebuilding
     // it. A fresh state keeps undo from reaching back into the previous thread's draft.
     const draftChanged = appliedDraftKeyRef.current !== draftKey;

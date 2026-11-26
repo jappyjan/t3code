@@ -3827,10 +3827,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         scopeThreadRef(thread.environmentId, thread.id),
                       );
                       const isCard =
-                          section === "active" ||
-                          section === "pinned" ||
-                          section === "working" ||
-                          section === "stuck";
+                        section === "active" ||
+                        section === "pinned" ||
+                        section === "working" ||
+                        section === "stuck";
                       const rowVariant = folderRow
                         ? folderRowsMultiline
                           ? "folder-multiline"
@@ -3838,105 +3838,99 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         : isCard
                           ? "card"
                           : "slim";
-                        const rowProps = (row: EnvironmentThreadShell, isStep: boolean) => {
-                          const key = scopedThreadKey(scopeThreadRef(row.environmentId, row.id));
-                          return {
-                            thread: row,
-                            possiblyStuck: isShellPossiblyStuck(
-                              row,
-                              stuckClockOf(row.environmentId),
-                            ),
-                            // Steps follow their parent's section, so they offer no settle, snooze or pin of their own.
-                            settlementSupported: !isStep && serverConfigs.has(row.environmentId),
-                            snoozeSupported: !isStep && serverConfigs.has(row.environmentId),
-                            pinningSupported: !isStep && serverConfigs.has(row.environmentId),
-                            isPinned: !isStep && row.pinnedAt != null,
-                            variantAction:
-                              section === "snoozed"
-                                ? ("unsnooze" as const)
-                                : section === "settled"
-                                  ? ("unsettle" as const)
-                                  : ("settle" as const),
-                            navigationParent: isStep ? threadKey : undefined,
-                            dropVerb:
-                              !isStep && dragState?.activeKey === key
-                                ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection)
-                                : null,
-                            dragOverPinned:
-                              !isStep &&
-                              dragState?.activeKey === key &&
-                              dragTargetSection === "pinned",
-                            sweepAction: actionSweep?.keys.has(key) ? actionSweep.action : null,
-                            snoozeWakeLabelText:
-                              !isStep && section === "snoozed" && row.snoozedUntil != null
-                                ? snoozeWakeLabel(
-                                    row.snoozedUntil,
-                                    { now: new Date().toISOString() },
-                                    messages,
-                                  )
-                                : null,
-                            stepLabel: isStep
-                              ? pipelineStepLabel(pipelineLiveRuns, row)
-                              : undefined,
-                            wokeAt: threadWokeAt(row, { now: snoozeNow }),
-                            isActive: routeRowThreadKey === key,
-                            revealRef: routeRowThreadKey === key ? revealActiveRow : undefined,
-                            isRouteThread: routeThreadKey === key,
-                            readOpensPullRequestsInRightPanel,
-                            jumpLabel: showJumpHints ? (jumpLabelByKey.get(key) ?? null) : null,
-                            environmentLabel: environmentLabelById.get(row.environmentId) ?? null,
-                            environmentMachine:
-                              environmentMachineById.get(row.environmentId) ?? ("server" as const),
-                            project:
-                              projectByKey.get(`${row.environmentId}:${row.projectId}`) ?? null,
-                            projectDisplayName:
-                              projectDisplayNameByKey.get(
-                                `${row.environmentId}:${row.projectId}`,
-                              ) ?? null,
-                            providerEntryByInstanceId:
-                              providerEntriesByEnvironment.get(row.environmentId) ??
-                              EMPTY_PROVIDER_ENTRIES,
-                            timestampFormat,
-                            onThreadClick: handleThreadClick,
-                            onThreadActivate: navigateToThread,
-                            onStartRename: startThreadRename,
-                            onRenameTitleChange: setRenamingTitle,
-                            onCommitRename: commitThreadRename,
-                            onCancelRename: cancelThreadRename,
-                            isRenaming: renamingThreadKey === key,
-                            renamingTitle: renamingThreadKey === key ? renamingTitle : "",
-                            onContextMenu: handleThreadContextMenu,
-                            onSettle: attemptSettle,
-                            onActionSweepStart: startActionSweep,
-                            onUnsettle: attemptUnsettle,
-                            onSnooze: attemptSnooze,
-                            onUnsnooze: attemptUnsnooze,
-                            onPin: attemptPinStable,
-                            onUnpin: attemptUnpin,
-                            onAcknowledgeWoke: acknowledgeWoke,
-                            onFileDropThreads: handleThreadFileDrop,
-                          };
+                      const rowProps = (row: EnvironmentThreadShell, isStep: boolean) => {
+                        const key = scopedThreadKey(scopeThreadRef(row.environmentId, row.id));
+                        return {
+                          thread: row,
+                          possiblyStuck: isShellPossiblyStuck(row, stuckClockOf(row.environmentId)),
+                          // Steps follow their parent's section, so they offer no settle, snooze or pin of their own.
+                          settlementSupported: !isStep && serverConfigs.has(row.environmentId),
+                          snoozeSupported: !isStep && serverConfigs.has(row.environmentId),
+                          pinningSupported: !isStep && serverConfigs.has(row.environmentId),
+                          isPinned: !isStep && row.pinnedAt != null,
+                          variantAction:
+                            section === "snoozed"
+                              ? ("unsnooze" as const)
+                              : section === "settled"
+                                ? ("unsettle" as const)
+                                : ("settle" as const),
+                          navigationParent: isStep ? threadKey : undefined,
+                          dropVerb:
+                            !isStep && dragState?.activeKey === key
+                              ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection)
+                              : null,
+                          dragOverPinned:
+                            !isStep &&
+                            dragState?.activeKey === key &&
+                            dragTargetSection === "pinned",
+                          sweepAction: actionSweep?.keys.has(key) ? actionSweep.action : null,
+                          snoozeWakeLabelText:
+                            !isStep && section === "snoozed" && row.snoozedUntil != null
+                              ? snoozeWakeLabel(
+                                  row.snoozedUntil,
+                                  { now: new Date().toISOString() },
+                                  messages,
+                                )
+                              : null,
+                          stepLabel: isStep ? pipelineStepLabel(pipelineLiveRuns, row) : undefined,
+                          wokeAt: threadWokeAt(row, { now: snoozeNow }),
+                          isActive: routeRowThreadKey === key,
+                          revealRef: routeRowThreadKey === key ? revealActiveRow : undefined,
+                          isRouteThread: routeThreadKey === key,
+                          readOpensPullRequestsInRightPanel,
+                          jumpLabel: showJumpHints ? (jumpLabelByKey.get(key) ?? null) : null,
+                          environmentLabel: environmentLabelById.get(row.environmentId) ?? null,
+                          environmentMachine:
+                            environmentMachineById.get(row.environmentId) ?? ("server" as const),
+                          project:
+                            projectByKey.get(`${row.environmentId}:${row.projectId}`) ?? null,
+                          projectDisplayName:
+                            projectDisplayNameByKey.get(`${row.environmentId}:${row.projectId}`) ??
+                            null,
+                          providerEntryByInstanceId:
+                            providerEntriesByEnvironment.get(row.environmentId) ??
+                            EMPTY_PROVIDER_ENTRIES,
+                          timestampFormat,
+                          onThreadClick: handleThreadClick,
+                          onThreadActivate: navigateToThread,
+                          onStartRename: startThreadRename,
+                          onRenameTitleChange: setRenamingTitle,
+                          onCommitRename: commitThreadRename,
+                          onCancelRename: cancelThreadRename,
+                          isRenaming: renamingThreadKey === key,
+                          renamingTitle: renamingThreadKey === key ? renamingTitle : "",
+                          onContextMenu: handleThreadContextMenu,
+                          onSettle: attemptSettle,
+                          onActionSweepStart: startActionSweep,
+                          onUnsettle: attemptUnsettle,
+                          onSnooze: attemptSnooze,
+                          onUnsnooze: attemptUnsnooze,
+                          onPin: attemptPinStable,
+                          onUnpin: attemptUnpin,
+                          onAcknowledgeWoke: acknowledgeWoke,
+                          onFileDropThreads: handleThreadFileDrop,
                         };
-                        const steps = pipelineStepsByParentKey.get(threadKey);
-                        const liveRun = livePipelineRunOf(pipelineLiveRuns, thread);
-                        const isPipelineParent =
-                          thread.pipeline != null && thread.pipeline.stepId === null;
-                        const attention = isPipelineParent
-                          ? resolveSidebarPipelineAttention(liveRun, steps ?? EMPTY_THREADS, waitOf)
-                          : undefined;
-                        const attemptInfo = pipelineAttemptsByParentKey.get(threadKey);
-                        const stepRowProps = (step: EnvironmentThreadShell) => {
-                          const stepKey = threadShellKey(step);
-                          const earlier = attemptInfo?.attempts.earlier.find(
-                            (entry) => threadShellKey(entry.thread) === stepKey,
-                          );
-                          return {
-                            ...rowProps(step, true),
-                            stepStatus: attention?.attentionThreads.get(stepKey) ?? null,
-                            suppressUnseenDone: attemptInfo?.attempts.redoKeys.has(stepKey),
-                            earlierAttempt: earlier?.attempt,
-                          };
+                      };
+                      const steps = pipelineStepsByParentKey.get(threadKey);
+                      const liveRun = livePipelineRunOf(pipelineLiveRuns, thread);
+                      const isPipelineParent =
+                        thread.pipeline != null && thread.pipeline.stepId === null;
+                      const attention = isPipelineParent
+                        ? resolveSidebarPipelineAttention(liveRun, steps ?? EMPTY_THREADS, waitOf)
+                        : undefined;
+                      const attemptInfo = pipelineAttemptsByParentKey.get(threadKey);
+                      const stepRowProps = (step: EnvironmentThreadShell) => {
+                        const stepKey = threadShellKey(step);
+                        const earlier = attemptInfo?.attempts.earlier.find(
+                          (entry) => threadShellKey(entry.thread) === stepKey,
+                        );
+                        return {
+                          ...rowProps(step, true),
+                          stepStatus: attention?.attentionThreads.get(stepKey) ?? null,
+                          suppressUnseenDone: attemptInfo?.attempts.redoKeys.has(stepKey),
+                          earlierAttempt: earlier?.attempt,
                         };
+                      };
                       return (
                         <SortableThreadRow
                           key={threadKey}
@@ -3958,36 +3952,36 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               ? `shelf:${section}`
                               : undefined)
                           }
-                            stepStatus={resolveSidebarPipelineStepStatus(
-                              steps ?? EMPTY_THREADS,
-                              liveRun,
-                              waitOf,
-                            )}
-                            pipelineSteps={shownPipelineStepsByParentKey
-                              .get(threadKey)
-                              ?.map(stepRowProps)}
-                            attentionThreadId={
-                              attention === undefined ? undefined : (attention.target?.id ?? null)
-                            }
-                            attentionLabel={
-                              attention?.target == null
-                                ? undefined
-                                : pipelineStepLabel(pipelineLiveRuns, attention.target)
-                            }
-                            pipelineEarlierCount={attemptInfo?.foldCount}
-                            pipelineEarlierExpanded={attemptInfo?.earlierExpanded}
-                            pipelineEarlierIndex={attemptInfo?.currentShown}
-                            pipelineProgress={
-                              thread.pipeline != null && thread.pipeline.stepId === null
-                                ? resolveSidebarPipelineProgress(
-                                    liveRun,
-                                    steps ?? EMPTY_THREADS,
-                                    waitOf,
-                                  )
-                                : undefined
-                            }
-                            pipelineExpanded={expandedPipelines.has(threadKey)}
-                            onPipelineExpandedChange={setPipelineExpanded}
+                          stepStatus={resolveSidebarPipelineStepStatus(
+                            steps ?? EMPTY_THREADS,
+                            liveRun,
+                            waitOf,
+                          )}
+                          pipelineSteps={shownPipelineStepsByParentKey
+                            .get(threadKey)
+                            ?.map(stepRowProps)}
+                          attentionThreadId={
+                            attention === undefined ? undefined : (attention.target?.id ?? null)
+                          }
+                          attentionLabel={
+                            attention?.target == null
+                              ? undefined
+                              : pipelineStepLabel(pipelineLiveRuns, attention.target)
+                          }
+                          pipelineEarlierCount={attemptInfo?.foldCount}
+                          pipelineEarlierExpanded={attemptInfo?.earlierExpanded}
+                          pipelineEarlierIndex={attemptInfo?.currentShown}
+                          pipelineProgress={
+                            thread.pipeline != null && thread.pipeline.stepId === null
+                              ? resolveSidebarPipelineProgress(
+                                  liveRun,
+                                  steps ?? EMPTY_THREADS,
+                                  waitOf,
+                                )
+                              : undefined
+                          }
+                          pipelineExpanded={expandedPipelines.has(threadKey)}
+                          onPipelineExpandedChange={setPipelineExpanded}
                         />
                       );
                     };
@@ -4119,29 +4113,29 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             />,
                           );
                           break;
-                          case "stuck-header":
-                            items.push(
-                              <SidebarSectionHeader
-                                key="stuck-shelf-header"
-                                marker="stuck-header"
-                                className={cn(workingThreads.length === 0 && "mt-auto")}
-                                label={gt("Possibly stuck", { $context: "sidebar section" })}
-                                count={stuckThreads.length}
-                                toggle={{
-                                  expanded: stuckShelfExpanded,
-                                  onToggle: toggleStuckShelf,
-                                }}
-                              />,
-                            );
-                            break;
+                        case "stuck-header":
+                          items.push(
+                            <SidebarSectionHeader
+                              key="stuck-shelf-header"
+                              marker="stuck-header"
+                              className={cn(workingThreads.length === 0 && "mt-auto")}
+                              label={gt("Possibly stuck", { $context: "sidebar section" })}
+                              count={stuckThreads.length}
+                              toggle={{
+                                expanded: stuckShelfExpanded,
+                                onToggle: toggleStuckShelf,
+                              }}
+                            />,
+                          );
+                          break;
                         case "snoozed-header":
                           items.push(
                             <SidebarSectionHeader
                               key="snoozed-shelf-header"
                               marker="snoozed-header"
-                                className={cn(
-                                  workingThreads.length + stuckThreads.length === 0 && "mt-auto",
-                                )}
+                              className={cn(
+                                workingThreads.length + stuckThreads.length === 0 && "mt-auto",
+                              )}
                               label={gt("Snoozed", { $context: "sidebar section" })}
                               count={snoozedThreads.length}
                               toggle={{
@@ -4157,10 +4151,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               key="settled-shelf-header"
                               marker="settled-header"
                               className={cn(
-                                  workingThreads.length +
-                                    stuckThreads.length +
-                                    snoozedThreads.length ===
-                                    0 && "mt-auto",
+                                workingThreads.length +
+                                  stuckThreads.length +
+                                  snoozedThreads.length ===
+                                  0 && "mt-auto",
                               )}
                               label={gt("Settled", { $context: "sidebar section" })}
                               count={settledCount}

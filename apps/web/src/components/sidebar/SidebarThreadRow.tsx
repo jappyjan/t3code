@@ -149,6 +149,7 @@ import {
   SidebarThreadHostPressureIcon,
   SidebarThreadHostPressureLine,
 } from "./SidebarThreadHostPressure";
+import { PipelineProgressBar } from "../PipelineProgressBar";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { ActivityShimmerOverlay } from "../chat/TimelineRowParts";
 import { observeVisibleAnimation } from "~/lib/visibleAnimation";
@@ -1181,30 +1182,28 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         }
       : runStatus;
   const attentionBadgeButton = (badge: NonNullable<typeof topStatus>, iconClassName: string) => (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            data-sidebar-action-for={threadKey}
-            aria-label={attentionBadgeLabel}
-            onClick={handleAttentionClick}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              badge.className,
-            )}
-          >
-            <TopStatusIcon icon={badge.icon} className={iconClassName} />
-            {badge.label}
-          </button>
-        }
-      />
-      <TooltipPopup side="top">
-        {props.attentionLabel === undefined
+    <SharedTooltipTrigger
+      render={
+        <button
+          type="button"
+          data-sidebar-action-for={threadKey}
+          aria-label={attentionBadgeLabel}
+          onClick={handleAttentionClick}
+          className={cn(
+            "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            badge.className,
+          )}
+        >
+          <TopStatusIcon icon={badge.icon} className={iconClassName} />
+          {badge.label}
+        </button>
+      }
+      label={
+        props.attentionLabel === undefined
           ? gt("Open thread")
-          : gt("Open {step}", { step: props.attentionLabel })}
-      </TooltipPopup>
-    </Tooltip>
+          : gt("Open {step}", { step: props.attentionLabel })
+      }
+    />
   );
   const isWokeStatus = topStatus?.icon === "woke";
 
@@ -1743,14 +1742,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               data-sidebar-parent={props.navigationParent}
               aria-label={accessibility.label}
               aria-current={accessibility.current}
-                {...stepGroupProps}
+              {...stepGroupProps}
               data-testid={inFolder ? "sidebar-row-folder" : "sidebar-row-slim"}
               aria-busy={isRegeneratingTitle || undefined}
               className={cn(
                 rowSurfaceClassName,
                 multiline
                   ? "flex flex-col justify-center px-2.5 py-1.5"
-                    : cn("flex items-center gap-2.5 px-2.5", isStep ? "h-8" : "h-9"),
+                  : cn("flex items-center gap-2.5 px-2.5", isStep ? "h-8" : "h-9"),
                 // Lines titles up with the folder name, past its chevron and icon.
                 inFolder && "ps-9",
               )}
@@ -1804,8 +1803,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 <span
                   className={cn(
                     "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-                      !isWoke && !attentionBadge && "group-any-hover/sidebar-row:opacity-0",
-                      attentionBadge && "order-last text-xs",
+                    !isWoke && !attentionBadge && "group-any-hover/sidebar-row:opacity-0",
+                    attentionBadge && "order-last text-xs",
                   )}
                 >
                   {pendingSync ? (
@@ -1875,7 +1874,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
                         isWoke && "group-any-hover/sidebar-row:static",
                       )}
-      style={pipelineRowStyle(metaLineEmpty ? 58 : 78)}
+                      style={pipelineRowStyle(metaLineEmpty ? 58 : 78)}
                     >
                       <AlarmClockOffIcon className="mb-px size-3" />
                     </button>
@@ -1914,8 +1913,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         onPointerDown={handleActionPointerDown}
                         className={cn(
                           "pointer-events-none absolute inset-y-0 right-0 -mr-2 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                              (isWoke || attentionBadge) && "group-any-hover/sidebar-row:static",
-                              attentionBadge && "focus-visible:static",
+                          (isWoke || attentionBadge) && "group-any-hover/sidebar-row:static",
+                          attentionBadge && "focus-visible:static",
                         )}
                       />
                     }
@@ -1966,7 +1965,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             data-sidebar-parent={props.navigationParent}
             aria-label={accessibility.label}
             aria-current={accessibility.current}
-              {...stepGroupProps}
+            {...stepGroupProps}
             data-testid="sidebar-row-card"
             aria-busy={isRegeneratingTitle || undefined}
             className={rowSurfaceClassName}
@@ -1983,7 +1982,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         <div
           className={cn(
             "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-              pipelineProgressSegments !== undefined && "h-[6.125rem]",
+            pipelineProgressSegments !== undefined && "h-[6.125rem]",
             metaLineEmpty && "h-auto",
           )}
         >
@@ -2133,11 +2132,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             aria-label={gt("Settle thread")}
                             onClick={handleSettleClick}
                             onPointerDown={handleActionPointerDown}
-                                className={cn(
-                                  "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground",
-                                  // The badge sits after Settle, so Settle no longer reaches into the edge.
-                                  !attentionBadge && "-mr-1",
-                                )}
+                            className={cn(
+                              "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground",
+                              // The badge sits after Settle, so Settle no longer reaches into the edge.
+                              !attentionBadge && "-mr-1",
+                            )}
                           />
                         }
                         label={
@@ -2167,7 +2166,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {titleLineIcons}
           </div>
           {metaLine}
-            {pipelineProgress("mt-1")}
+          {pipelineProgress("mt-1")}
         </div>
       </ThreadHoverCardTrigger>
       {pipelineStepGroup}

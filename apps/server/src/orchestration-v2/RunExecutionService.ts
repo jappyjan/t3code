@@ -1188,7 +1188,7 @@ export const layer: Layer.Layer<
           );
           yield* (
             input.baseline ??
-              captureRunBaseline({ ...input, message: { role: "user", ...input.message } })
+            captureRunBaseline({ ...input, message: { role: "user", ...input.message } })
           );
           if (
             input.shouldStartProviderTurn !== undefined &&

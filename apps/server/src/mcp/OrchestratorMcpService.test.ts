@@ -2932,6 +2932,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+          Layer.mock(PipelineService.PipelineService)({}),
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({
             isNonGitProject: () => Effect.succeed(false),
@@ -5297,6 +5298,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+          Layer.mock(PipelineService.PipelineService)({}),
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
         );
         return Effect.gen(function* () {
@@ -7465,7 +7467,8 @@ describe("OrchestratorMcpService pipelines", () => {
       );
       assert.deepEqual(
         (isolated.started[0] as { input: { workspaceStrategy: unknown } }).input.workspaceStrategy,
-        { type: "worktree", baseRef: "abc123", startFromOrigin: false },
+        // The checkout's branch still points at its commit, so the base names the branch.
+        { type: "worktree", baseRef: "feat/dark", startFromOrigin: false },
       );
 
       // A checkout whose commit the project root lacks cannot seed the worktree.

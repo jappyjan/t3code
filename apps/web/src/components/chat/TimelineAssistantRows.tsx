@@ -319,24 +319,20 @@ function AssistantFeedbackButton({
 }) {
   const gt = useGT();
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost-muted"
-            aria-label={gt("Send feedback")}
-            onClick={() => onSendFeedback(feedbackQuoteExcerpt(text))}
-          />
-        }
-      >
-        <MessageSquareIcon className="size-3" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        <T>Send feedback</T>
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost-muted"
+          aria-label={gt("Send feedback")}
+          onClick={() => onSendFeedback(feedbackQuoteExcerpt(text))}
+        />
+      }
+      label={<T>Send feedback</T>}
+    >
+      <MessageSquareIcon className="size-3" />
+    </SharedTooltipTrigger>
   );
 }
 

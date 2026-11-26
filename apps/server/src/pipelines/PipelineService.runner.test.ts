@@ -467,6 +467,7 @@ const makeHarness = Effect.gen(function* () {
       captureCheckpoint: ({ cwd, checkpointRef }) =>
         Effect.sync(() => {
           checkpointOps.push({ op: "capture", cwd, ref: checkpointRef });
+          return null;
         }),
       restoreCheckpoint: ({ cwd, checkpointRef }) =>
         behavior.restoreFails
