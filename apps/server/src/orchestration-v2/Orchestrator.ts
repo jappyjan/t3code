@@ -3552,9 +3552,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     },
     (effect, threadId, options?) =>
       withAdmissionReservations(
-      effect.pipe(
-        Effect.catch((cause) => failQueuedRunStart(threadId, cause, options?.queuedRunId)),
-      ),
+        effect.pipe(
+          Effect.catch((cause) => failQueuedRunStart(threadId, cause, options?.queuedRunId)),
+        ),
       ),
   );
 
@@ -8399,14 +8399,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       // A run waiting on host admission is not a message queued behind a turn, so providers
       // without queued messages still wait for a slot.
       if (queueBehindRun !== undefined) {
-      yield* mapDispatchError(command)(
-        commandPolicy.ensureQueuedMessages({
-          commandId: command.commandId,
-          threadId: command.threadId,
-          providerInstanceId: modelSelection.instanceId,
-          capabilities: queuedCapabilities,
-        }),
-      );
+        yield* mapDispatchError(command)(
+          commandPolicy.ensureQueuedMessages({
+            commandId: command.commandId,
+            threadId: command.threadId,
+            providerInstanceId: modelSelection.instanceId,
+            capabilities: queuedCapabilities,
+          }),
+        );
       }
       const queuedProviderThread: OrchestrationV2ProviderThread = targetProviderThread ?? {
         id: idAllocator.derive.providerThread({
@@ -17439,51 +17439,51 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   };
   // Host admission has no per-thread trigger: a run that ends frees a slot for any thread, so
   // each trigger starts the oldest waiting runs across threads until one is denied again.
-    const pumpHostAdmission = Effect.fn("Orchestrator.pumpHostAdmission")(function* () {
+  const pumpHostAdmission = Effect.fn("Orchestrator.pumpHostAdmission")(function* () {
     if (!(yield* hostAdmission.pumpNeeded)) return;
-      const snapshot = yield* projectionStore.getHostAdmissionSnapshot();
-      const visited = new Set<ThreadId>();
-      for (const waiting of snapshot.waiting) {
-        if (!waiting.ready || visited.has(waiting.threadId)) continue;
-        visited.add(waiting.threadId);
-        const outcome = yield* threadDispatch
-          .withLock(waiting.threadId, startNextQueuedRun(waiting.threadId))
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to start a run waiting on host admission", {
-                threadId: waiting.threadId,
-                cause,
-              }).pipe(Effect.as(undefined)),
-            ),
-          );
-        if (outcome === "deferred") break;
-      }
+    const snapshot = yield* projectionStore.getHostAdmissionSnapshot();
+    const visited = new Set<ThreadId>();
+    for (const waiting of snapshot.waiting) {
+      if (!waiting.ready || visited.has(waiting.threadId)) continue;
+      visited.add(waiting.threadId);
+      const outcome = yield* threadDispatch
+        .withLock(waiting.threadId, startNextQueuedRun(waiting.threadId))
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Failed to start a run waiting on host admission", {
+              threadId: waiting.threadId,
+              cause,
+            }).pipe(Effect.as(undefined)),
+          ),
+        );
+      if (outcome === "deferred") break;
+    }
     yield* hostAdmission.setWaiters(snapshot.waiting.length > 0);
     yield* hostAdmission.publishState;
-    });
+  });
   const admissionTriggers = (eventType: "run.created" | "run.updated") =>
     eventSink.stream({ afterSequence: terminalEventsAfterSequence, eventType });
   yield* Stream.merge(admissionTriggers("run.created"), admissionTriggers("run.updated")).pipe(
-        Stream.filter(
-          (stored) =>
+    Stream.filter(
+      (stored) =>
         (stored.event.type === "run.created" ||
           (stored.event.type === "run.updated" &&
             stored.event.payload.status !== "preparing" &&
             stored.event.payload.status !== "running")) &&
         // Recovery's own writes; the pump resumes once recovery is done.
         !String(stored.commandId).startsWith("command:runtime-reconcile:"),
-        ),
+    ),
     Stream.runForEach(() => hostAdmission.requestPump),
-        Effect.forkScoped,
-      );
+    Effect.forkScoped,
+  );
   yield* hostAdmission.pumpRequests.pipe(
-      Stream.runForEach(() =>
-        pumpHostAdmission().pipe(
+    Stream.runForEach(() =>
+      pumpHostAdmission().pipe(
         Effect.catchCause((cause) => Effect.logWarning("Failed to pump host admission", { cause })),
-        ),
       ),
-      Effect.forkScoped,
-    );
+    ),
+    Effect.forkScoped,
+  );
 
   yield* Stream.merge(
     eventSink.stream({

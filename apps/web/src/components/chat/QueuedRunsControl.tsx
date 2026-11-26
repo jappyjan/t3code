@@ -355,7 +355,7 @@ export function QueuedRunsControl({
                         }}
                       >
                         <ArrowUpIcon />
-                          {item.canStartNow ? <T>Start now</T> : <T>Send now</T>}
+                        {item.canStartNow ? <T>Start now</T> : <T>Send now</T>}
                       </Button>
                     </SharedTooltipTrigger>
                   </>

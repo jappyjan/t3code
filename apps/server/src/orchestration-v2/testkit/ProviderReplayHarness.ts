@@ -562,16 +562,16 @@ export function layerWithRegistry<Error>(
   );
   // Both controls default to off, as in production, so every replay covers the unlimited path.
   const layerHostAdmission = HostAdmission.layer.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              layerPersistence,
-              ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
-              layerServerSettings,
+    Layer.provide(
+      Layer.mergeAll(
+        layerPersistence,
+        ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+        layerServerSettings,
         options.hostAdmission?.hostResources ?? Layer.empty,
-            ),
-          ),
-          Layer.orDie,
-        );
+      ),
+    ),
+    Layer.orDie,
+  );
   const layerOrchestratorProvided = Orchestrator.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
