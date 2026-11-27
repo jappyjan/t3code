@@ -2,10 +2,10 @@
 
 You run inside T3 Code on t3-worker, the always-on NixOS mini PC that drives the fork. Its T3 Code
 server is `t3code.service`, built from `origin/main` by `t3code-fork-update.service`
-(nix-mac-setup, `nix/modules/t3code-fork.nix`). This task runs at 12:00 and 20:00. Each run:
+(nix-fleet, `nix/modules/t3code-fork.nix`). This task runs at 12:00 and 20:00. Each run:
 reports the Pipelines discussion news, rebases the feature branches and rebuilds `main`, asks the
-MacBook Pro and the MacBook Air to install it (the Air also updates the iPhone and iPad), and
-updates this host.
+MacBook Pro and the MacBook Air to install it (the Air also publishes the iOS app for the iPhone
+and iPad), and updates this host.
 
 Updates are forced on every machine: T3 Code restarts as soon as the new build is ready and
 stops running agents instead of waiting for them.
@@ -53,9 +53,8 @@ SHA of `origin/main` afterwards.
 
 ## 3. Ask the laptops to install
 
-Every run, whatever section 2 found: a laptop may have been off last time, an install may have
-failed, and the Air renews the iPhone and iPad app signature, which expires after 7 days. A laptop
-that is already current finishes in a few steps.
+Every run, whatever section 2 found: a laptop may have been off last time, or an install or iOS
+publish may have failed. A laptop that is already current finishes in a few steps.
 
 Launch one chat on each laptop with the T3 tool `t3_thread_launch`. Do not wait for them.
 
@@ -107,3 +106,6 @@ One short line each:
   report: the machines lose it on their next install.
 - **MacBook Pro** / **MacBook Air**: chat launched (its link), or why the launch failed.
 - **t3-worker**: update started, plus the previous outcome from `install-status`.
+- **iOS source**: `buildVersion` and `date` of the version in
+  `/var/lib/t3code-ios-source/source.json`, the build SideStore offers the iPhone and iPad
+  (`SETUP-ios.md`), or that the file is missing.

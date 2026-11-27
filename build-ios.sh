@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Builds the T3 Code iOS app (Release, self-contained, signed with my own Apple team) from the
-# fork checkout. One universal build runs on the iPhone and the iPad. Prints the path of the built
-# .app on its last line.
+# Builds the T3 Code iOS app (Release, self-contained, unsigned) from the fork checkout and packs
+# it as an .ipa for SideStore, which signs it with my free Apple ID on the iPhone and iPad
+# (SETUP-ios.md). One universal build runs on both. Prints the path of the .ipa on its last line.
 #
-#   build-ios.sh [--register-device <udid>]
+#   build-ios.sh
 #
-# --register-device  builds for that connected device instead of a generic one, so Xcode registers
-#                    it with the team and its profile covers it. Needed once per device; plug it in
-#                    and unlock it.
-#
+# Nothing here signs, so no Apple account, Xcode login or provisioning profile is involved.
 # It uses the repo's Personal Team build (apps/mobile/README.md): my bundle id, without the widget
 # and share extensions, push, or native Sign in with Apple, which need upstream's Apple team.
 # Expo OTA updates are off: they would come from upstream's EAS project, not from this fork.
@@ -19,17 +16,11 @@ unset ELECTRON_RUN_AS_NODE
 
 REPO="${T3_FORK_REPO:-$HOME/code/t3dotgg/t3code}"
 BUILDS="${T3_IOS_BUILDS:-$HOME/code/t3dotgg/t3code-ios-builds}"
-TEAM_ID="${T3_IOS_TEAM_ID:-S8U7Q59TMM}"
 KEEP_BUILDS=3
 
-register_device=""
-case "${1:-}" in
-  "") ;;
-  --register-device) register_device="${2:?usage: build-ios.sh [--register-device <udid>]}" ;;
-  *) echo "usage: build-ios.sh [--register-device <udid>]" >&2; exit 2 ;;
-esac
+[[ $# -eq 0 ]] || { echo "usage: build-ios.sh" >&2; exit 2; }
 
-# xcode-select points at the Command Line Tools on this Mac; device builds need the full Xcode.
+# xcode-select points at the Command Line Tools on this Mac; iOS builds need the full Xcode.
 [[ "${DEVELOPER_DIR:-}" == *.app/Contents/Developer ]] || export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 # CocoaPods needs a UTF-8 locale.
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
@@ -85,89 +76,33 @@ fi
 workspace="$(find ios -maxdepth 1 -name '*.xcworkspace' | head -1)"
 [[ -n "$workspace" ]] || fail "expo prebuild made no Xcode workspace"
 scheme="$(basename "$workspace" .xcworkspace)"
-entitlements="ios/$scheme/$scheme.entitlements"
-# My free (Personal) Apple team cannot sign these. The repo's withoutIosPersonalTeamCapabilities
-# plugin misses aps-environment (expo-notifications adds it after that plugin runs), and
-# associated domains only validate for upstream's team anyway (clerk.t3.codes lists its app ids).
-[[ -f "$entitlements" ]] || fail "expo prebuild made no $entitlements"
-for key in aps-environment com.apple.developer.applesignin com.apple.security.application-groups \
-  com.apple.developer.associated-domains; do
-  /usr/libexec/PlistBuddy -c "Delete :$key" "$entitlements" >/dev/null 2>&1 || true
-done
-{ echo "Entitlements:"; plutil -p "$entitlements"; } >>"$log"
-# The build number tells installed builds apart (Settings > General > iPhone Storage, devicectl).
+# The build number tells installed builds apart, and SideStore offers a build as an update by it.
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $stamp" "ios/$scheme/Info.plist"
 
-# Free teams sign for 7 days, and Xcode keeps reusing a cached profile until it expires, so a
-# rebuild alone does not extend the app's life. Set aside this app's cached profiles that expire
-# within 4 days; Xcode then fetches a fresh 7-day one.
-profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
-old_profiles="$BUILDS/old-profiles"
-# Prints when a profile for this app expires (epoch seconds); fails for other profiles.
-profile_expiry() {
-  local decoded expires
-  decoded="$(security cms -D -i "$1" 2>/dev/null)" || return 1
-  [[ "$(plutil -extract Entitlements.application-identifier raw -o - - <<<"$decoded" 2>/dev/null)" == \
-    "$TEAM_ID.$T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID" ]] || return 1
-  expires="$(plutil -extract ExpirationDate raw -o - - <<<"$decoded")"
-  date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$expires" +%s
-}
-renew_before=$(($(date +%s) + 4 * 86400))
-for profile in "$profiles"/*.mobileprovision; do
-  [[ -f "$profile" ]] || continue
-  expiry="$(profile_expiry "$profile")" || continue
-  if ((expiry < renew_before)); then
-    echo "Renewing the provisioning profile that expires $(date -u -r "$expiry" +%FT%TZ)" >>"$log"
-    mkdir -p "$old_profiles"
-    mv "$profile" "$old_profiles/"
-  fi
-done
-[[ -d "$old_profiles" ]] && find "$old_profiles" -name '*.mobileprovision' -mtime +30 -delete
-
-destination="generic/platform=iOS"
-[[ -n "$register_device" ]] && destination="id=$register_device"
-echo "Running xcodebuild ($scheme, Release, $destination)" >>"$log"
-xcodebuild_app() {
-  xcodebuild \
-    -workspace "$workspace" \
-    -scheme "$scheme" \
-    -configuration Release \
-    -destination "$destination" \
-    -derivedDataPath "$BUILDS/DerivedData" \
-    -allowProvisioningUpdates \
-    -allowProvisioningDeviceRegistration \
-    -hideShellScriptEnvironment \
-    DEVELOPMENT_TEAM="$TEAM_ID" \
-    CURRENT_PROJECT_VERSION="$stamp" \
-    build >>"$log" 2>&1
-}
-if ! xcodebuild_app; then
-  # Renewing needs the Apple account in Xcode. Without it, sign with a set-aside profile that is
-  # still valid, so a fix still ships while the account is fixed; say so, since the app then
-  # stops opening when that profile expires.
-  latest=0
-  for profile in "$old_profiles"/*.mobileprovision; do
-    [[ -f "$profile" ]] || continue
-    expiry="$(profile_expiry "$profile")" || continue
-    ((expiry > $(date +%s) + 3600)) || continue
-    mv "$profile" "$profiles/"
-    ((expiry > latest)) && latest=$expiry
-  done
-  ((latest > 0)) || fail "xcodebuild failed"
-  restored="$(date -u -r "$latest" +%FT%TZ)"
-  echo "xcodebuild failed; retrying with the old provisioning profile (until $restored)" >>"$log"
-  xcodebuild_app || fail "xcodebuild failed, also with the old provisioning profile"
-  echo "WARNING: could not renew the provisioning profile, so this build expires $restored. Xcode needs my Apple account (Xcode > Settings > Accounts) before then."
-fi
+# Unsigned: no entitlements are embedded either. SideStore signs with the entitlements of its own
+# free-team profile, which leaves out what such a team cannot have (App Groups, push, Apple sign-in).
+echo "Running xcodebuild ($scheme, Release, unsigned)" >>"$log"
+xcodebuild \
+  -workspace "$workspace" \
+  -scheme "$scheme" \
+  -configuration Release \
+  -destination "generic/platform=iOS" \
+  -derivedDataPath "$BUILDS/DerivedData" \
+  -hideShellScriptEnvironment \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY="" \
+  CURRENT_PROJECT_VERSION="$stamp" \
+  build >>"$log" 2>&1 || fail "xcodebuild failed"
 built="$BUILDS/DerivedData/Build/Products/Release-iphoneos/$scheme.app"
 [[ -d "$built" ]] || fail "xcodebuild finished but $built is missing"
-app="$out/$scheme.app"
-rm -rf "$app"
-ditto "$built" "$app"
+# An .ipa is a zip with the app in Payload/.
+mkdir -p "$out/Payload"
+ditto "$built" "$out/Payload/$scheme.app"
+ipa="$out/$scheme-$stamp.ipa"
+ditto -c -k --norsrc --keepParent "$out/Payload" "$ipa" || fail "packing $ipa failed"
+app="$out/Payload/$scheme.app"
 git -C "$REPO" rev-parse HEAD >"$out/commit"
-# Free Apple teams sign for 7 days only; the scheduled task reinstalls before this date.
-security cms -D -i "$app/embedded.mobileprovision" >"$out/profile.plist" 2>/dev/null
-plutil -extract ExpirationDate raw -o "$out/profile-expires" "$out/profile.plist"
 
 # Drop all but the newest builds.
 find "$BUILDS" -mindepth 1 -maxdepth 1 -type d -name '20[0-9][0-9][0-9][0-9][0-9][0-9].[0-9][0-9][0-9][0-9]' |
@@ -178,6 +113,6 @@ find "$BUILDS" -mindepth 1 -maxdepth 1 -type d -name '20[0-9][0-9][0-9][0-9][0-9
 find "$BUILDS" -mindepth 1 -maxdepth 1 -name 'build-*.log' -mtime +14 -delete
 
 version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist")"
-echo "Built $(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$app/Info.plist" 2>/dev/null || echo "$scheme") $version ($stamp), signed until $(cat "$out/profile-expires")"
+echo "Built $(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$app/Info.plist" 2>/dev/null || echo "$scheme") $version ($stamp), unsigned"
 echo "Log: $log"
-echo "$app"
+echo "$ipa"
