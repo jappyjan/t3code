@@ -44,29 +44,48 @@ Ask me before deploying t3-worker.
 
 ## B. Each device (me)
 
-Following docs.sidestore.io (Installation):
+What worked on the iPhone (Nov 2026; SideStore's docs lag behind its releases):
 
 1. From the App Store, install **LocalDevVPN**, open it and connect. Be on Wi-Fi: SideStore
-   installs and refreshes only over Wi-Fi, not mobile data.
-2. Plug the device into the Air, unlock it and open iloader. Sign in with the Apple ID, pick the
-   device and choose **Install SideStore (Stable)**. iloader also puts the pairing file on it.
-3. On the device: Settings > General > VPN & Device Management > trust the developer app. If
-   asked, turn on Developer Mode (Settings > Privacy & Security) and restart.
-4. Open SideStore and sign in with the same Apple ID (2FA once).
-5. Add the source: open `sidestore://source?url=<source URL>` in Safari, or Sources > + and paste
-   the URL. Install **T3 Code Preview** from it.
-6. If the old Xcode-installed app is still there next to the new one, pair the new one with my
-   servers, then delete the old one (it stops opening when its last Xcode signature runs out
-   anyway).
+   installs and refreshes only over Wi-Fi. While it is connected, Tailscale is off.
+2. Plug the device into the Air, unlock it, trust the Mac and open iloader. Sign in with the
+   Apple ID and choose **Install SideStore (Nightly)**. The stable build (0.7.0-alpha) has no
+   Pairing File Management and could not connect. iloader also places both pairing files. Each
+   reinstall wipes SideStore's settings, so stay on one build.
+3. On the device: Settings > General > VPN & Device Management > trust the developer app; turn
+   on Developer Mode (Settings > Privacy & Security) if asked.
+4. Before signing in, get the device connection working; sign-in needs it right after 2FA to
+   read the device's UDID:
+   - SideStore > Settings > Connection Config: **Use Local VPN** on.
+   - Settings > Advanced > Pairing File Management: activate the **Remote Pairing** (RemoteRP)
+     file and set it as preferred. The lockdown file needs an IPSec tunnel LocalDevVPN does not
+     provide.
+   - Force-quit and reopen SideStore. Settings > Health Check must be green: Active Protocol
+     Remote Pairing, pairing file Verified, SideStore Ready. All lines "Unknown" means no
+     pairing file is loaded.
+5. Sign in. Since 2026-11-20 Apple answers 503 when the client calls itself `macOS;`
+   (SideStore issue #1745), so first:
+   - Settings > Anisette Servers: **JKcoxson Mac Server**, auto rotation off.
+   - Settings > User Customizations: On-Device Anisette off, then **Reset adi.pb**.
+   - Anisette Client Configuration > Remote Server Sync: **Fetch**, then **Save as Overrides**.
+     Client Info must say `Mac OS X;`, e.g.
+     `<MacBookPro13,3> <Mac OS X;26.6;25F84> <com.apple.AuthKit/1 (com.apple.akd/1.0)>`.
+   - Force-quit, reopen, sign in. Never tap Reset to Defaults there, and decline revoking
+     certificates after a failed sign-in.
+6. Add the source: open `sidestore://source?url=<source URL>` in Safari, or Sources > + and
+   paste the URL. Install **T3 Code Preview** from it.
+7. If the old Xcode-installed app is still there next to the new one, pair the new one with my
+   servers, then delete the old one.
 
 ## Living with it
 
-- **Renewing**: SideStore renews in the background, but only while LocalDevVPN is connected and
-  the device is on Wi-Fi. iOS runs one VPN at a time, so while LocalDevVPN is on, Tailscale is
-  off and T3 Code cannot reach my servers. A Shortcuts automation can connect LocalDevVPN at
-  night at home, open SideStore, wait a minute, then connect Tailscale again (actions: Set VPN,
-  Open App, Wait). Otherwise, once a week: connect LocalDevVPN, open SideStore, tap the days
-  counter on T3 Code, reconnect Tailscale. The app shows how many days it has left in My Apps.
+- **Renewing**: SideStore renews only while LocalDevVPN is connected and the device is on
+  Wi-Fi. iOS runs one VPN at a time, so while LocalDevVPN is on, Tailscale is off and T3 Code
+  cannot reach my servers. Two Shortcuts automations (Time of Day, Run Immediately): 04:00
+  Set VPN LocalDevVPN Connect, Wait 10 s, SideStore's Refresh All Apps; 04:15 Set VPN
+  Tailscale Connect (separate, so a failed refresh still restores Tailscale). Otherwise, once a
+  week: connect LocalDevVPN, open SideStore, tap the days counter on T3 Code, reconnect
+  Tailscale. My Apps shows how many days the app has left.
 - **New builds**: a new `main` shows up in SideStore as an update (My Apps). Updating also needs
   LocalDevVPN and Wi-Fi, and keeps the app's data.
 - **Apple breaks sign-ins now and then** (Sept to Nov 2026 it did, repeatedly). Keep SideStore
