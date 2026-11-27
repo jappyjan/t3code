@@ -97,8 +97,8 @@ STAGE="$stage" NAME="$name" URL="$T3_IOS_SOURCE_URL" COMMIT="$commit" \
 rm "$stage/Info.json"
 
 echo "Uploading $name to $T3_IOS_UPLOAD_HOST"
-if ! COPYFILE_DISABLE=1 tar -c -C "$stage" . |
-  ssh -i "$T3_IOS_UPLOAD_KEY" -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes \
+if ! COPYFILE_DISABLE=1 tar -c --no-xattrs --no-mac-metadata -C "$stage" . |
+  ssh -T -i "$T3_IOS_UPLOAD_KEY" -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes \
     -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 "$T3_IOS_UPLOAD_HOST"; then
   finish "Not published: the upload to $T3_IOS_UPLOAD_HOST failed."
   exit 1
