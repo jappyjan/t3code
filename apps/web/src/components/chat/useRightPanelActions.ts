@@ -77,6 +77,7 @@ interface RightPanelActionsInput {
  */
 export function useRightPanelActions(input: RightPanelActionsInput) {
   const {
+    embedded,
     activeThreadRef,
     activeProject,
     activeRightPanelSurface,
