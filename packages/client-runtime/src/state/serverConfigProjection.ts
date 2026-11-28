@@ -125,9 +125,10 @@ export function applyServerConfigProjection(
         heldPressure !== undefined && event.config.environment.capabilities.hostPressure === true
           ? heldPressure
           : undefined;
+      const heldAdmission = Option.isSome(current) ? current.value.config.hostAdmission : undefined;
       const carriedAdmission =
-        Option.isSome(current) && event.config.environment.capabilities.hostAdmission === true
-          ? current.value.config.hostAdmission
+        heldAdmission !== undefined && event.config.environment.capabilities.hostAdmission === true
+          ? heldAdmission
           : undefined;
       const config: ServerConfig = {
         ...event.config,

@@ -13,6 +13,7 @@ import {
   type OrchestrationV2Run,
 } from "@t3tools/contracts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -85,7 +86,7 @@ const layerTest = (
 ) =>
   Layer.mergeAll(
     layerDatabase,
-    ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+    ProjectionStore.layer.pipe(Layer.provide(Layer.merge(layerDatabase, NodeCrypto.layer))),
     layerFakeHost,
     // Startup recovery switches the pump on, as the server does once it finishes.
     (options.recovered === false ? Layer.empty : Layer.effectDiscard(finishStartupRecovery)).pipe(

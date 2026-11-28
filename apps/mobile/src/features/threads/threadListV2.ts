@@ -16,7 +16,6 @@ import {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
   resolveThreadConnectionStatus,
-  resolveThreadProviderStack,
   threadRuntimeAwaitsTurn,
 } from "@t3tools/client-runtime/state/models";
 import {

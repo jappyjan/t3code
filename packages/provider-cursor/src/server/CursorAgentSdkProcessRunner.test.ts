@@ -324,7 +324,6 @@ describe("CursorAgentSdkProcessRunner", () => {
               kill: () => Effect.succeed(false),
               controlGroups: Effect.undefined,
               clear: () => Effect.void,
-              controlGroups: Effect.undefined,
             }),
           );
 
